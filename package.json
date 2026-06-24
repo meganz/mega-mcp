@@ -1,0 +1,51 @@
+{
+  "name": "mega-cloud-mcp",
+  "version": "1.0.0",
+  "description": "MCP server that lets an AI assistant operate a MEGA cloud account via the MEGAcmd CLI.",
+  "license": "MIT",
+  "author": "Mega Limited <jsh@mega.co.nz>",
+  "repository": { "type": "git", "url": "git+https://github.com/meganz/mega-mcp.git" },
+  "homepage": "https://github.com/meganz/mega-mcp#readme",
+  "bugs": { "url": "https://github.com/meganz/mega-mcp/issues" },
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "mega-cloud-mcp": "dist/plugin-server.js"
+  },
+  "files": [
+    ".codex-plugin",
+    ".mcp.json",
+    "assets",
+    "dist/plugin-server.js",
+    "manifest.json",
+    "NOTICE",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "build:plugin": "node scripts/build-plugin-bundle.mjs",
+    "prepack": "npm run build:plugin",
+    "prepublishOnly": "npm run build && npm run build:plugin && npm run typecheck && npm test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "stage": "node scripts/stage.mjs",
+    "pack": "npm run build && npm run build:plugin && npm run stage && mcpb validate build/manifest.json && mcpb pack build mega-cloud-mcp.mcpb"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

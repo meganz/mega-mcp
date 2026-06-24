@@ -1,0 +1,45 @@
+{
+  "name": "mega-mcp",
+  "version": "1.0.0",
+  "description": "Codex plugin for operating a MEGA cloud account through the local MEGAcmd MCP server.",
+  "author": {
+    "name": "Mega Limited",
+    "email": "jsh@mega.co.nz",
+    "url": "https://mega.io"
+  },
+  "homepage": "https://github.com/meganz/mega-mcp#readme",
+  "repository": "https://github.com/meganz/mega-mcp",
+  "license": "MIT",
+  "keywords": [
+    "mega",
+    "mcp",
+    "cloud-storage",
+    "files",
+    "megacmd"
+  ],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "MEGA Cloud MCP",
+    "shortDescription": "Operate MEGA cloud files through local MEGAcmd.",
+    "longDescription": "Connects Codex to a local MCP server that wraps MEGAcmd for listing, searching, uploading, downloading, sharing, and managing MEGA cloud files. Login happens out of band, credentials are never sent through the assistant, and destructive or data-moving actions require confirmation.",
+    "developerName": "Mega Limited",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://mega.io",
+    "privacyPolicyURL": "https://mega.io/privacy",
+    "termsOfServiceURL": "https://mega.io/terms",
+    "defaultPrompt": [
+      "List my MEGA cloud drive",
+      "Find PDFs in my MEGA account",
+      "Upload a file and create a MEGA link"
+    ],
+    "brandColor": "#D9272E",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png",
+    "screenshots": []
+  }
+}

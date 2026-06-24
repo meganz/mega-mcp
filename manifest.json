@@ -1,0 +1,126 @@
+{
+  "manifest_version": "0.4",
+  "name": "mega-cloud-mcp",
+  "display_name": "MEGA Cloud MCP",
+  "version": "1.0.0",
+  "description": "Operate your MEGA cloud account (list, search, upload, download, share) via MEGAcmd.",
+  "long_description": "Wraps the MEGAcmd CLI so an AI assistant can manage files in your end-to-end encrypted MEGA account. You log in out-of-band yourself in the MEGAcmd interactive shell (login <email>); no credentials ever pass through the AI. Destructive and data-moving actions require explicit confirmation.",
+  "author": { "name": "Mega Limited", "email": "jsh@mega.co.nz", "url": "https://github.com/meganz" },
+  "license": "MIT",
+  "icon": "assets/icon.png",
+  "homepage": "https://mega.io",
+  "documentation": "https://mega.io/cmd",
+  "support": "https://mega.io/contact",
+  "keywords": ["mega", "cloud storage", "files", "megacmd", "upload", "download"],
+  "privacy_policies": ["https://mega.io/privacy"],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "MEGA_MCP_MEGACMD_DIR": "${user_config.megacmd_dir}",
+        "MEGA_MCP_BUNDLED_DIR": "${__dirname}/vendor/megacmd",
+        "MEGA_MCP_MAX_LIST": "${user_config.max_list_lines}",
+        "MEGA_MCP_EXPOSE_CONTACTS": "${user_config.expose_contacts}",
+        "MEGA_MCP_EXPOSE_ACCOUNT": "${user_config.expose_account_details}",
+        "MEGA_MCP_EXPOSE_FILES": "${user_config.expose_file_contents}"
+      }
+    }
+  },
+  "tools_generated": false,
+  "tools": [
+    { "name": "megacmd_setup", "description": "Download + verify the MEGAcmd engine on first use (no login)." },
+    { "name": "mega_whoami", "description": "Show the logged-in MEGA account (email only)." },
+    { "name": "mega_account", "description": "Show the account plan tier and storage (no session/balance)." },
+    { "name": "mega_logout", "description": "Log out of the current MEGA session (confirm)." },
+    { "name": "mega_killsession", "description": "Close other login sessions (confirm)." },
+    { "name": "mega_df", "description": "Show storage usage and quota." },
+    { "name": "mega_ls", "description": "List a cloud folder." },
+    { "name": "mega_find", "description": "Search cloud files by name pattern." },
+    { "name": "mega_tree", "description": "Show a cloud folder as an indented tree." },
+    { "name": "mega_du", "description": "Report storage used by a cloud path." },
+    { "name": "mega_mount", "description": "List account roots and incoming shares." },
+    { "name": "mega_transfers", "description": "List active transfers (read-only status)." },
+    { "name": "mega_transfer_control", "description": "Pause/resume/cancel transfers (confirm)." },
+    { "name": "mega_version", "description": "Show the installed MEGAcmd version." },
+    { "name": "mega_mediainfo", "description": "Show media metadata (codec/resolution/duration)." },
+    { "name": "mega_attr", "description": "View a cloud node's attributes." },
+    { "name": "mega_attr_set", "description": "Set or delete a node attribute (confirm)." },
+    { "name": "mega_errorcode", "description": "Explain a numeric MEGAcmd error code." },
+    { "name": "mega_config", "description": "Show or change a MEGAcmd setting (set: confirm)." },
+    { "name": "mega_mkdir", "description": "Create a cloud folder." },
+    { "name": "mega_cp", "description": "Copy a cloud node." },
+    { "name": "mega_mv", "description": "Move or rename a cloud node (confirm)." },
+    { "name": "mega_put", "description": "Upload a local file/folder to the cloud (confirm)." },
+    { "name": "mega_get", "description": "Download a cloud file/folder locally (confirm)." },
+    { "name": "mega_thumbnail", "description": "Download a file's thumbnail locally (confirm)." },
+    { "name": "mega_rm", "description": "Delete a cloud node, recursive (confirm)." },
+    { "name": "mega_deleteversions", "description": "Delete file version history (confirm)." },
+    { "name": "mega_export", "description": "Create/remove/inspect a public link (create/delete confirm)." },
+    { "name": "mega_share", "description": "Share a folder with a user, revoke, or list shares (add/remove confirm)." },
+    { "name": "mega_import", "description": "Import a public link (incl. password-protected) into the account (confirm)." },
+    { "name": "mega_sync_list", "description": "List configured folder synchronizations." },
+    { "name": "mega_sync_add", "description": "Start a two-way folder sync (confirm)." },
+    { "name": "mega_sync_control", "description": "Pause/resume/delete a sync; files kept (confirm)." },
+    { "name": "mega_backup_list", "description": "List configured backups." },
+    { "name": "mega_backup_add", "description": "Configure a periodic one-way backup (confirm)." },
+    { "name": "mega_backup_control", "description": "Abort or delete a backup (confirm)." },
+    { "name": "mega_sync_issues", "description": "Show sync conflicts/issues." },
+    { "name": "mega_sync_config", "description": "Show global sync configuration." },
+    { "name": "mega_sync_ignore", "description": "View/modify sync ignore filters (add/remove confirm)." },
+    { "name": "mega_userattr_set", "description": "Set one of your own profile attributes (confirm)." },
+    { "name": "mega_invite", "description": "Send/resend/withdraw a contact invitation (confirm)." },
+    { "name": "mega_ipc", "description": "Accept/deny/ignore an incoming contact request (confirm)." },
+    { "name": "mega_users", "description": "List contacts (opt-in; surfaces contact PII)." },
+    { "name": "mega_user_remove", "description": "Remove a contact (confirm)." },
+    { "name": "mega_user_verify", "description": "Verify or unverify a contact (confirm)." },
+    { "name": "mega_showpcr", "description": "Show pending contact requests (opt-in; surfaces contact PII)." },
+    { "name": "mega_userattr", "description": "View your own profile attributes (opt-in)." },
+    { "name": "mega_sessions", "description": "List active login sessions (opt-in; surfaces login PII)." },
+    { "name": "mega_balance", "description": "Show balance and payment history (opt-in; surfaces financial PII)." },
+    { "name": "mega_cat", "description": "Read a file's text contents, capped (opt-in; brings file content into context)." }
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": { "node": ">=18.0.0" }
+  },
+  "user_config": {
+    "megacmd_dir": {
+      "type": "directory",
+      "title": "MEGAcmd install directory (optional)",
+      "description": "Only set this if MEGAcmd is not bundled or not on PATH. Point to the folder containing mega-ls, mega-whoami, etc.",
+      "required": false
+    },
+    "max_list_lines": {
+      "type": "number",
+      "title": "Max listing lines returned",
+      "description": "Cap on rows returned by ls/find to keep responses small.",
+      "default": 1000,
+      "min": 50,
+      "max": 10000
+    },
+    "expose_contacts": {
+      "type": "boolean",
+      "title": "Expose contact tools",
+      "description": "Enable mega_users / mega_showpcr / mega_userattr. Off by default: these surface contact emails/names (third-party PII) into the conversation.",
+      "default": false,
+      "required": false
+    },
+    "expose_account_details": {
+      "type": "boolean",
+      "title": "Expose account-detail tools",
+      "description": "Enable mega_sessions / mega_balance. Off by default: these surface your own login metadata (IP/location/devices) and financial history into the conversation.",
+      "default": false,
+      "required": false
+    },
+    "expose_file_contents": {
+      "type": "boolean",
+      "title": "Enable reading file contents",
+      "description": "Enable mega_cat so an AI assistant can read the text contents of your cloud files (for content-based search). Off by default: it brings cloud file content (capped, text-only) into the conversation.",
+      "default": false,
+      "required": false
+    }
+  }
+}

@@ -1,0 +1,17 @@
+mega-cloud-mcp
+Copyright (c) 2026 Mega Limited
+
+This product downloads MEGAcmd (https://github.com/meganz/MEGAcmd) at runtime
+from MEGA's own servers and invokes it; it does not redistribute MEGAcmd binaries.
+
+The MEGAcmd components it invokes — the background server, the non-interactive
+client, the mega-* command shims, and the mega-exec dispatcher — are licensed
+under the BSD-2-Clause license. Some IPC source files are offered under a dual
+BSD-2-Clause / GPL-3.0 license.
+
+The interactive MEGAcmd shell (mega-cmd on Linux / MEGAcmdShell[.exe]) is
+GPL-3.0 and is deliberately NOT redistributed or invoked by this project (you
+run it yourself, out-of-band, to log in).
+
+MEGAcmd is Copyright (c) Mega Limited and contributors. See the MEGAcmd
+repository for full license texts.

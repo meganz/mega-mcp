@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/*
+!dist/plugin-server.js
+build/
+*.tsbuildinfo
+
+# Packaged extension
+*.mcpb
+
+# Bundled MEGAcmd binaries (large; fetched/vendored at build time)
+vendor/megacmd/
+
+# Logs & local env
+*.log
+.env
+.env.local
+.DS_Store
+
+# Never commit any MEGA session/credential material
+.megaCmd/
+*.session
+
+# Code-signing certs/keys (never commit)
+*.pem
+
+# Internal working docs — not for the public repo.
+# NOTE: these are already tracked; also run `git rm --cached <file>` to untrack.
+SUBMISSION.md
+WINDOWS-MSIX-INVESTIGATION-REQUEST.md
+SPEC.md
+DESIGN.md
+
+# Env (broaden beyond .env / .env.local)
+.env.*
+.env*.local
+
+# Editor / IDE
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+*~
+
+# OS junk (Windows; .DS_Store already above)
+Thumbs.db
+
+# Local tool config
+.claude/settings.local.json
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# npm/yarn debug logs & pack tarballs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.tgz
+
+# Caches & temp
+.cache/
+.eslintcache
+tmp/
+*.tmp

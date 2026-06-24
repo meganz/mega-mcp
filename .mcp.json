@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "mega": {
+      "command": "node",
+      "args": [
+        "./dist/plugin-server.js"
+      ]
+    }
+  }
+}
