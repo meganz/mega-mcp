@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "mega-cloud-mcp",
   "display_name": "MEGA Cloud MCP",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Operate your MEGA cloud account (list, search, upload, download, share) via MEGAcmd.",
   "long_description": "Wraps the MEGAcmd CLI so an AI assistant can manage files in your end-to-end encrypted MEGA account. You log in out-of-band yourself in the MEGAcmd interactive shell (login <email>); no credentials ever pass through the AI. Destructive and data-moving actions require explicit confirmation.",
   "author": { "name": "Mega Limited", "email": "jsh@mega.co.nz", "url": "https://github.com/meganz" },
@@ -95,9 +95,9 @@
     },
     "max_list_lines": {
       "type": "number",
-      "title": "Max listing lines returned",
-      "description": "Cap on rows returned by ls/find to keep responses small.",
-      "default": 1000,
+      "title": "Max listing rows per page",
+      "description": "Rows returned per page by ls/find/tree (paged via nextPageToken). Kept modest so large folders don't flood the agent's context; raise it for whole-folder dumps.",
+      "default": 200,
       "min": 50,
       "max": 10000
     },

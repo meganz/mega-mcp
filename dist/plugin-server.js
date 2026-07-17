@@ -6892,7 +6892,7 @@ var require_dist = __commonJS({
 // src/index.ts
 import { readFileSync } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-import { dirname as dirname2, join as join5 } from "node:path";
+import { dirname as dirname3, join as join6 } from "node:path";
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -21111,7 +21111,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 import { homedir } from "node:os";
 import { mkdirSync, accessSync, constants } from "node:fs";
-var DEFAULT_MAX_LIST = 1e3;
+var DEFAULT_MAX_LIST = 200;
 var MIN_MAX_LIST = 50;
 var MAX_MAX_LIST = 1e4;
 function loadConfig(env = process.env) {
@@ -21204,11 +21204,14 @@ function parseMaxList(v) {
   return Math.min(MAX_MAX_LIST, Math.max(MIN_MAX_LIST, Math.trunc(n)));
 }
 
+// src/runtime.ts
+import { join as join4 } from "node:path";
+
 // src/resolve.ts
-import { access, constants as constants2, readFile } from "node:fs/promises";
+import { access, constants as constants2, readFile, realpath } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { join as join2 } from "node:path";
+import { dirname as dirname2, join as join2 } from "node:path";
 var pExecFile = promisify(execFile);
 var isWin = process.platform === "win32";
 function clientName(cmd) {
@@ -21250,6 +21253,17 @@ async function existsOnPath(name) {
     return true;
   } catch {
     return false;
+  }
+}
+async function resolvePathBinDir() {
+  const probe = isWin ? "where" : "which";
+  try {
+    const { stdout } = await pExecFile(probe, [clientName("whoami")], { windowsHide: true });
+    const first = stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0];
+    if (!first) return null;
+    return dirname2(await realpath(first));
+  } catch {
+    return null;
   }
 }
 function makeResolved(source, binDir, libDir = null) {
@@ -21649,14 +21663,17 @@ function sanitizeVersion(v) {
   const s = v.replace(/[^A-Za-z0-9._-]/g, "_");
   return s === "" || s.includes("..") ? "unknown" : s;
 }
-async function verifyCachedBinary(resolved, opts = {}) {
+async function verifyResolvedBinary(resolved, opts = {}) {
   try {
     if (process.platform === "darwin") {
       if (!resolved.binDir) return true;
-      await verifySignatureMac(join3(resolved.binDir, "..", ".."), opts.teamId);
+      const app = resolve2(resolved.binDir, "..", "..");
+      if (!basename(app).endsWith(".app")) return true;
+      await verifySignatureMac(app, opts.teamId);
       return true;
     }
     if (process.platform === "win32") {
+      if (!resolved.binDir) return true;
       await verifyAuthenticodeWin(resolved.serverBin);
       return true;
     }
@@ -21873,28 +21890,27 @@ function createConfirmStore(ttlMs = 12e4, clock = Date.now) {
 function createRuntime(config2) {
   let resolvedPromise;
   let serverReady;
-  let cacheVerified;
+  let integrityVerified;
   const getResolved = () => resolvedPromise ??= resolveBinaries(config2);
   const run = async (cmd, args, opts) => {
     const resolved = await getResolved();
     if (!resolved) {
       return { code: -1, stdout: "", stderr: "", spawnError: "NO_MEGACMD" };
     }
-    const managed = resolved.source === "cache" || resolved.source === "bundled";
+    integrityVerified ??= (async () => {
+      const binDir = resolved.binDir ?? (resolved.source === "path" ? await resolvePathBinDir() : null);
+      const serverBin = binDir ? join4(binDir, serverName()) : resolved.serverBin;
+      const meta = resolved.source === "cache" ? await readActiveCacheMeta(config2) : null;
+      return verifyResolvedBinary(
+        { binDir, serverBin },
+        { teamId: config2.download.teamId, serverSha256: meta?.serverSha256 }
+      );
+    })();
+    if (!await integrityVerified) {
+      integrityVerified = void 0;
+      return { code: -1, stdout: "", stderr: "", spawnError: "INTEGRITY_FAILED" };
+    }
     if (resolved.source !== "path") {
-      if (managed && resolved.binDir) {
-        cacheVerified ??= (async () => {
-          const meta = resolved.source === "cache" ? await readActiveCacheMeta(config2) : null;
-          return verifyCachedBinary(resolved, {
-            teamId: config2.download.teamId,
-            serverSha256: meta?.serverSha256
-          });
-        })();
-        if (!await cacheVerified) {
-          cacheVerified = void 0;
-          return { code: -1, stdout: "", stderr: "", spawnError: "INTEGRITY_FAILED" };
-        }
-      }
       if (!await (serverReady ??= ensureServerRunning(resolved))) {
         serverReady = void 0;
       }
@@ -21909,7 +21925,7 @@ function createRuntime(config2) {
     invalidateResolved: () => {
       resolvedPromise = void 0;
       serverReady = void 0;
-      cacheVerified = void 0;
+      integrityVerified = void 0;
     },
     getAuthState: () => detectAuth(run),
     ensureReady: () => ensureReady(run)
@@ -21967,6 +21983,17 @@ function assertNoFlag(v, field) {
   const t = v.trim();
   if (t === "") throw new ValidationError(`${field} is empty.`);
   if (t.startsWith("-")) throw new ValidationError(`${field} must not start with "-".`);
+  return t;
+}
+function assertConstraint(v, field) {
+  rejectNul(v);
+  const t = v.trim();
+  if (t === "") throw new ValidationError(`${field} is empty.`);
+  if (!/^[+-]?\d+[A-Za-z]?([+-]?\d+[A-Za-z]?)*$/.test(t)) {
+    throw new ValidationError(
+      `${field} has an invalid format. Use signed number+unit forms, e.g. "-30d", "+1m12d3h", "-3d+1h" (time) or "-100K", "-4M+100K" (size).`
+    );
+  }
   return t;
 }
 function assertLocalPath(p, field = "localPath") {
@@ -22031,6 +22058,24 @@ async function runPerHandle(rt, cmd, handles, argvFor) {
     const r = await rt.run(cmd, argvFor(h));
     if (r.code === 0) done++;
     else failed++;
+  }
+  return { done, failed };
+}
+async function runBulk(rt, cmd, sources, trailingArgv, chunkSize = 2e3) {
+  let done = 0;
+  let failed = 0;
+  for (let i = 0; i < sources.length; i += chunkSize) {
+    const chunk = sources.slice(i, i + chunkSize);
+    const r = await rt.run(cmd, [...chunk, ...trailingArgv]);
+    if (r.code === 0) {
+      done += chunk.length;
+      continue;
+    }
+    for (const s of chunk) {
+      const one = await rt.run(cmd, [s, ...trailingArgv]);
+      if (one.code === 0) done++;
+      else failed++;
+    }
   }
   return { done, failed };
 }
@@ -22145,7 +22190,7 @@ function registerSetup(server, rt) {
 }
 
 // src/tools/whoami.ts
-import { join as join4 } from "node:path";
+import { join as join5 } from "node:path";
 import { realpathSync as realpathSync2 } from "node:fs";
 function realDir(dir) {
   try {
@@ -22163,7 +22208,7 @@ function loginInstructions(binDir, helperPath) {
   ${helperPath}`);
   }
   if (binDir) {
-    const launch = process.platform === "win32" ? `"${join4(realDir(binDir), "MEGAcmdShell.exe")}"` : `PATH="${binDir}:$PATH" MEGAcmdShell`;
+    const launch = process.platform === "win32" ? `"${join5(realDir(binDir), "MEGAcmdShell.exe")}"` : `PATH="${binDir}:$PATH" MEGAcmdShell`;
     lines.push("", `- Or in a terminal:
   ${launch}`);
   } else {
@@ -22284,12 +22329,67 @@ function extractSessionsBlock(stdout) {
 }
 
 // src/parsers/listing.ts
-function capLines(raw, max) {
+var MAX_LISTING_CHARS = 3e4;
+function capLines(raw, max, offset = 0, headerRows = 0) {
+  const all = raw.split(/\r?\n/).map((l) => l.replace(/\s+$/, "")).filter((l) => l.trim() !== "");
+  const header = headerRows > 0 ? all.slice(0, headerRows) : [];
+  const data = headerRows > 0 ? all.slice(headerRows) : all;
+  const total = data.length;
+  const start = Math.min(Math.max(Math.trunc(offset) || 0, 0), total);
+  const page = [];
+  let chars = header.reduce((n, l) => n + l.length + 1, 0);
+  let i = start;
+  for (; i < total && page.length < max; i++) {
+    const line = data[i];
+    const added = line.length + 1;
+    if (page.length > 0 && chars + added > MAX_LISTING_CHARS) break;
+    page.push(line);
+    chars += added;
+  }
+  const nextOffset = i < total ? i : null;
+  return {
+    text: header.concat(page).join("\n"),
+    total,
+    shown: page.length,
+    offset: start,
+    truncated: nextOffset !== null,
+    nextOffset
+  };
+}
+function headerRowsUpTo(raw, marker) {
   const lines = raw.split(/\r?\n/).map((l) => l.replace(/\s+$/, "")).filter((l) => l.trim() !== "");
-  const total = lines.length;
-  const truncated = total > max;
-  const kept = truncated ? lines.slice(0, max) : lines;
-  return { text: kept.join("\n"), total, truncated };
+  const idx = lines.findIndex((l) => l.startsWith(marker));
+  return idx >= 0 ? idx + 1 : 0;
+}
+function encodeCursor(offset) {
+  return Buffer.from(`o:${offset}`, "utf8").toString("base64url");
+}
+function decodeCursor(token) {
+  const raw = token.trim();
+  if (raw === "") return null;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  try {
+    const m = Buffer.from(raw, "base64url").toString("utf8").match(/^o:(\d+)$/);
+    return m ? Number(m[1]) : null;
+  } catch {
+    return null;
+  }
+}
+function pageInfo(cap, unit, toolName) {
+  const nextPageToken = cap.nextOffset !== null ? encodeCursor(cap.nextOffset) : void 0;
+  let note = "";
+  if (cap.truncated) {
+    note = `
+
+(showing ${cap.shown} of ${cap.total} ${unit}, from #${cap.offset + 1}; more remain \u2014 call ${toolName} again with pageToken "${nextPageToken}" for the next page)`;
+  } else if (cap.offset > 0) {
+    note = `
+
+(showing ${cap.shown} of ${cap.total} ${unit}, from #${cap.offset + 1}; end of listing)`;
+  }
+  const fields = { shown: cap.shown, offset: cap.offset, truncated: cap.truncated };
+  if (nextPageToken) fields.nextPageToken = nextPageToken;
+  return { note, fields };
 }
 
 // src/tools/account.ts
@@ -22369,7 +22469,7 @@ function registerReadOnly(server, rt) {
     "mega_ls",
     {
       title: "MEGA: list folder",
-      description: 'List the contents of a MEGA cloud folder (absolute path starting with "/", defaults to "/"). Returns a capped text listing.',
+      description: 'List the contents of a MEGA cloud folder (absolute path starting with "/", defaults to "/"). Returns a capped text listing; if it is truncated, call again with the returned nextPageToken to page through the rest.',
       inputSchema: {
         remotePath: external_exports.string().optional().describe('Absolute MEGA path, e.g. "/Photos". Defaults to "/".'),
         recursive: external_exports.boolean().optional().describe("Recurse into subfolders."),
@@ -22377,13 +22477,17 @@ function registerReadOnly(server, rt) {
         showHandles: external_exports.boolean().default(false).describe("Include node handles (H:XXXXXXXX)."),
         showCreationTime: external_exports.boolean().default(false).describe("Show creation time instead of modification time."),
         all: external_exports.boolean().default(false).describe("Show all entries, including hidden ones."),
-        usePcre: external_exports.boolean().default(false).describe("Interpret remotePath as a Perl-compatible regular expression.")
+        usePcre: external_exports.boolean().default(false).describe("Interpret remotePath as a Perl-compatible regular expression."),
+        compact: external_exports.boolean().default(false).describe("Compact, parseable output: ISO-8601 timestamps (2026-07-17T16:11:38) instead of RFC2822 \u2014 shorter rows, easy to filter by date (pair with showCreationTime to filter by upload time)."),
+        pageToken: external_exports.string().optional().describe("Opaque cursor from a previous call's nextPageToken, to fetch the next page of a large listing.")
       },
       annotations: { title: "MEGA: list folder", ...RO2 }
     },
-    async ({ remotePath, recursive, showVersions, showHandles, showCreationTime, all, usePcre }) => guardRun(async () => {
+    async ({ remotePath, recursive, showVersions, showHandles, showCreationTime, all, usePcre, compact, pageToken }) => guardRun(async () => {
       const path = usePcre && remotePath ? assertNoFlag(remotePath, "remotePath") : assertOptionalRemotePath(remotePath);
-      const args = ["-l", "--time-format=RFC2822"];
+      const offset = pageToken ? decodeCursor(pageToken) : 0;
+      if (offset === null) return err("Invalid pageToken. Omit it to start from the beginning of the listing.");
+      const args = ["-l", `--time-format=${compact ? "ISO6081_WITH_TIME" : "RFC2822"}`];
       if (recursive) args.push("-R");
       if (all) args.push("-a");
       if (showVersions) args.push("--versions");
@@ -22392,14 +22496,12 @@ function registerReadOnly(server, rt) {
       if (usePcre) args.push("--use-pcre");
       if (path) args.push(path);
       return runToResult(rt, "ls", args, (r) => {
-        const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
-        const note = truncated ? `
-
-(${total} entries; showing first ${rt.config.maxListLines})` : "";
-        return ok(text ? `${text}${note}` : "(empty folder)", {
+        const cap = capLines(r.stdout, rt.config.maxListLines, offset, headerRowsUpTo(r.stdout, "FLAGS"));
+        const { note, fields } = pageInfo(cap, "entries", "mega_ls");
+        return ok(cap.total > 0 ? `${cap.text}${note}` : "(empty folder)", {
           path: path ?? "/",
-          entryCount: total,
-          truncated
+          entryCount: cap.total,
+          ...fields
         });
       });
     })
@@ -22423,34 +22525,35 @@ function registerReadOnly(server, rt) {
     "mega_find",
     {
       title: "MEGA: find",
-      description: "Search the MEGA cloud for files/folders by name pattern (glob), optionally filtered by type, modification time, and size. Returns matching paths, capped.",
+      description: "Search the MEGA cloud for files/folders by name pattern (glob), optionally filtered by type, modification time, and size. Returns matching paths, capped; if truncated, call again with the returned nextPageToken to page through the rest.",
       inputSchema: {
         pattern: external_exports.string().optional().describe('Glob pattern, e.g. "*.jpg".'),
         remotePath: external_exports.string().optional().describe('Absolute MEGA path to search under. Defaults to "/".'),
         type: external_exports.enum(["file", "folder"]).optional().describe("Restrict to files or folders."),
-        mtime: external_exports.string().optional().describe('Modification-time constraint, e.g. "-3h" (last 3h), "+1m" (older than 1 month).'),
-        size: external_exports.string().optional().describe('Size constraint, e.g. "+1M" (larger than 1 MB), "-100K".'),
+        mtime: external_exports.string().optional().describe('Modification-time window, relative to now: [+-]N<unit> where h=hours d=days M=minutes m=months y=years. "-7d"=last 7 days, "+1m"=older than 1 month, "-30d+7d"=between 7 and 30 days ago. (Filters modification time, not upload/creation time.)'),
+        size: external_exports.string().optional().describe('Size constraint: [+-]N<unit> (B/K/M/G/T). "+1M"=larger than 1 MB, "-100K"=smaller than 100 KB, "-4M+100K"=between 100 KB and 4 MB.'),
         showHandles: external_exports.boolean().default(false).describe("Include node handles."),
-        usePcre: external_exports.boolean().default(false).describe("Interpret the pattern as a Perl-compatible regular expression.")
+        usePcre: external_exports.boolean().default(false).describe("Interpret the pattern as a Perl-compatible regular expression."),
+        pageToken: external_exports.string().optional().describe("Opaque cursor from a previous call's nextPageToken, to fetch the next page of results.")
       },
       annotations: { title: "MEGA: find", ...RO2 }
     },
-    async ({ pattern, remotePath, type, mtime, size, showHandles, usePcre }) => guardRun(async () => {
+    async ({ pattern, remotePath, type, mtime, size, showHandles, usePcre, pageToken }) => guardRun(async () => {
       const path = assertOptionalRemotePath(remotePath);
+      const offset = pageToken ? decodeCursor(pageToken) : 0;
+      if (offset === null) return err("Invalid pageToken. Omit it to start from the beginning of the results.");
       const args = [];
       if (path) args.push(path);
       if (pattern) args.push(`--pattern=${pattern}`);
       if (type) args.push(`--type=${type === "folder" ? "d" : "f"}`);
-      if (mtime !== void 0) args.push(`--mtime=${assertNoFlag(mtime, "mtime")}`);
-      if (size !== void 0) args.push(`--size=${assertNoFlag(size, "size")}`);
+      if (mtime !== void 0) args.push(`--mtime=${assertConstraint(mtime, "mtime")}`);
+      if (size !== void 0) args.push(`--size=${assertConstraint(size, "size")}`);
       if (showHandles) args.push("--show-handles");
       if (usePcre) args.push("--use-pcre");
       return runToResult(rt, "find", args, (r) => {
-        const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
-        const note = truncated ? `
-
-(${total} matches; showing first ${rt.config.maxListLines})` : "";
-        return ok(text ? `${text}${note}` : "(no matches)", { matchCount: total, truncated });
+        const cap = capLines(r.stdout, rt.config.maxListLines, offset);
+        const { note, fields } = pageInfo(cap, "matches", "mega_find");
+        return ok(cap.text ? `${cap.text}${note}` : "(no matches)", { matchCount: cap.total, ...fields });
       });
     })
   );
@@ -22458,22 +22561,23 @@ function registerReadOnly(server, rt) {
     "mega_tree",
     {
       title: "MEGA: folder tree",
-      description: 'Show a MEGA cloud folder as an indented tree (absolute path starting with "/", defaults to "/"). Returns a capped text tree of folders.',
+      description: 'Show a MEGA cloud folder as an indented tree (absolute path starting with "/", defaults to "/"). Returns a capped text tree of folders; if truncated, call again with the returned nextPageToken to page through the rest.',
       inputSchema: {
-        remotePath: external_exports.string().optional().describe('Absolute MEGA path, e.g. "/Photos". Defaults to "/".')
+        remotePath: external_exports.string().optional().describe('Absolute MEGA path, e.g. "/Photos". Defaults to "/".'),
+        pageToken: external_exports.string().optional().describe("Opaque cursor from a previous call's nextPageToken, to fetch the next page of a large tree.")
       },
       annotations: { title: "MEGA: folder tree", ...RO2 }
     },
-    async ({ remotePath }) => guardRun(async () => {
+    async ({ remotePath, pageToken }) => guardRun(async () => {
       const path = assertOptionalRemotePath(remotePath);
+      const offset = pageToken ? decodeCursor(pageToken) : 0;
+      if (offset === null) return err("Invalid pageToken. Omit it to start from the beginning of the tree.");
       const args = [];
       if (path) args.push(path);
       return runToResult(rt, "tree", args, (r) => {
-        const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
-        const note = truncated ? `
-
-(${total} lines; showing first ${rt.config.maxListLines})` : "";
-        return ok(text ? `${text}${note}` : "(empty)", { path: path ?? "/", lineCount: total, truncated });
+        const cap = capLines(r.stdout, rt.config.maxListLines, offset, 1);
+        const { note, fields } = pageInfo(cap, "entries", "mega_tree");
+        return ok(cap.total > 0 ? `${cap.text}${note}` : "(empty)", { path: path ?? "/", lineCount: cap.total, ...fields });
       });
     })
   );
@@ -22642,17 +22746,48 @@ function registerMutate(server, rt) {
     "mega_mv",
     {
       title: "MEGA: move/rename",
-      description: "Move or rename a MEGA cloud node. Requires confirmation.",
+      description: 'Move or rename MEGA cloud node(s). Bulk-capable: pass "srcs" (an explicit list) or "src"+usePcre (a pattern) to move many nodes in ONE confirmed operation \u2014 do NOT loop this tool per file. Requires confirmation.',
       inputSchema: {
-        src: external_exports.string().describe("Source absolute MEGA path."),
-        dst: external_exports.string().describe("Destination absolute MEGA path."),
+        src: external_exports.string().optional().describe('A single source path; OR a PCRE pattern (with usePcre); OR a native wildcard path like "/Photos/*.jpg".'),
+        srcs: external_exports.array(external_exports.string()).optional().describe("An explicit list of source paths to move together in one confirmed operation. Use for arbitrary selections that are not a single pattern."),
+        dst: external_exports.string().describe("Destination: an existing folder to move into, or (single src) the new name."),
+        usePcre: external_exports.boolean().default(false).describe('Interpret "src" as a PCRE pattern and move EVERY match.'),
         confirm: external_exports.string().optional().describe("Confirmation token from the first call.")
       },
       annotations: { title: "MEGA: move/rename", destructiveHint: true, openWorldHint: true }
     },
-    async ({ src, dst, confirm }) => guardRun(async () => {
-      const s = assertRemotePath(src, "src");
+    async ({ src, dst, srcs, usePcre, confirm }) => guardRun(async () => {
       const d = assertRemotePath(dst, "dst");
+      if (srcs && srcs.length > 0) {
+        const list = srcs.map((s2, i) => assertRemotePath(s2, `srcs[${i}]`));
+        const shown = list.slice(0, 50).join("\n");
+        const more = list.length > 50 ? `
+\u2026(${list.length} total; showing first 50)` : "";
+        const gate2 = checkConfirm(rt, "mega_mv", { srcs: list, dst: d }, confirm, `This will move ${list.length} item(s) to ${d}:
+${shown}${more}`);
+        if (gate2) return gate2;
+        const { done, failed } = await runBulk(rt, "mv", list, [d]);
+        return ok(`Moved ${done}/${list.length} item(s) to ${d}${failed ? `; ${failed} failed` : ""}.`, { dst: d, moved: done, failed });
+      }
+      if (usePcre) {
+        if (!src) throw new ValidationError('usePcre requires "src" (the PCRE pattern).');
+        const pattern = assertNoFlag(src, "src");
+        const g = await pcreGate(
+          rt,
+          "mega_mv",
+          { src: pattern, usePcre: true, dst: d },
+          confirm,
+          pattern,
+          (n, t) => `This will move ${n} node(s) matching the pattern to ${d}:
+${t}`
+        );
+        if (!g.proceed) return g.result;
+        if (g.handles.length === 0) return ok("No matching nodes to move.", { dst: d, moved: 0 });
+        const { done, failed } = await runBulk(rt, "mv", g.handles, [d]);
+        return ok(`Moved ${done}/${g.handles.length} node(s) to ${d}${failed ? `; ${failed} failed` : ""}.`, { dst: d, moved: done, failed });
+      }
+      if (!src) throw new ValidationError('Provide "src" (a path or pattern) or "srcs" (a list).');
+      const s = assertRemotePath(src, "src");
       const gate = checkConfirm(rt, "mega_mv", { src: s, dst: d }, confirm, `This will move/rename ${s} to ${d}.`);
       if (gate) return gate;
       return runToResult(rt, "mv", [s, d], () => ok(`Moved ${s} -> ${d}.`, { src: s, dst: d }));
@@ -23626,10 +23761,10 @@ function registerAll(server, rt) {
 
 // src/index.ts
 function resolveVersion() {
-  const here = dirname2(fileURLToPath3(import.meta.url));
+  const here = dirname3(fileURLToPath3(import.meta.url));
   for (const rel of ["../manifest.json", "../package.json"]) {
     try {
-      const v = JSON.parse(readFileSync(join5(here, rel), "utf8")).version;
+      const v = JSON.parse(readFileSync(join6(here, rel), "utf8")).version;
       if (typeof v === "string" && v) return v;
     } catch {
     }

@@ -1,6 +1,6 @@
 {
   "name": "mega-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Codex plugin for operating a MEGA cloud account through the local MEGAcmd MCP server.",
   "author": {
     "name": "Mega Limited",

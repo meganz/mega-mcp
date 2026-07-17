@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveBinaries, cacheBinDir, clientName, buildClientInvocation } from '../src/resolve.js';
+import { resolveBinaries, cacheBinDir, clientName, buildClientInvocation, resolvePathBinDir } from '../src/resolve.js';
 import type { Config } from '../src/types.js';
 
 let root: string;
@@ -67,6 +67,41 @@ describe('resolveBinaries cache source', () => {
     expect(resolved?.source).toBe('cache');
     // posix CI: invocation is the mega-<cmd> client in the cache bin dir, args as-is.
     expect(resolved?.clientInvocation('whoami', []).bin).toBe(join(root, 'cache', 'current', 'bin', clientName('whoami')));
+  });
+});
+
+describe('resolvePathBinDir', () => {
+  // Posix only: exercises `which` + realpath. On Windows the probe is `where`
+  // and the client is a .bat; skip rather than special-case the harness.
+  it.skipIf(process.platform === 'win32')('follows a PATH symlink to the real install dir', async () => {
+    const realDir = join(root, 'binreal');
+    const linkDir = join(root, 'binlink');
+    mkdirSync(realDir, { recursive: true });
+    mkdirSync(linkDir, { recursive: true });
+    writeFileSync(join(realDir, clientName('whoami')), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    // A PATH entry that is a symlink into the real install dir — the exact
+    // shape a Homebrew/`/usr/local/bin` link into /Applications/MEGAcmd.app has.
+    symlinkSync(join(realDir, clientName('whoami')), join(linkDir, clientName('whoami')));
+
+    const savedPath = process.env.PATH;
+    process.env.PATH = `${linkDir}:${savedPath ?? ''}`;
+    try {
+      // realpath collapses the temp root (/var -> /private/var on macOS), so
+      // compare against the realpath'd target rather than the raw path.
+      expect(await resolvePathBinDir()).toBe(realpathSync(realDir));
+    } finally {
+      process.env.PATH = savedPath;
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('returns null when the client is not on PATH', async () => {
+    const savedPath = process.env.PATH;
+    process.env.PATH = join(root, 'empty-nonexistent');
+    try {
+      expect(await resolvePathBinDir()).toBeNull();
+    } finally {
+      process.env.PATH = savedPath;
+    }
   });
 });
 

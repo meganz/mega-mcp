@@ -4,7 +4,12 @@ import { homedir } from 'node:os';
 import { mkdirSync, accessSync, constants } from 'node:fs';
 import type { Config, DownloadSpec } from './types.js';
 
-const DEFAULT_MAX_LIST = 1000;
+// Default row cap per listing page. Kept modest on purpose: an agent's context
+// is the scarce resource, and a single oversized listing (a 10k-entry folder at
+// ~125 chars/row = ~125k chars) floods it. Callers page the rest via the
+// nextPageToken cursor; a hard char ceiling (MAX_LISTING_CHARS) bounds wide rows
+// independently. Override via MEGA_MCP_MAX_LIST for whole-folder dumps.
+const DEFAULT_MAX_LIST = 200;
 const MIN_MAX_LIST = 50;
 const MAX_MAX_LIST = 10_000;
 

@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
-import { ok } from '../mcpResult.js';
-import { assertOptionalRemotePath, assertRemotePath, assertNoFlag } from '../paths.js';
-import { capLines } from '../parsers/listing.js';
+import { ok, err } from '../mcpResult.js';
+import { assertOptionalRemotePath, assertRemotePath, assertNoFlag, assertConstraint } from '../paths.js';
+import { capLines, decodeCursor, pageInfo, headerRowsUpTo } from '../parsers/listing.js';
 import { parseDf } from '../parsers/df.js';
 import { guardRun, runToResult } from './helpers.js';
 
@@ -16,7 +16,7 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
     {
       title: 'MEGA: list folder',
       description:
-        'List the contents of a MEGA cloud folder (absolute path starting with "/", defaults to "/"). Returns a capped text listing.',
+        'List the contents of a MEGA cloud folder (absolute path starting with "/", defaults to "/"). Returns a capped text listing; if it is truncated, call again with the returned nextPageToken to page through the rest.',
       inputSchema: {
         remotePath: z.string().optional().describe('Absolute MEGA path, e.g. "/Photos". Defaults to "/".'),
         recursive: z.boolean().optional().describe('Recurse into subfolders.'),
@@ -25,13 +25,17 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
         showCreationTime: z.boolean().default(false).describe('Show creation time instead of modification time.'),
         all: z.boolean().default(false).describe('Show all entries, including hidden ones.'),
         usePcre: z.boolean().default(false).describe('Interpret remotePath as a Perl-compatible regular expression.'),
+        compact: z.boolean().default(false).describe('Compact, parseable output: ISO-8601 timestamps (2026-07-17T16:11:38) instead of RFC2822 — shorter rows, easy to filter by date (pair with showCreationTime to filter by upload time).'),
+        pageToken: z.string().optional().describe('Opaque cursor from a previous call\'s nextPageToken, to fetch the next page of a large listing.'),
       },
       annotations: { title: 'MEGA: list folder', ...RO },
     },
-    async ({ remotePath, recursive, showVersions, showHandles, showCreationTime, all, usePcre }) =>
+    async ({ remotePath, recursive, showVersions, showHandles, showCreationTime, all, usePcre, compact, pageToken }) =>
       guardRun(async () => {
         const path = usePcre && remotePath ? assertNoFlag(remotePath, 'remotePath') : assertOptionalRemotePath(remotePath);
-        const args = ['-l', '--time-format=RFC2822'];
+        const offset = pageToken ? decodeCursor(pageToken) : 0;
+        if (offset === null) return err('Invalid pageToken. Omit it to start from the beginning of the listing.');
+        const args = ['-l', `--time-format=${compact ? 'ISO6081_WITH_TIME' : 'RFC2822'}`];
         if (recursive) args.push('-R');
         if (all) args.push('-a');
         if (showVersions) args.push('--versions');
@@ -40,12 +44,17 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
         if (usePcre) args.push('--use-pcre');
         if (path) args.push(path);
         return runToResult(rt, 'ls', args, (r) => {
-          const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
-          const note = truncated ? `\n\n(${total} entries; showing first ${rt.config.maxListLines})` : '';
-          return ok(text ? `${text}${note}` : '(empty folder)', {
+          // Non-data leading lines: the "FLAGS VERS SIZE DATE NAME" column header,
+          // plus (on some MEGAcmd versions) a "<path>:" label line before it.
+          // Detect them by the FLAGS header rather than a hardcoded count so the
+          // entry count is right across versions — exclude from the count, keep
+          // atop every page.
+          const cap = capLines(r.stdout, rt.config.maxListLines, offset, headerRowsUpTo(r.stdout, 'FLAGS'));
+          const { note, fields } = pageInfo(cap, 'entries', 'mega_ls');
+          return ok(cap.total > 0 ? `${cap.text}${note}` : '(empty folder)', {
             path: path ?? '/',
-            entryCount: total,
-            truncated,
+            entryCount: cap.total,
+            ...fields,
           });
         });
       }),
@@ -75,33 +84,42 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
     {
       title: 'MEGA: find',
       description:
-        'Search the MEGA cloud for files/folders by name pattern (glob), optionally filtered by type, modification time, and size. Returns matching paths, capped.',
+        'Search the MEGA cloud for files/folders by name pattern (glob), optionally filtered by type, modification time, and size. Returns matching paths, capped; if truncated, call again with the returned nextPageToken to page through the rest.',
       inputSchema: {
         pattern: z.string().optional().describe('Glob pattern, e.g. "*.jpg".'),
         remotePath: z.string().optional().describe('Absolute MEGA path to search under. Defaults to "/".'),
         type: z.enum(['file', 'folder']).optional().describe('Restrict to files or folders.'),
-        mtime: z.string().optional().describe('Modification-time constraint, e.g. "-3h" (last 3h), "+1m" (older than 1 month).'),
-        size: z.string().optional().describe('Size constraint, e.g. "+1M" (larger than 1 MB), "-100K".'),
+        mtime: z
+          .string()
+          .optional()
+          .describe('Modification-time window, relative to now: [+-]N<unit> where h=hours d=days M=minutes m=months y=years. "-7d"=last 7 days, "+1m"=older than 1 month, "-30d+7d"=between 7 and 30 days ago. (Filters modification time, not upload/creation time.)'),
+        size: z
+          .string()
+          .optional()
+          .describe('Size constraint: [+-]N<unit> (B/K/M/G/T). "+1M"=larger than 1 MB, "-100K"=smaller than 100 KB, "-4M+100K"=between 100 KB and 4 MB.'),
         showHandles: z.boolean().default(false).describe('Include node handles.'),
         usePcre: z.boolean().default(false).describe('Interpret the pattern as a Perl-compatible regular expression.'),
+        pageToken: z.string().optional().describe('Opaque cursor from a previous call\'s nextPageToken, to fetch the next page of results.'),
       },
       annotations: { title: 'MEGA: find', ...RO },
     },
-    async ({ pattern, remotePath, type, mtime, size, showHandles, usePcre }) =>
+    async ({ pattern, remotePath, type, mtime, size, showHandles, usePcre, pageToken }) =>
       guardRun(async () => {
         const path = assertOptionalRemotePath(remotePath);
+        const offset = pageToken ? decodeCursor(pageToken) : 0;
+        if (offset === null) return err('Invalid pageToken. Omit it to start from the beginning of the results.');
         const args: string[] = [];
         if (path) args.push(path);
         if (pattern) args.push(`--pattern=${pattern}`);
         if (type) args.push(`--type=${type === 'folder' ? 'd' : 'f'}`);
-        if (mtime !== undefined) args.push(`--mtime=${assertNoFlag(mtime, 'mtime')}`);
-        if (size !== undefined) args.push(`--size=${assertNoFlag(size, 'size')}`);
+        if (mtime !== undefined) args.push(`--mtime=${assertConstraint(mtime, 'mtime')}`);
+        if (size !== undefined) args.push(`--size=${assertConstraint(size, 'size')}`);
         if (showHandles) args.push('--show-handles');
         if (usePcre) args.push('--use-pcre');
         return runToResult(rt, 'find', args, (r) => {
-          const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
-          const note = truncated ? `\n\n(${total} matches; showing first ${rt.config.maxListLines})` : '';
-          return ok(text ? `${text}${note}` : '(no matches)', { matchCount: total, truncated });
+          const cap = capLines(r.stdout, rt.config.maxListLines, offset);
+          const { note, fields } = pageInfo(cap, 'matches', 'mega_find');
+          return ok(cap.text ? `${cap.text}${note}` : '(no matches)', { matchCount: cap.total, ...fields });
         });
       }),
   );
@@ -112,21 +130,26 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
     {
       title: 'MEGA: folder tree',
       description:
-        'Show a MEGA cloud folder as an indented tree (absolute path starting with "/", defaults to "/"). Returns a capped text tree of folders.',
+        'Show a MEGA cloud folder as an indented tree (absolute path starting with "/", defaults to "/"). Returns a capped text tree of folders; if truncated, call again with the returned nextPageToken to page through the rest.',
       inputSchema: {
         remotePath: z.string().optional().describe('Absolute MEGA path, e.g. "/Photos". Defaults to "/".'),
+        pageToken: z.string().optional().describe('Opaque cursor from a previous call\'s nextPageToken, to fetch the next page of a large tree.'),
       },
       annotations: { title: 'MEGA: folder tree', ...RO },
     },
-    async ({ remotePath }) =>
+    async ({ remotePath, pageToken }) =>
       guardRun(async () => {
         const path = assertOptionalRemotePath(remotePath);
+        const offset = pageToken ? decodeCursor(pageToken) : 0;
+        if (offset === null) return err('Invalid pageToken. Omit it to start from the beginning of the tree.');
         const args: string[] = [];
         if (path) args.push(path);
         return runToResult(rt, 'tree', args, (r) => {
-          const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
-          const note = truncated ? `\n\n(${total} lines; showing first ${rt.config.maxListLines})` : '';
-          return ok(text ? `${text}${note}` : '(empty)', { path: path ?? '/', lineCount: total, truncated });
+          // headerRows=1: the first line is the root node itself, not a child —
+          // exclude it from the count and keep it atop every page.
+          const cap = capLines(r.stdout, rt.config.maxListLines, offset, 1);
+          const { note, fields } = pageInfo(cap, 'entries', 'mega_tree');
+          return ok(cap.total > 0 ? `${cap.text}${note}` : '(empty)', { path: path ?? '/', lineCount: cap.total, ...fields });
         });
       }),
   );

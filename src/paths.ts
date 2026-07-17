@@ -60,6 +60,27 @@ export function assertNoFlag(v: string, field: string): string {
 }
 
 /**
+ * Validate a MEGAcmd time/size CONSTRAINT value, e.g. "-30d", "+1m12d3h",
+ * "-3d+1h" (mtime) or "-100K", "-4M+100K" (size). Unlike assertNoFlag, a leading
+ * "-" is ALLOWED and required for the common "within the last N" queries: the
+ * value is always embedded in a single `--mtime=<v>` / `--size=<v>` argv token,
+ * so a leading "-" can never be parsed as a separate flag (no injection surface).
+ * We whitelist the constraint charset (signs, digits, single-letter units) so a
+ * NUL / space / shell-metacharacter is still rejected.
+ */
+export function assertConstraint(v: string, field: string): string {
+  rejectNul(v);
+  const t = v.trim();
+  if (t === '') throw new ValidationError(`${field} is empty.`);
+  if (!/^[+-]?\d+[A-Za-z]?([+-]?\d+[A-Za-z]?)*$/.test(t)) {
+    throw new ValidationError(
+      `${field} has an invalid format. Use signed number+unit forms, e.g. "-30d", "+1m12d3h", "-3d+1h" (time) or "-100K", "-4M+100K" (size).`,
+    );
+  }
+  return t;
+}
+
+/**
  * Resolve a local filesystem path to an absolute path. Resolving guarantees the
  * argument never begins with "-" (so it cannot be parsed as a flag) and removes
  * ambiguity about the working directory.

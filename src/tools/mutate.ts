@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
 import { assertRemotePath, assertLocalPath, assertNoFlag, ValidationError } from '../paths.js';
-import { guardRun, runToResult, checkConfirm, pcreGate, runPerHandle } from './helpers.js';
+import { guardRun, runToResult, checkConfirm, pcreGate, runPerHandle, runBulk } from './helpers.js';
 
 const NUL = String.fromCharCode(0);
 
@@ -44,23 +44,72 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
       }),
   );
 
-  // mega_mv — move/rename (overwrites/relocates). Confirm-gated.
+  // mega_mv — move/rename, bulk-capable (relocates/overwrites). Confirm-gated.
+  // Three modes, all confirmed ONCE and executed in as few calls as possible:
+  //   • srcs[]      — an explicit list, moved together in one multi-source `mv`.
+  //   • src+usePcre — a PCRE pattern: matches are enumerated + pinned by HANDLE
+  //                   at preview (TOCTOU-safe), then moved in one multi-source
+  //                   `mv` on those handles.
+  //   • src         — a single path (or a native `*`/`?` wildcard MEGAcmd expands
+  //                   server-side), the classic single move/rename.
   server.registerTool(
     'mega_mv',
     {
       title: 'MEGA: move/rename',
-      description: 'Move or rename a MEGA cloud node. Requires confirmation.',
+      description:
+        'Move or rename MEGA cloud node(s). Bulk-capable: pass "srcs" (an explicit list) or "src"+usePcre (a pattern) to move many nodes in ONE confirmed operation — do NOT loop this tool per file. Requires confirmation.',
       inputSchema: {
-        src: z.string().describe('Source absolute MEGA path.'),
-        dst: z.string().describe('Destination absolute MEGA path.'),
+        src: z
+          .string()
+          .optional()
+          .describe('A single source path; OR a PCRE pattern (with usePcre); OR a native wildcard path like "/Photos/*.jpg".'),
+        srcs: z
+          .array(z.string())
+          .optional()
+          .describe('An explicit list of source paths to move together in one confirmed operation. Use for arbitrary selections that are not a single pattern.'),
+        dst: z.string().describe('Destination: an existing folder to move into, or (single src) the new name.'),
+        usePcre: z.boolean().default(false).describe('Interpret "src" as a PCRE pattern and move EVERY match.'),
         confirm: z.string().optional().describe('Confirmation token from the first call.'),
       },
       annotations: { title: 'MEGA: move/rename', destructiveHint: true, openWorldHint: true },
     },
-    async ({ src, dst, confirm }) =>
+    async ({ src, dst, srcs, usePcre, confirm }) =>
       guardRun(async () => {
-        const s = assertRemotePath(src, 'src');
         const d = assertRemotePath(dst, 'dst');
+
+        // Mode 1: explicit list -> one multi-source `mv src1 src2 … dst`.
+        if (srcs && srcs.length > 0) {
+          const list = srcs.map((s, i) => assertRemotePath(s, `srcs[${i}]`));
+          const shown = list.slice(0, 50).join('\n');
+          const more = list.length > 50 ? `\n…(${list.length} total; showing first 50)` : '';
+          const gate = checkConfirm(rt, 'mega_mv', { srcs: list, dst: d }, confirm, `This will move ${list.length} item(s) to ${d}:\n${shown}${more}`);
+          if (gate) return gate;
+          const { done, failed } = await runBulk(rt, 'mv', list, [d]);
+          return ok(`Moved ${done}/${list.length} item(s) to ${d}${failed ? `; ${failed} failed` : ''}.`, { dst: d, moved: done, failed });
+        }
+
+        // Mode 2: PCRE pattern -> enumerate + pin handles (TOCTOU-safe preview),
+        // then move the pinned set in one multi-source `mv`.
+        if (usePcre) {
+          if (!src) throw new ValidationError('usePcre requires "src" (the PCRE pattern).');
+          const pattern = assertNoFlag(src, 'src');
+          const g = await pcreGate(
+            rt,
+            'mega_mv',
+            { src: pattern, usePcre: true, dst: d },
+            confirm,
+            pattern,
+            (n, t) => `This will move ${n} node(s) matching the pattern to ${d}:\n${t}`,
+          );
+          if (!g.proceed) return g.result;
+          if (g.handles.length === 0) return ok('No matching nodes to move.', { dst: d, moved: 0 });
+          const { done, failed } = await runBulk(rt, 'mv', g.handles, [d]);
+          return ok(`Moved ${done}/${g.handles.length} node(s) to ${d}${failed ? `; ${failed} failed` : ''}.`, { dst: d, moved: done, failed });
+        }
+
+        // Mode 3: single path (or a native wildcard MEGAcmd expands server-side).
+        if (!src) throw new ValidationError('Provide "src" (a path or pattern) or "srcs" (a list).');
+        const s = assertRemotePath(src, 'src');
         const gate = checkConfirm(rt, 'mega_mv', { src: s, dst: d }, confirm, `This will move/rename ${s} to ${d}.`);
         if (gate) return gate;
         return runToResult(rt, 'mv', [s, d], () => ok(`Moved ${s} -> ${d}.`, { src: s, dst: d }));

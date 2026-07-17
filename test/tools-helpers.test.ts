@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { checkConfirm, runToResult } from '../src/tools/helpers.js';
+import { checkConfirm, runToResult, runBulk } from '../src/tools/helpers.js';
 import { createConfirmStore } from '../src/confirm.js';
 import type { Runtime } from '../src/runtime.js';
 import type { RunResult } from '../src/types.js';
@@ -59,5 +59,41 @@ describe('runToResult exit-code mapping', () => {
     expect(res.isError).toBe(true);
     expect(res.content[0]).toMatchObject({ text: expect.stringMatching(/interactive shell/) });
     expect(onSuccess).not.toHaveBeenCalled();
+  });
+});
+
+describe('runBulk (multi-source in one call)', () => {
+  it('moves the whole list in a SINGLE call: `mv src1 src2 src3 dst`', async () => {
+    const calls: string[][] = [];
+    const rt = fakeRt({ run: async (_c, argv) => (calls.push(argv), { code: 0, stdout: '', stderr: '' }) });
+    const { done, failed } = await runBulk(rt, 'mv', ['a', 'b', 'c'], ['/dst']);
+    expect(done).toBe(3);
+    expect(failed).toBe(0);
+    expect(calls).toEqual([['a', 'b', 'c', '/dst']]); // one call, sources then trailing
+  });
+
+  it('chunks large lists to bound argv length', async () => {
+    const calls: string[][] = [];
+    const rt = fakeRt({ run: async (_c, argv) => (calls.push(argv), { code: 0, stdout: '', stderr: '' }) });
+    const srcs = ['a', 'b', 'c', 'd', 'e'];
+    const { done } = await runBulk(rt, 'mv', srcs, ['/dst'], 2);
+    expect(done).toBe(5);
+    expect(calls.length).toBe(3); // 2 + 2 + 1
+  });
+
+  it('on a chunk failure, retries item-by-item so the tally stays exact', async () => {
+    const calls: string[][] = [];
+    const rt = fakeRt({
+      run: async (_c, argv) => {
+        calls.push(argv);
+        const sources = argv.slice(0, -1); // last arg is the dst
+        if (sources.length > 1) return { code: 1, stdout: '', stderr: 'bulk failed' }; // chunk call fails
+        return { code: sources[0] === 'bad' ? 1 : 0, stdout: '', stderr: '' }; // per-item
+      },
+    });
+    const { done, failed } = await runBulk(rt, 'mv', ['ok1', 'ok2', 'bad'], ['/dst']);
+    expect(done).toBe(2);
+    expect(failed).toBe(1);
+    expect(calls.length).toBe(4); // 1 failed bulk + 3 per-item retries
   });
 });

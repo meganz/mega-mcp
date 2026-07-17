@@ -5,6 +5,7 @@ import {
   assertRemotePath,
   assertOptionalRemotePath,
   assertLocalPath,
+  assertConstraint,
   ValidationError,
 } from '../src/paths.js';
 
@@ -37,6 +38,25 @@ describe('assertOptionalRemotePath', () => {
   });
   it('validates a provided value', () => {
     expect(() => assertOptionalRemotePath('rel')).toThrow(ValidationError);
+  });
+});
+
+describe('assertConstraint (mtime/size)', () => {
+  it('allows the "within the last N" form that starts with "-" (the old bug)', () => {
+    expect(assertConstraint('-7d', 'mtime')).toBe('-7d');
+    expect(assertConstraint('-100K', 'size')).toBe('-100K');
+  });
+  it('allows combined units and two-sided ranges', () => {
+    expect(assertConstraint('+1m12d3h', 'mtime')).toBe('+1m12d3h');
+    expect(assertConstraint('-3d+1h', 'mtime')).toBe('-3d+1h');
+    expect(assertConstraint('-4M+100K', 'size')).toBe('-4M+100K');
+    expect(assertConstraint('+5y', 'mtime')).toBe('+5y');
+  });
+  it('rejects empty, NUL, whitespace, and shell-metacharacter garbage', () => {
+    expect(() => assertConstraint('  ', 'mtime')).toThrow(ValidationError);
+    expect(() => assertConstraint(`-7${String.fromCharCode(0)}d`, 'mtime')).toThrow(/NUL/);
+    expect(() => assertConstraint('-7 d', 'mtime')).toThrow(ValidationError);
+    expect(() => assertConstraint('-7d; rm -rf /', 'mtime')).toThrow(ValidationError);
   });
 });
 

@@ -102,6 +102,40 @@ export async function runPerHandle(
 }
 
 /**
+ * Execute a command over MANY sources in a SINGLE invocation per chunk —
+ * `cmd <src1> <src2> … <trailing…>` — instead of one call per source. MEGAcmd
+ * `mv` accepts multiple sources, so an N-node move collapses to ⌈N/chunk⌉ calls
+ * (usually 1). Sources are chunked to stay well under argv length limits. If a
+ * chunk's bulk call fails, we retry that chunk item-by-item so a single bad node
+ * doesn't sink the whole chunk and the done/failed tally stays exact.
+ * `trailingArgv` is appended after the sources (e.g. `[dst]` for mv).
+ */
+export async function runBulk(
+  rt: Runtime,
+  cmd: string,
+  sources: string[],
+  trailingArgv: string[],
+  chunkSize = 2000,
+): Promise<{ done: number; failed: number }> {
+  let done = 0;
+  let failed = 0;
+  for (let i = 0; i < sources.length; i += chunkSize) {
+    const chunk = sources.slice(i, i + chunkSize);
+    const r = await rt.run(cmd, [...chunk, ...trailingArgv]);
+    if (r.code === 0) {
+      done += chunk.length;
+      continue;
+    }
+    for (const s of chunk) {
+      const one = await rt.run(cmd, [s, ...trailingArgv]);
+      if (one.code === 0) done++;
+      else failed++;
+    }
+  }
+  return { done, failed };
+}
+
+/**
  * Run a tool body, converting a thrown ValidationError into a clean error
  * result and any other throw into a generic (non-leaking) error result. Tools
  * return errors, never throw (§A.9).

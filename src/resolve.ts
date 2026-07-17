@@ -1,7 +1,7 @@
-import { access, constants, readFile } from 'node:fs/promises';
+import { access, constants, readFile, realpath } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { Config, Resolved } from './types.js';
 
 /** Layout of a cached MEGAcmd, recorded by the downloader in meta.json. */
@@ -82,6 +82,27 @@ async function existsOnPath(name: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Resolve the REAL install dir of the on-PATH client, for the 'path' source
+ * (whose binDir is null because we invoke bare `mega-*` names via PATH). We
+ * `which`/`where` the whoami client, follow symlinks (realpath), and take its
+ * directory — giving signature verification a concrete target (the .app bundle
+ * on macOS, or the dir holding MEGAcmdServer.exe on Windows). Returns null if it
+ * can't be resolved, in which case the caller skips verification rather than
+ * blocking a working PATH install.
+ */
+export async function resolvePathBinDir(): Promise<string | null> {
+  const probe = isWin ? 'where' : 'which';
+  try {
+    const { stdout } = await pExecFile(probe, [clientName('whoami')], { windowsHide: true });
+    const first = stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0];
+    if (!first) return null;
+    return dirname(await realpath(first));
+  } catch {
+    return null;
   }
 }
 

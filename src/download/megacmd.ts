@@ -239,30 +239,48 @@ export function sanitizeVersion(v: string): string {
 }
 
 /**
- * Re-verify an already-cached MEGAcmd binary before we launch it
- * (defense-in-depth against tampering of the user-writable cache between
- * install and launch). Platform-aware:
- *  - macOS: re-verify the .app code signature (notarization + team id).
- *  - Windows: re-verify the cached server exe's Authenticode signature.
- *  - Linux: re-hash the cached server binary against the install-time SHA-256.
- * Returns true when it cannot meaningfully verify (e.g. no stored hash).
+ * Verify the code signature of the MEGAcmd binary we are about to launch, right
+ * before launch — for EVERY resolution source, not only ones we downloaded.
+ * This closes the tamper window between where the binary was resolved/installed
+ * and where we exec it: on macOS `/Applications`, and on any writable install
+ * location (per-user cache, Windows %LOCALAPPDATA%, a PATH dir), the on-disk
+ * binary can be swapped after install, and we would otherwise run the swapped
+ * binary against the user's already-authenticated MEGA session.
+ *
+ * Identity-based, NOT hash-based, so it survives MEGAcmd self-updates (the
+ * binary content changes but the signer stays "Mega Limited"):
+ *  - macOS: Developer-ID code signature + notarization (+ optional team id).
+ *  - Windows: the server exe's Authenticode signature (signer "Mega Limited").
+ *  - Linux: no per-binary code signature exists, so fall back to the
+ *    install-time SHA-256 when one was recorded (cache installs only).
+ *
+ * Fails CLOSED (false) only when a signature IS present and does not match.
+ * Returns true when it cannot meaningfully verify — no binDir, a layout that
+ * isn't a signable .app bundle, or Linux with no recorded hash — so a genuinely
+ * working install is never blocked merely by the absence of a signature.
  */
-export async function verifyCachedBinary(
+export async function verifyResolvedBinary(
   resolved: { binDir: string | null; serverBin: string },
   opts: { teamId?: string; serverSha256?: string } = {},
 ): Promise<boolean> {
   try {
     if (process.platform === 'darwin') {
       if (!resolved.binDir) return true;
-      await verifySignatureMac(join(resolved.binDir, '..', '..'), opts.teamId);
+      // binDir is <...>/MEGAcmd.app/Contents/MacOS; the signable unit is the
+      // enclosing .app. If the layout isn't an .app (e.g. loose bundled
+      // binaries) we can't codesign-verify it → treat as unverifiable, allow.
+      const app = resolve(resolved.binDir, '..', '..');
+      if (!basename(app).endsWith('.app')) return true;
+      await verifySignatureMac(app, opts.teamId);
       return true;
     }
     if (process.platform === 'win32') {
+      if (!resolved.binDir) return true; // no concrete path to point Authenticode at
       await verifyAuthenticodeWin(resolved.serverBin);
       return true;
     }
     if (process.platform === 'linux') {
-      if (!opts.serverSha256) return true; // nothing to compare against
+      if (!opts.serverSha256) return true; // no per-binary signature; nothing pinned to compare
       return (await sha256File(resolved.serverBin)) === opts.serverSha256;
     }
     return true;
