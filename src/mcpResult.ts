@@ -20,7 +20,7 @@ export function ok(text: string, structured?: Structured): CallToolResult {
   return build(text, structured, false);
 }
 
-/** Error tool result (isError:true). We return errors, never throw, per §A.9. */
+/** Error tool result (isError:true). We return errors, never throw. */
 export function err(text: string, structured?: Structured): CallToolResult {
   return build(text, structured, true);
 }

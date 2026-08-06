@@ -10,10 +10,27 @@ const DEFAULT_MAX = 1_048_576; // 1 MB
 const HARD_MAX = 10_485_760; // 10 MB
 const NUL = String.fromCharCode(0);
 
+/** U+FFFD, what a UTF-8 decoder emits for a byte sequence that is not valid text. */
+const REPLACEMENT = '�';
+
 /**
- * Heuristic binary sniff: treat output as binary if it contains a NUL byte or a
- * high ratio of non-text control characters in the leading sample (so we never
- * dump binary garbage / terminal control sequences into the model context).
+ * Heuristic binary sniff, so binary garbage and terminal control sequences never
+ * reach the model context.
+ *
+ * By the time we see it, the content is ALREADY a decoded string, and both of the
+ * original signals had been eaten before they got here:
+ *  - the NUL test never fires, because MEGAcmd does not emit NUL bytes on this
+ *    path (a real PNG arrived NUL-free);
+ *  - the control-character ratio never reaches 0.3, because every invalid byte
+ *    has already been replaced with U+FFFD, which is printable.
+ * Measured on Windows against a real PNG served through mega_cat: 0 NULs, control
+ * ratio well under the threshold — it was returned as if it were text.
+ *
+ * So count U+FFFD as non-text as well. A legitimate text file essentially never
+ * contains it (it only appears where decoding already failed), while binary is
+ * dense with it. The threshold is also lowered, and a single ESC now disqualifies
+ * the content outright: there is no benign reason for an ANSI escape in a file we
+ * are about to paste into a model's context.
  */
 export function looksBinary(s: string): boolean {
   if (s.includes(NUL)) return true;
@@ -22,9 +39,11 @@ export function looksBinary(s: string): boolean {
   let nonText = 0;
   for (let i = 0; i < sample.length; i++) {
     const c = sample.charCodeAt(i);
-    if (c < 9 || (c > 13 && c < 32)) nonText++; // allow tab/LF/CR + printable
+    if (c === 0x1b) return true; // ESC: terminal control, never benign here
+    if (c < 9 || (c > 13 && c < 32) || c === 0x7f) nonText++; // allow tab/LF/CR
+    else if (sample[i] === REPLACEMENT) nonText++; // undecodable byte
   }
-  return nonText / sample.length > 0.3;
+  return nonText / sample.length > 0.05;
 }
 
 /**

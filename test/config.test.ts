@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig, defaultCacheDir } from '../src/config.js';
@@ -15,8 +15,19 @@ describe('cacheDir resolution', () => {
   });
 
   it('falls back to the per-user cache when the configured dir is not creatable', () => {
-    const cfg = loadConfig({ MEGA_MCP_CACHE_DIR: '/dev/null/nope' } as NodeJS.ProcessEnv);
-    expect(cfg.cacheDir).toBe(defaultCacheDir());
+    // A child OF A REGULAR FILE is uncreatable (ENOTDIR) on every platform. The
+    // old fixture used '/dev/null/nope', which is only uncreatable on posix: on
+    // Windows it is a drive-relative path that mkdir happily creates at
+    // C:\dev\null\nope, so the fallback never fired and the test littered the disk.
+    const base = mkdtempSync(join(tmpdir(), 'mega-cfg-'));
+    const file = join(base, 'a-file');
+    writeFileSync(file, 'x');
+    try {
+      const cfg = loadConfig({ MEGA_MCP_CACHE_DIR: join(file, 'nope') } as NodeJS.ProcessEnv);
+      expect(cfg.cacheDir).toBe(defaultCacheDir());
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 
   it('uses the per-user cache when unset', () => {

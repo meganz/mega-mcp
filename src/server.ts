@@ -5,6 +5,15 @@ import { execClient, childEnv } from './exec.js';
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
+ * Budget for a liveness probe, well under the 60s an MCP client typically allows a
+ * whole request. `whoami` against a live server answers in milliseconds; against a
+ * dead one the client fails to connect and exits promptly. Anything slower than
+ * this is a wedged process, and waiting the full command timeout for it would blow
+ * the client's request deadline and surface as a failure rather than a cold start.
+ */
+const PROBE_TIMEOUT_MS = 10_000;
+
+/**
  * Does this whoami probe indicate the server is up and responding? Exit 0 or
  * any known MEGAcmd exit code (51..71, e.g. 57 NOTLOGGEDIN) means the client
  * reached the server. A spawn error (binary missing), a timeout, or a connect
@@ -29,7 +38,7 @@ function serverResponded(r: RunResult): boolean {
  * server never came up within the retry budget. Never throws.
  */
 export async function ensureServerRunning(resolved: Resolved, tries = 6, baseDelayMs = 500): Promise<boolean> {
-  let probe = await execClient(resolved, 'whoami', []);
+  let probe = await execClient(resolved, 'whoami', [], { timeoutMs: PROBE_TIMEOUT_MS });
   if (serverResponded(probe)) return true;
   if (probe.spawnError) return false; // binary missing — nothing to launch
 
@@ -47,7 +56,7 @@ export async function ensureServerRunning(resolved: Resolved, tries = 6, baseDel
 
   for (let i = 0; i < tries; i++) {
     await delay(baseDelayMs * Math.min(i + 1, 4)); // 0.5s,1s,1.5s,2s,2s,2s
-    probe = await execClient(resolved, 'whoami', []);
+    probe = await execClient(resolved, 'whoami', [], { timeoutMs: PROBE_TIMEOUT_MS });
     if (serverResponded(probe)) return true;
   }
   return false;

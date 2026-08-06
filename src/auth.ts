@@ -7,14 +7,21 @@ type RunFn = (cmd: string, args: string[], opts?: RunOpts) => Promise<RunResult>
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
- * One-shot auth probe via `mega-whoami` (§B.3). The probe runs plain `whoami`
+ * Budget for the auth probe. ensureReady() runs up to three of these back to back,
+ * so the default command timeout would let a single wedged probe outlast the whole
+ * request deadline an MCP client allows. `whoami` is a millisecond call either way.
+ */
+const PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * One-shot auth probe via `mega-whoami`. The probe runs plain `whoami`
  * (never `-l`), so no session material is ever requested on this path. (The
  * extended `-l` form is used only by mega_account, behind an allowlist parser.)
  * Doubles as a server liveness probe because any mega-* call auto-spawns the
  * server.
  */
 export async function detectAuth(run: RunFn): Promise<AuthState> {
-  const r = await run('whoami', []);
+  const r = await run('whoami', [], { timeoutMs: PROBE_TIMEOUT_MS });
 
   if (r.spawnError) {
     return { loggedIn: false, reason: 'no_megacmd', detail: classifyExit(r) };
@@ -30,7 +37,7 @@ export async function detectAuth(run: RunFn): Promise<AuthState> {
 }
 
 /**
- * Auth probe with warm-up retry (§A.4 caveat). A freshly auto-spawned server
+ * Auth probe with warm-up retry. A freshly auto-spawned server
  * can transiently report NOTLOGGEDIN / server errors while it restores its
  * session cache. We retry those with backoff before concluding the user is
  * actually logged out. We do NOT retry `no_megacmd` (binary missing won't fix

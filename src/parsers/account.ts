@@ -5,7 +5,7 @@
  * (`df` is storage-only). Its output also contains a "Current Active Sessions:"
  * block (session HANDLE + IP / country / user-agent) and balance / purchase /
  * transaction history. We extract ONLY the plan + storage fields below and build
- * a fresh object — the raw stdout is NEVER echoed (HARD CONSTRAINT 2 + 4).
+ * a fresh object — the raw stdout is NEVER echoed.
  *
  * This is an ALLOWLIST, deliberately fail-closed: any line we don't explicitly
  * match is dropped, so a future MEGAcmd that adds new sensitive lines still

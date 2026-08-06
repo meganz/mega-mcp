@@ -1,7 +1,7 @@
 import { access, constants, readFile, realpath } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep, win32 as winPath, posix as posixPath } from 'node:path';
 import type { Config, Resolved } from './types.js';
 
 /** Layout of a cached MEGAcmd, recorded by the downloader in meta.json. */
@@ -36,6 +36,11 @@ export const MEGA_CLIENT_EXE = 'MEGAclient.exe';
  * shell (argv-array, no metacharacter injection). The `.bat` is literally
  * `MEGAclient <cmd> %*`, so this is behaviorally equivalent. On posix each
  * subcommand is its own mega-<cmd> binary, with args passed through.
+ *
+ * Pure in `win`: the branch derives both the binary NAME and the path join from
+ * the parameter, never from process.platform. Callers only ever pass the host
+ * platform, so this changes no runtime behaviour — it just makes the function
+ * mean what its signature says, and testable for the platform you are not on.
  */
 export function buildClientInvocation(
   win: boolean,
@@ -43,13 +48,13 @@ export function buildClientInvocation(
   cmd: string,
   args: string[],
 ): { bin: string; argv: string[] } {
-  if (win) {
-    return { bin: binDir ? join(binDir, MEGA_CLIENT_EXE) : MEGA_CLIENT_EXE, argv: [cmd, ...args] };
-  }
-  return { bin: binDir ? join(binDir, clientName(cmd)) : clientName(cmd), argv: args };
+  const joinFor = win ? winPath.join : posixPath.join;
+  const name = win ? MEGA_CLIENT_EXE : `mega-${cmd}`;
+  const argv = win ? [cmd, ...args] : args;
+  return { bin: binDir ? joinFor(binDir, name) : name, argv };
 }
 
-/** Name of the background server binary for the current platform (§A.7). */
+/** Name of the background server binary for the current platform. */
 export function serverName(): string {
   switch (process.platform) {
     case 'darwin':
@@ -140,16 +145,30 @@ async function readCacheMeta(cacheDir: string): Promise<{ dir: string; meta: Cac
 }
 
 /**
+ * Resolve a meta.json subdir under its version dir, refusing anything that escapes.
+ * meta.json sits in a user-writable cache, so its fields are untrusted input just
+ * like the `current.txt` pointer: without this, `binSubdir: "../../evil"` relocates
+ * the binary we are about to launch outside the cache entirely, where the launch
+ * integrity check has no signed .app to verify and would wave it through.
+ */
+function resolveCacheSubdir(versionDir: string, subdir: string): string | null {
+  const abs = resolve(versionDir, subdir);
+  const base = resolve(versionDir);
+  return abs === base || abs.startsWith(base + sep) ? abs : null;
+}
+
+/**
  * The bin/lib dirs of a runtime-downloaded MEGAcmd. Returns null if nothing is
- * cached.
+ * cached, or if the cached metadata points outside the cache.
  */
 export async function cacheBinDir(config: Config): Promise<{ binDir: string; libDir: string | null } | null> {
   const found = await readCacheMeta(config.cacheDir);
   if (!found) return null;
-  return {
-    binDir: join(found.dir, found.meta.binSubdir),
-    libDir: found.meta.libSubdir ? join(found.dir, found.meta.libSubdir) : null,
-  };
+  const binDir = resolveCacheSubdir(found.dir, found.meta.binSubdir);
+  if (!binDir) return null;
+  const libDir = found.meta.libSubdir ? resolveCacheSubdir(found.dir, found.meta.libSubdir) : null;
+  if (found.meta.libSubdir && !libDir) return null;
+  return { binDir, libDir };
 }
 
 /** The active cached MEGAcmd's recorded metadata, or null if nothing cached. */
@@ -158,11 +177,11 @@ export async function readActiveCacheMeta(config: Config): Promise<CacheMeta | n
 }
 
 /**
- * Locate the MEGAcmd binaries. Order (§B.1, extended):
- *   1. Bundled (C2)         — <bundledDir>/<platform>-<arch>/
+ * Locate the MEGAcmd binaries, in order:
+ *   1. Bundled              — <bundledDir>/<platform>-<arch>/
  *   2. User-configured dir  — config.megacmdDir
  *   3. Runtime cache        — <cacheDir>/current/... (downloaded on first run)
- *   4. System PATH          — mode B fallback
+ *   4. System PATH
  * Returns null if none resolve; callers surface an actionable error rather
  * than crashing.
  */

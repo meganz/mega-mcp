@@ -10,6 +10,7 @@ function fakeRt(overrides: Partial<Runtime> = {}): Runtime {
     confirm: createConfirmStore(),
     run: async () => ({ code: 0, stdout: '', stderr: '' }) as RunResult,
     getResolved: async () => null,
+    getBinDir: async () => null,
     invalidateResolved: () => {},
     getAuthState: async () => ({ loggedIn: true, reason: 'ok' }),
     ensureReady: async () => ({ loggedIn: true, reason: 'ok' }),

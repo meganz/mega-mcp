@@ -2,10 +2,11 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
-import { assertRemotePath, assertLocalPath, assertNoFlag, ValidationError } from '../paths.js';
+import { assertRemotePath, assertLocalPath, assertNoFlag, assertSecret, assertNoWildcard, sessionStoreWarning, ValidationError } from '../paths.js';
 import { guardRun, runToResult, checkConfirm, pcreGate, runPerHandle, runBulk } from './helpers.js';
 
-const NUL = String.fromCharCode(0);
+/** Max paths listed verbatim in a confirmation preview (matches pcreMatchPreview). */
+const PREVIEW_MAX = 50;
 
 export function registerMutate(server: McpServer, rt: Runtime): void {
   // mega_mkdir — create a folder (idempotent with -p). Auto-allow.
@@ -50,8 +51,10 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
   //   • src+usePcre — a PCRE pattern: matches are enumerated + pinned by HANDLE
   //                   at preview (TOCTOU-safe), then moved in one multi-source
   //                   `mv` on those handles.
-  //   • src         — a single path (or a native `*`/`?` wildcard MEGAcmd expands
-  //                   server-side), the classic single move/rename.
+  //   • src         — a single path, the classic single move/rename. A native
+  //                   `*`/`?` wildcard is refused here: MEGAcmd expands it
+  //                   server-side AFTER approval, so the preview would name one
+  //                   node while N were moved. Use srcs[] or usePcre instead.
   server.registerTool(
     'mega_mv',
     {
@@ -62,7 +65,7 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
         src: z
           .string()
           .optional()
-          .describe('A single source path; OR a PCRE pattern (with usePcre); OR a native wildcard path like "/Photos/*.jpg".'),
+          .describe('A single source path; OR a PCRE pattern (with usePcre). Native "*"/"?" wildcards are not accepted - use usePcre, which lists the matches before you confirm.'),
         srcs: z
           .array(z.string())
           .optional()
@@ -80,9 +83,12 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
         // Mode 1: explicit list -> one multi-source `mv src1 src2 … dst`.
         if (srcs && srcs.length > 0) {
           const list = srcs.map((s, i) => assertRemotePath(s, `srcs[${i}]`));
-          const shown = list.slice(0, 50).join('\n');
-          const more = list.length > 50 ? `\n…(${list.length} total; showing first 50)` : '';
-          const gate = checkConfirm(rt, 'mega_mv', { srcs: list, dst: d }, confirm, `This will move ${list.length} item(s) to ${d}:\n${shown}${more}`);
+          const summary = [
+            `This will move ${list.length} item(s) to ${d}:`,
+            ...list.slice(0, 50),
+            ...(list.length > 50 ? [`…(${list.length} total; showing first 50)`] : []),
+          ];
+          const gate = checkConfirm(rt, 'mega_mv', { srcs: list, dst: d }, confirm, summary);
           if (gate) return gate;
           const { done, failed } = await runBulk(rt, 'mv', list, [d]);
           return ok(`Moved ${done}/${list.length} item(s) to ${d}${failed ? `; ${failed} failed` : ''}.`, { dst: d, moved: done, failed });
@@ -107,9 +113,12 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
           return ok(`Moved ${done}/${g.handles.length} node(s) to ${d}${failed ? `; ${failed} failed` : ''}.`, { dst: d, moved: done, failed });
         }
 
-        // Mode 3: single path (or a native wildcard MEGAcmd expands server-side).
+        // Mode 3: a single path. A native wildcard is NOT accepted here: MEGAcmd
+        // would expand it server-side after approval, so the preview would name
+        // one node while N were moved. Modes 1 and 2 are the supported bulk paths
+        // and both enumerate before confirming.
         if (!src) throw new ValidationError('Provide "src" (a path or pattern) or "srcs" (a list).');
-        const s = assertRemotePath(src, 'src');
+        const s = assertNoWildcard(assertRemotePath(src, 'src'), 'src');
         const gate = checkConfirm(rt, 'mega_mv', { src: s, dst: d }, confirm, `This will move/rename ${s} to ${d}.`);
         if (gate) return gate;
         return runToResult(rt, 'mv', [s, d], () => ok(`Moved ${s} -> ${d}.`, { src: s, dst: d }));
@@ -137,7 +146,18 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
         if (raw.length === 0) throw new ValidationError('Provide localPath or localPaths.');
         const lps = raw.map((p) => assertLocalPath(p));
         const rp = assertRemotePath(remotePath);
-        const gate = checkConfirm(rt, 'mega_put', { localPaths: lps, remotePath: rp, background }, confirm, `This will upload ${lps.length} item(s) to ${rp}.`);
+        // The preview MUST name what leaves the machine: it is the only human
+        // checkpoint here, and "upload 1 item(s)" gives nothing to refuse on.
+        // Built as LINES so checkConfirm escapes each path on its own — a newline
+        // inside one must not be able to forge an extra line here.
+        const warn = sessionStoreWarning(lps, { binDir: await rt.getBinDir() });
+        const summary = [
+          `This will upload ${lps.length} item(s) to ${rp}:`,
+          ...lps.slice(0, PREVIEW_MAX).map((p) => `  ${p}`),
+          ...(lps.length > PREVIEW_MAX ? [`  ...(${lps.length} total; showing first ${PREVIEW_MAX})`] : []),
+          ...warn.split('\n'),
+        ];
+        const gate = checkConfirm(rt, 'mega_put', { localPaths: lps, remotePath: rp, background }, confirm, summary);
         if (gate) return gate;
         const args = ['-c', ...(background ? ['-q'] : []), ...lps, rp];
         return runToResult(rt, 'put', args, () => ok(`Uploaded ${lps.length} item(s) -> ${rp}.`, { localPaths: lps, remotePath: rp, background }));
@@ -168,7 +188,7 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
     async ({ remotePath, link, localDir, password, background, ignoreQuotaWarn, merge, usePcre, confirm }) =>
       guardRun(async () => {
         const ld = assertLocalPath(localDir, 'localDir');
-        if (password !== undefined && password.includes(NUL)) throw new ValidationError('password contains a NUL byte.');
+        if (password !== undefined) assertSecret(password, 'password');
         const isLink = link !== undefined && link !== '';
         const transferOpts = [
           ...(background ? ['-q'] : []),
@@ -198,7 +218,11 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
         }
 
         // Single path or public link.
-        const source = isLink ? assertNoFlag(link as string, 'link') : remotePath !== undefined && remotePath !== '' ? assertRemotePath(remotePath) : '';
+        const source = isLink
+          ? assertNoFlag(link as string, 'link')
+          : remotePath !== undefined && remotePath !== ''
+            ? assertNoWildcard(assertRemotePath(remotePath), 'remotePath')
+            : '';
         if (!source) throw new ValidationError('Provide remotePath or link.');
         // The password is a secret: bind only its presence into the confirm token.
         const gate = checkConfirm(

@@ -2984,7 +2984,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve4.call(this, root, ref);
+      let _sch = resolve5.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3011,7 +3011,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve4(root, ref) {
+    function resolve5(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3642,7 +3642,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve4(baseURI, relativeURI, options) {
+    function resolve5(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3900,7 +3900,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve4,
+      resolve: resolve5,
       resolveComponent,
       equal,
       serialize,
@@ -6892,7 +6892,7 @@ var require_dist = __commonJS({
 // src/index.ts
 import { readFileSync } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-import { dirname as dirname3, join as join6 } from "node:path";
+import { dirname as dirname4, join as join7 } from "node:path";
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -18985,7 +18985,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve4) => setTimeout(resolve4, pollInterval));
+        await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -19002,7 +19002,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -19080,7 +19080,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve4(parseResult.data);
+            resolve5(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -19341,12 +19341,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve4, interval);
+      const timeoutId = setTimeout(resolve5, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -20446,7 +20446,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve4) => setTimeout(resolve4, pollInterval));
+      await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -21095,12 +21095,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve4) => {
+    return new Promise((resolve5) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve4();
+        resolve5();
       } else {
-        this._stdout.once("drain", resolve4);
+        this._stdout.once("drain", resolve5);
       }
     });
   }
@@ -21205,13 +21205,13 @@ function parseMaxList(v) {
 }
 
 // src/runtime.ts
-import { join as join4 } from "node:path";
+import { basename as basename3, join as join5 } from "node:path";
 
 // src/resolve.ts
 import { access, constants as constants2, readFile, realpath } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { dirname as dirname2, join as join2 } from "node:path";
+import { dirname as dirname2, join as join2, resolve as resolve2, sep, win32 as winPath, posix as posixPath } from "node:path";
 var pExecFile = promisify(execFile);
 var isWin = process.platform === "win32";
 function clientName(cmd) {
@@ -21219,10 +21219,10 @@ function clientName(cmd) {
 }
 var MEGA_CLIENT_EXE = "MEGAclient.exe";
 function buildClientInvocation(win, binDir, cmd, args) {
-  if (win) {
-    return { bin: binDir ? join2(binDir, MEGA_CLIENT_EXE) : MEGA_CLIENT_EXE, argv: [cmd, ...args] };
-  }
-  return { bin: binDir ? join2(binDir, clientName(cmd)) : clientName(cmd), argv: args };
+  const joinFor = win ? winPath.join : posixPath.join;
+  const name = win ? MEGA_CLIENT_EXE : `mega-${cmd}`;
+  const argv = win ? [cmd, ...args] : args;
+  return { bin: binDir ? joinFor(binDir, name) : name, argv };
 }
 function serverName() {
   switch (process.platform) {
@@ -21293,13 +21293,19 @@ async function readCacheMeta(cacheDir) {
   }
   return null;
 }
+function resolveCacheSubdir(versionDir, subdir) {
+  const abs = resolve2(versionDir, subdir);
+  const base = resolve2(versionDir);
+  return abs === base || abs.startsWith(base + sep) ? abs : null;
+}
 async function cacheBinDir(config2) {
   const found = await readCacheMeta(config2.cacheDir);
   if (!found) return null;
-  return {
-    binDir: join2(found.dir, found.meta.binSubdir),
-    libDir: found.meta.libSubdir ? join2(found.dir, found.meta.libSubdir) : null
-  };
+  const binDir = resolveCacheSubdir(found.dir, found.meta.binSubdir);
+  if (!binDir) return null;
+  const libDir = found.meta.libSubdir ? resolveCacheSubdir(found.dir, found.meta.libSubdir) : null;
+  if (found.meta.libSubdir && !libDir) return null;
+  return { binDir, libDir };
 }
 async function readActiveCacheMeta(config2) {
   return (await readCacheMeta(config2.cacheDir))?.meta ?? null;
@@ -21332,9 +21338,12 @@ async function resolveBinaries(config2) {
 }
 
 // src/exec.ts
-import { execFile as execFile2 } from "node:child_process";
+import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 var DEFAULT_TIMEOUT_MS = 12e4;
 var DEFAULT_MAX_BUFFER = 16 * 1024 * 1024;
+var STDIO_DRAIN_GRACE_MS = 250;
+var KILL_ESCALATE_MS = 2e3;
 function childEnv(resolved) {
   const env = { ...process.env };
   if (resolved.binDir) {
@@ -21347,71 +21356,96 @@ function childEnv(resolved) {
 }
 async function execClient(resolved, cmd, args, opts = {}) {
   const { bin, argv } = resolved.clientInvocation(cmd, args);
+  const maxBuffer = opts.maxBuffer ?? DEFAULT_MAX_BUFFER;
   return new Promise((resolvePromise) => {
+    let child;
     try {
-      execFile2(
-        bin,
-        argv,
-        {
-          timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-          maxBuffer: opts.maxBuffer ?? DEFAULT_MAX_BUFFER,
-          windowsHide: true,
-          env: childEnv(resolved)
-          // NO shell: true
-        },
-        (error2, stdout, stderr) => {
-          const out = stdout?.toString() ?? "";
-          const errOut = stderr?.toString() ?? "";
-          if (!error2) {
-            resolvePromise({ code: 0, stdout: out, stderr: errOut });
-            return;
-          }
-          const e = error2;
-          if (e.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-            resolvePromise({ code: -1, stdout: out, stderr: errOut, maxBufferExceeded: true });
-            return;
-          }
-          if (e.killed || e.signal) {
-            resolvePromise({
-              code: -1,
-              stdout: out,
-              stderr: errOut,
-              timedOut: true,
-              killedSignal: e.signal ?? void 0
-            });
-            return;
-          }
-          if (typeof e.code === "string") {
-            resolvePromise({ code: -1, stdout: out, stderr: errOut, spawnError: e.code });
-            return;
-          }
-          if (typeof e.code === "number") {
-            resolvePromise({ code: e.code, stdout: out, stderr: errOut });
-            return;
-          }
-          resolvePromise({ code: -1, stdout: out, stderr: errOut, spawnError: "UNKNOWN" });
-        }
-      );
+      child = spawn(bin, argv, {
+        windowsHide: true,
+        env: childEnv(resolved),
+        stdio: ["ignore", "pipe", "pipe"]
+        // NO shell: true
+      });
     } catch (e) {
       const err4 = e;
       resolvePromise({ code: -1, stdout: "", stderr: "", spawnError: err4.code ?? "SPAWN_THROW" });
+      return;
     }
+    let out = "";
+    let errOut = "";
+    let bytes = 0;
+    let overflowed = false;
+    const outDec = new StringDecoder("utf8");
+    const errDec = new StringDecoder("utf8");
+    let timedOut = false;
+    let settled = false;
+    let drainTimer;
+    let killTimer;
+    const settle = (r) => {
+      if (settled) return;
+      settled = true;
+      r.stdout += outDec.end();
+      r.stderr += errDec.end();
+      clearTimeout(timer);
+      if (drainTimer) clearTimeout(drainTimer);
+      if (killTimer) clearTimeout(killTimer);
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      resolvePromise(r);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+      killTimer = setTimeout(() => child.kill("SIGKILL"), KILL_ESCALATE_MS);
+    }, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    const collect = (buf, isErr) => {
+      bytes += buf.length;
+      if (bytes > maxBuffer) {
+        overflowed = true;
+        child.kill();
+        return;
+      }
+      if (isErr) errOut += errDec.write(buf);
+      else out += outDec.write(buf);
+    };
+    child.stdout?.on("data", (b) => collect(b, false));
+    child.stderr?.on("data", (b) => collect(b, true));
+    child.stdout?.on("error", () => {
+    });
+    child.stderr?.on("error", () => {
+    });
+    child.on("error", (e) => {
+      settle({ code: -1, stdout: out, stderr: errOut, spawnError: e.code ?? "UNKNOWN" });
+    });
+    const finish = (code, signal) => {
+      if (overflowed) return settle({ code: -1, stdout: out, stderr: errOut, maxBufferExceeded: true });
+      if (timedOut || signal) {
+        return settle({ code: -1, stdout: out, stderr: errOut, timedOut: true, killedSignal: signal ?? void 0 });
+      }
+      if (code === null) return settle({ code: -1, stdout: out, stderr: errOut, spawnError: "UNKNOWN" });
+      settle({ code, stdout: out, stderr: errOut });
+    };
+    child.on("close", finish);
+    child.on("exit", (code, signal) => {
+      drainTimer = setTimeout(() => finish(code, signal), STDIO_DRAIN_GRACE_MS);
+    });
   });
 }
 
 // src/server.ts
-import { spawn } from "node:child_process";
+import { spawn as spawn2 } from "node:child_process";
 var delay = (ms) => new Promise((r) => setTimeout(r, ms));
+var PROBE_TIMEOUT_MS = 1e4;
 function serverResponded(r) {
   if (r.spawnError || r.timedOut) return false;
   return r.code === 0 || r.code >= 51 && r.code <= 71;
 }
 async function ensureServerRunning(resolved, tries = 6, baseDelayMs = 500) {
-  let probe = await execClient(resolved, "whoami", []);
+  let probe = await execClient(resolved, "whoami", [], { timeoutMs: PROBE_TIMEOUT_MS });
   if (serverResponded(probe)) return true;
   if (probe.spawnError) return false;
   try {
-    const child = spawn(resolved.serverBin, [], {
+    const child = spawn2(resolved.serverBin, [], {
       detached: true,
       stdio: "ignore",
       env: childEnv(resolved),
@@ -21423,14 +21457,14 @@ async function ensureServerRunning(resolved, tries = 6, baseDelayMs = 500) {
   }
   for (let i = 0; i < tries; i++) {
     await delay(baseDelayMs * Math.min(i + 1, 4));
-    probe = await execClient(resolved, "whoami", []);
+    probe = await execClient(resolved, "whoami", [], { timeoutMs: PROBE_TIMEOUT_MS });
     if (serverResponded(probe)) return true;
   }
   return false;
 }
 
 // src/download/megacmd.ts
-import { execFile as execFile3, spawn as spawn2 } from "node:child_process";
+import { execFile as execFile2, spawn as spawn3 } from "node:child_process";
 import { promisify as promisify2 } from "node:util";
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream, realpathSync } from "node:fs";
@@ -21439,7 +21473,7 @@ import { constants as FS } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-import { join as join3, basename, resolve as resolve2 } from "node:path";
+import { join as join3, basename, resolve as resolve3 } from "node:path";
 import { homedir as homedir2 } from "node:os";
 
 // src/errors.ts
@@ -21508,7 +21542,7 @@ function classifyExit(result) {
 }
 
 // src/download/megacmd.ts
-var pExecFile2 = promisify2(execFile3);
+var pExecFile2 = promisify2(execFile2);
 var MAX_DOWNLOAD_BYTES = 150 * 1024 * 1024;
 var ALLOWED_HOSTS = ["mega.nz", "mega.io"];
 var delay2 = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -21556,7 +21590,7 @@ async function swapIntoPlace(stagingDir, versionDir) {
 async function acquireDarwin(config2, onProgress) {
   const { url, version: version2 = "latest", sha256Allow, teamId } = config2.download;
   const appBin = config2.systemAppBinDirs?.[0];
-  const appDest = appBin ? resolve2(appBin, "..", "..") : void 0;
+  const appDest = appBin ? resolve3(appBin, "..", "..") : void 0;
   const binSubdir = join3("MEGAcmd.app", "Contents", "MacOS");
   if (appBin && await exists(join3(appBin, "mega-whoami"))) {
     await ensureMacLoginHelper(appBin).catch(() => {
@@ -21616,7 +21650,7 @@ async function acquireDarwin(config2, onProgress) {
       await pExecFile2("hdiutil", ["detach", mountPoint, "-force"]).catch(() => {
       });
     }
-    await pExecFile2("xattr", ["-dr", "com.apple.quarantine", resolve2(binDir, "..", "..")]).catch(() => {
+    await pExecFile2("xattr", ["-dr", "com.apple.quarantine", resolve3(binDir, "..", "..")]).catch(() => {
     });
     await ensureMacLoginHelper(binDir).catch(() => {
     });
@@ -21634,13 +21668,16 @@ async function acquireDarwin(config2, onProgress) {
     return { ok: false, reason: classifyAcquireError(raw), detail: redact(raw).slice(0, 300) };
   }
 }
+function shQuote(v) {
+  return `'${v.replaceAll("'", `'\\''`)}'`;
+}
 async function ensureMacLoginHelper(binDir) {
   if (process.platform !== "darwin" || !binDir) return null;
   const dir = join3(homedir2(), "Library", "Application Support", "mega-cloud-mcp");
   const helperPath = join3(dir, "Login to MEGA.command");
   const script = `#!/bin/bash
 # Log in to MEGA. Your password is entered at a hidden prompt and never leaves this machine.
-DIR=${JSON.stringify(binDir)}
+DIR=${shQuote(binDir)}
 export PATH="$DIR:$PATH"
 # Ensure the background server is up (no-op if it already is).
 "$DIR/mega-cmd" >/dev/null 2>&1 &
@@ -21667,14 +21704,16 @@ async function verifyResolvedBinary(resolved, opts = {}) {
   try {
     if (process.platform === "darwin") {
       if (!resolved.binDir) return true;
-      const app = resolve2(resolved.binDir, "..", "..");
-      if (!basename(app).endsWith(".app")) return true;
+      const app = resolve3(resolved.binDir, "..", "..");
+      if (!basename(app).endsWith(".app")) return resolved.source !== "cache";
       await verifySignatureMac(app, opts.teamId);
       return true;
     }
     if (process.platform === "win32") {
       if (!resolved.binDir) return true;
-      await verifyAuthenticodeWin(resolved.serverBin);
+      for (const exe of new Set([resolved.serverBin, resolved.clientBin].filter((p) => !!p))) {
+        await verifyAuthenticodeWin(exe, opts.winThumbprint);
+      }
       return true;
     }
     if (process.platform === "linux") {
@@ -21800,11 +21839,11 @@ function launchViaExplorer(target) {
     real = realpathSync.native(target).replace(/^\\\\\?\\/, "");
   } catch {
   }
-  const child = spawn2("explorer.exe", [real], { detached: true, stdio: "ignore" });
+  const child = spawn3("explorer.exe", [real], { detached: true, stdio: "ignore" });
   child.unref();
 }
 async function verifyAuthenticodeWin(exe, thumbprint) {
-  const ps = `$ErrorActionPreference='Stop'; $s = Get-AuthenticodeSignature -LiteralPath $env:MEGA_VERIFY_PATH; if ($s.Status -ne 'Valid') { exit 3 }; if ($s.SignerCertificate.Subject -notmatch 'O=Mega Limited(,|$)') { exit 4 }; if ($env:MEGA_VERIFY_THUMBPRINT -and ($s.SignerCertificate.Thumbprint -ne $env:MEGA_VERIFY_THUMBPRINT)) { exit 5 }; exit 0`;
+  const ps = `$ErrorActionPreference='Stop'; $s = Get-AuthenticodeSignature -LiteralPath $env:MEGA_VERIFY_PATH; if ($s.Status -ne 'Valid') { exit 3 }; $c = $s.SignerCertificate; if (-not $c) { exit 4 }; $rdns = $c.SubjectName.Format($true) -split "\`r?\`n" | ForEach-Object { $_.Trim() }; if (-not ($rdns -ccontains 'O=Mega Limited')) { exit 4 }; if ($env:MEGA_VERIFY_THUMBPRINT -and ($c.Thumbprint -ne $env:MEGA_VERIFY_THUMBPRINT)) { exit 5 }; exit 0`;
   try {
     await pExecFile2("powershell", ["-NoProfile", "-NonInteractive", "-Command", ps], {
       windowsHide: true,
@@ -21830,8 +21869,9 @@ function parseWhoami(stdout) {
 
 // src/auth.ts
 var delay3 = (ms) => new Promise((r) => setTimeout(r, ms));
+var PROBE_TIMEOUT_MS2 = 1e4;
 async function detectAuth(run) {
-  const r = await run("whoami", []);
+  const r = await run("whoami", [], { timeoutMs: PROBE_TIMEOUT_MS2 });
   if (r.spawnError) {
     return { loggedIn: false, reason: "no_megacmd", detail: classifyExit(r) };
   }
@@ -21852,6 +21892,224 @@ async function ensureReady(run, tries = 3, baseDelayMs = 500) {
     if (i < tries - 1) await delay3(baseDelayMs * (i + 1));
   }
   return last;
+}
+
+// src/paths.ts
+import { resolve as resolve4, sep as sep2, dirname as dirname3, basename as basename2, join as join4 } from "node:path";
+import { homedir as homedir3 } from "node:os";
+import { realpathSync as realpathSync2, existsSync } from "node:fs";
+var ValidationError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ValidationError";
+  }
+};
+var isWin2 = process.platform === "win32";
+var SEG_SPLIT = isWin2 ? /[\\/]+/ : /\//;
+function fold(p) {
+  return p.toLowerCase();
+}
+function normSegment(s) {
+  if (!isWin2 || s === "" || /^\.+$/.test(s) || /^[A-Za-z]:$/.test(s)) return s;
+  const cut = s.indexOf(":");
+  return (cut === -1 ? s : s.slice(0, cut)).replace(/[. ]+$/, "");
+}
+function normWinPath(p) {
+  if (!isWin2) return p;
+  return p.split(/([\\/]+)/).map((part, i) => i % 2 === 0 ? normSegment(part) : part).join("");
+}
+function isAtOrUnder(child, parent) {
+  const c = fold(child);
+  const p = fold(parent);
+  return c === p || c.startsWith(p.endsWith(sep2) ? p : p + sep2);
+}
+var publishedBinDir = null;
+var trustRoots = [];
+function publishMegacmdBinDir(dir, roots = []) {
+  publishedBinDir = dir;
+  trustRoots = [...new Set([...dir ? [dir] : [], ...roots].filter(Boolean).map((p) => resolve4(p)))];
+}
+function sessionStoreRoots(binDir) {
+  binDir ??= publishedBinDir;
+  const roots = /* @__PURE__ */ new Set();
+  const add = (p) => {
+    roots.add(p);
+    roots.add(realpathBestEffort(p));
+  };
+  add(resolve4(homedir3(), ".megaCmd"));
+  const uid = process.getuid?.();
+  if (uid !== void 0) add(`/tmp/megacmd-${uid}`);
+  if (isWin2 && binDir) add(resolve4(binDir, ".megaCmd"));
+  return [...roots];
+}
+function hitsSessionStore(rawAbs) {
+  const abs = normWinPath(rawAbs);
+  for (const segment of abs.split(SEG_SPLIT)) {
+    const s = segment.toLowerCase();
+    if (s === ".megacmd" || s.startsWith(".megacmd_")) return true;
+    if (s === "megacmd.mac") return true;
+  }
+  return sessionStoreRoots().some((r) => isAtOrUnder(abs, r));
+}
+function realpathBestEffort(abs) {
+  let head = abs;
+  const tail = [];
+  for (; ; ) {
+    try {
+      const real = realpathSync2.native(head).replace(/^\\\\\?\\/, "");
+      return tail.length ? join4(real, ...tail) : real;
+    } catch {
+      const parent = dirname3(head);
+      if (parent === head) return abs;
+      tail.unshift(basename2(head));
+      head = parent;
+    }
+  }
+}
+function spellingsOf(abs) {
+  const folded = normWinPath(abs);
+  const real = realpathBestEffort(abs);
+  const realOfFolded = realpathBestEffort(folded);
+  return [.../* @__PURE__ */ new Set([abs, folded, real, realOfFolded, normWinPath(realOfFolded)])];
+}
+function assertNotConfigDir(abs) {
+  for (const candidate of spellingsOf(abs)) {
+    if (hitsSessionStore(candidate)) {
+      throw new ValidationError("Refusing to access the MEGAcmd configuration directory.");
+    }
+  }
+}
+function assertNotTrustRoot(abs) {
+  if (trustRoots.length === 0) return;
+  for (const candidate of spellingsOf(abs)) {
+    for (const root of trustRoots) {
+      if (isAtOrUnder(normWinPath(candidate), root) || isAtOrUnder(normWinPath(candidate), realpathBestEffort(root))) {
+        throw new ValidationError(
+          "Refusing to read or write inside the MEGAcmd program directory - a file placed there would be loaded by the MEGAcmd process itself."
+        );
+      }
+    }
+  }
+}
+function sessionStoresWithin(abs, binDir) {
+  const forms = [...new Set([abs, resolve4(abs)].flatMap(spellingsOf))];
+  const hits = /* @__PURE__ */ new Map();
+  for (const root of sessionStoreRoots(binDir)) {
+    if (forms.some((f) => fold(root) === fold(f))) continue;
+    if (forms.some((f) => isAtOrUnder(root, f)) && existsSync(root)) {
+      hits.set(fold(realpathBestEffort(root)), root);
+    }
+  }
+  return [...hits.values()];
+}
+function rejectNul(p) {
+  if (p.includes(String.fromCharCode(0))) throw new ValidationError("Path contains a NUL byte.");
+}
+function rejectArgvQuote(v, field) {
+  if (v.includes('"')) {
+    throw new ValidationError(
+      `${field} must not contain a double quote - MEGAcmd cannot address such a value: it would re-parse the command and operate on a different target.`
+    );
+  }
+}
+function assertSecret(v, field) {
+  rejectNul(v);
+  rejectArgvQuote(v, field);
+  return v;
+}
+function assertRemotePath(p, field = "remotePath") {
+  rejectNul(p);
+  const t = p.trim();
+  if (t === "") throw new ValidationError(`${field} is empty.`);
+  if (!t.startsWith("/")) {
+    throw new ValidationError(`${field} must be an absolute MEGA path starting with "/".`);
+  }
+  rejectArgvQuote(t, field);
+  return t;
+}
+function assertOptionalRemotePath(p, field = "remotePath") {
+  return p === void 0 ? void 0 : assertRemotePath(p, field);
+}
+function assertNoFlag(v, field) {
+  rejectNul(v);
+  const t = v.trim();
+  if (t === "") throw new ValidationError(`${field} is empty.`);
+  if (t.startsWith("-")) throw new ValidationError(`${field} must not start with "-".`);
+  rejectArgvQuote(t, field);
+  return t;
+}
+function assertFlagValue(v, field) {
+  rejectNul(v);
+  const t = v.trim();
+  if (t === "") throw new ValidationError(`${field} is empty.`);
+  rejectArgvQuote(t, field);
+  return t;
+}
+function assertConstraint(v, field) {
+  rejectNul(v);
+  const t = v.trim();
+  if (t === "") throw new ValidationError(`${field} is empty.`);
+  if (!isConstraintFormat(t)) {
+    throw new ValidationError(
+      `${field} has an invalid format. Use signed number+unit forms, e.g. "-30d", "+1m12d3h", "-3d+1h" (time) or "-100K", "-4M+100K" (size).`
+    );
+  }
+  return t;
+}
+function isConstraintFormat(t) {
+  let i = 0;
+  let groups = 0;
+  if (t[i] === "+" || t[i] === "-") i++;
+  while (i < t.length) {
+    const digitsFrom = i;
+    for (let d = t[i]; d !== void 0 && d >= "0" && d <= "9"; d = t[++i]) ;
+    if (i === digitsFrom) return false;
+    const c = t[i];
+    if (c !== void 0 && (c >= "A" && c <= "Z" || c >= "a" && c <= "z")) i++;
+    groups++;
+    const s = t[i];
+    if (s === "+" || s === "-") {
+      const next = t[i + 1];
+      if (next === void 0 || next < "0" || next > "9") return false;
+      i++;
+    }
+  }
+  return groups > 0;
+}
+function assertNoWildcard(v, field) {
+  if (/[*?]/.test(v)) {
+    throw new ValidationError(
+      `${field} must not contain a wildcard ("*" or "?"): MEGAcmd expands it AFTER you approve, so the preview could not show what would be affected. Use usePcre=true to act on many nodes - it lists the matches first and operates on those exact nodes.`
+    );
+  }
+  return v;
+}
+function assertLocalPath(p, field = "localPath") {
+  rejectNul(p);
+  const t = p.trim();
+  if (t === "") throw new ValidationError(`${field} is empty.`);
+  const abs = resolve4(t);
+  rejectArgvQuote(abs, field);
+  assertNotConfigDir(abs);
+  assertNotTrustRoot(abs);
+  return abs;
+}
+function sessionStoreWarning(paths, opts = {}) {
+  const { twoWay = false, binDir } = opts;
+  const found = paths.flatMap((p) => sessionStoresWithin(p, binDir));
+  const stores = [...new Set(found)];
+  if (stores.length === 0) return "";
+  const names = stores.map((s) => basename2(s)).join('","');
+  const lines = [
+    `WARNING: this includes the MEGAcmd session store (${stores.join(", ")}), which holds this`,
+    "account's MASTER KEY - it cannot be rotated, and changing your password does not replace it.",
+    "Anyone you later share or export this folder to could read it."
+  ];
+  if (twoWay) lines.push("A two-way sync can also WRITE into the live store and break your login.");
+  lines.push(`Exclude it first: mega_sync_ignore(action="add-exclusion", filters=["${names}"]).`);
+  return `
+
+${lines.join("\n")}`;
 }
 
 // src/confirm.ts
@@ -21887,23 +22145,45 @@ function createConfirmStore(ttlMs = 12e4, clock = Date.now) {
 }
 
 // src/runtime.ts
+function configTrustRoots(config2) {
+  return [
+    ...config2.systemAppBinDirs ?? [],
+    ...config2.megacmdDir ? [config2.megacmdDir] : [],
+    ...config2.bundledDir ? [config2.bundledDir] : [],
+    config2.cacheDir
+  ];
+}
 function createRuntime(config2) {
+  publishMegacmdBinDir(null, configTrustRoots(config2));
   let resolvedPromise;
   let serverReady;
   let integrityVerified;
+  let binDirPromise;
   const getResolved = () => resolvedPromise ??= resolveBinaries(config2);
+  const getBinDir = () => binDirPromise ??= (async () => {
+    const r = await getResolved();
+    if (!r) return null;
+    const dir = r.binDir ?? (r.source === "path" ? await resolvePathBinDir() : null);
+    publishMegacmdBinDir(dir, configTrustRoots(config2));
+    return dir;
+  })();
   const run = async (cmd, args, opts) => {
     const resolved = await getResolved();
     if (!resolved) {
       return { code: -1, stdout: "", stderr: "", spawnError: "NO_MEGACMD" };
     }
     integrityVerified ??= (async () => {
-      const binDir = resolved.binDir ?? (resolved.source === "path" ? await resolvePathBinDir() : null);
-      const serverBin = binDir ? join4(binDir, serverName()) : resolved.serverBin;
+      const binDir = await getBinDir();
+      const serverBin = binDir ? join5(binDir, serverName()) : resolved.serverBin;
+      const clientBin = resolved.clientInvocation("whoami", []).bin;
       const meta = resolved.source === "cache" ? await readActiveCacheMeta(config2) : null;
       return verifyResolvedBinary(
-        { binDir, serverBin },
-        { teamId: config2.download.teamId, serverSha256: meta?.serverSha256 }
+        { binDir, serverBin, clientBin: binDir ? join5(binDir, basename3(clientBin)) : clientBin, source: resolved.source },
+        {
+          teamId: config2.download.teamId,
+          serverSha256: meta?.serverSha256,
+          winThumbprint: config2.download.winThumbprint
+        }
       );
     })();
     if (!await integrityVerified) {
@@ -21917,13 +22197,17 @@ function createRuntime(config2) {
     }
     return execClient(resolved, cmd, args, opts);
   };
+  void getBinDir().catch(() => {
+  });
   return {
     config: config2,
     confirm: createConfirmStore(),
     run,
     getResolved,
+    getBinDir,
     invalidateResolved: () => {
       resolvedPromise = void 0;
+      binDirPromise = void 0;
       serverReady = void 0;
       integrityVerified = void 0;
     },
@@ -21946,63 +22230,6 @@ function ok(text, structured) {
 }
 function err(text, structured) {
   return build(text, structured, true);
-}
-
-// src/paths.ts
-import { resolve as resolve3, sep } from "node:path";
-import { homedir as homedir3 } from "node:os";
-var ValidationError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "ValidationError";
-  }
-};
-function assertNotConfigDir(abs) {
-  const cfg = resolve3(homedir3(), ".megaCmd");
-  if (abs === cfg || abs.startsWith(cfg + sep)) {
-    throw new ValidationError("Refusing to access the MEGAcmd configuration directory.");
-  }
-}
-function rejectNul(p) {
-  if (p.includes(String.fromCharCode(0))) throw new ValidationError("Path contains a NUL byte.");
-}
-function assertRemotePath(p, field = "remotePath") {
-  rejectNul(p);
-  const t = p.trim();
-  if (t === "") throw new ValidationError(`${field} is empty.`);
-  if (!t.startsWith("/")) {
-    throw new ValidationError(`${field} must be an absolute MEGA path starting with "/".`);
-  }
-  return t;
-}
-function assertOptionalRemotePath(p, field = "remotePath") {
-  return p === void 0 ? void 0 : assertRemotePath(p, field);
-}
-function assertNoFlag(v, field) {
-  rejectNul(v);
-  const t = v.trim();
-  if (t === "") throw new ValidationError(`${field} is empty.`);
-  if (t.startsWith("-")) throw new ValidationError(`${field} must not start with "-".`);
-  return t;
-}
-function assertConstraint(v, field) {
-  rejectNul(v);
-  const t = v.trim();
-  if (t === "") throw new ValidationError(`${field} is empty.`);
-  if (!/^[+-]?\d+[A-Za-z]?([+-]?\d+[A-Za-z]?)*$/.test(t)) {
-    throw new ValidationError(
-      `${field} has an invalid format. Use signed number+unit forms, e.g. "-30d", "+1m12d3h", "-3d+1h" (time) or "-100K", "-4M+100K" (size).`
-    );
-  }
-  return t;
-}
-function assertLocalPath(p, field = "localPath") {
-  rejectNul(p);
-  const t = p.trim();
-  if (t === "") throw new ValidationError(`${field} is empty.`);
-  const abs = resolve3(t);
-  assertNotConfigDir(abs);
-  return abs;
 }
 
 // src/tools/helpers.ts
@@ -22038,7 +22265,7 @@ async function pcreGate(rt, action, normArgs, confirm, pattern, summaryFor) {
   if (!confirm) {
     const prev = await pcreMatchPreview(rt, pattern);
     if (!prev.ok) return { proceed: false, result: err(prev.error) };
-    const gate2 = checkConfirm(rt, action, normArgs, void 0, summaryFor(prev.count, prev.text));
+    const gate2 = checkConfirm(rt, action, normArgs, void 0, summaryFor(prev.count, prev.text).split("\n"));
     const tok = gate2.structuredContent?.confirmToken;
     if (tok) stashPcrePlan(tok, prev.handles);
     return { proceed: false, result: gate2 };
@@ -22089,7 +22316,17 @@ async function runToResult(rt, cmd, args, onSuccess) {
   if (r.code !== 0) return err(classifyExit(r), { ok: false, code: r.code });
   return onSuccess(r);
 }
-function checkConfirm(rt, action, normArgs, confirm, summary) {
+var CONTROL_ESCAPES = {
+  "\n": "\\n",
+  "\r": "\\r",
+  "	": "\\t",
+  "\x1B": "\\e"
+};
+function previewSafe(v) {
+  return v.replace(/[\x00-\x1f\x7f]/g, (c) => CONTROL_ESCAPES[c] ?? `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
+}
+function checkConfirm(rt, action, normArgs, confirm, rawSummary) {
+  const summary = Array.isArray(rawSummary) ? rawSummary.map(previewSafe).join("\n") : previewSafe(rawSummary);
   if (!confirm) {
     const token = rt.confirm.issue(action, normArgs);
     return ok(
@@ -22190,11 +22427,11 @@ function registerSetup(server, rt) {
 }
 
 // src/tools/whoami.ts
-import { join as join5 } from "node:path";
-import { realpathSync as realpathSync2 } from "node:fs";
+import { join as join6 } from "node:path";
+import { realpathSync as realpathSync3 } from "node:fs";
 function realDir(dir) {
   try {
-    return realpathSync2.native(dir).replace(/^\\\\\?\\/, "");
+    return realpathSync3.native(dir).replace(/^\\\\\?\\/, "");
   } catch {
     return dir;
   }
@@ -22208,7 +22445,7 @@ function loginInstructions(binDir, helperPath) {
   ${helperPath}`);
   }
   if (binDir) {
-    const launch = process.platform === "win32" ? `"${join5(realDir(binDir), "MEGAcmdShell.exe")}"` : `PATH="${binDir}:$PATH" MEGAcmdShell`;
+    const launch = process.platform === "win32" ? `"${join6(realDir(binDir), "MEGAcmdShell.exe")}"` : `PATH="${binDir}:$PATH" MEGAcmdShell`;
     lines.push("", `- Or in a terminal:
   ${launch}`);
   } else {
@@ -22544,7 +22781,7 @@ function registerReadOnly(server, rt) {
       if (offset === null) return err("Invalid pageToken. Omit it to start from the beginning of the results.");
       const args = [];
       if (path) args.push(path);
-      if (pattern) args.push(`--pattern=${pattern}`);
+      if (pattern) args.push(`--pattern=${assertFlagValue(pattern, "pattern")}`);
       if (type) args.push(`--type=${type === "folder" ? "d" : "f"}`);
       if (mtime !== void 0) args.push(`--mtime=${assertConstraint(mtime, "mtime")}`);
       if (size !== void 0) args.push(`--size=${assertConstraint(size, "size")}`);
@@ -22710,7 +22947,7 @@ function registerReadOnly(server, rt) {
 }
 
 // src/tools/mutate.ts
-var NUL = String.fromCharCode(0);
+var PREVIEW_MAX = 50;
 function registerMutate(server, rt) {
   server.registerTool(
     "mega_mkdir",
@@ -22748,7 +22985,7 @@ function registerMutate(server, rt) {
       title: "MEGA: move/rename",
       description: 'Move or rename MEGA cloud node(s). Bulk-capable: pass "srcs" (an explicit list) or "src"+usePcre (a pattern) to move many nodes in ONE confirmed operation \u2014 do NOT loop this tool per file. Requires confirmation.',
       inputSchema: {
-        src: external_exports.string().optional().describe('A single source path; OR a PCRE pattern (with usePcre); OR a native wildcard path like "/Photos/*.jpg".'),
+        src: external_exports.string().optional().describe('A single source path; OR a PCRE pattern (with usePcre). Native "*"/"?" wildcards are not accepted - use usePcre, which lists the matches before you confirm.'),
         srcs: external_exports.array(external_exports.string()).optional().describe("An explicit list of source paths to move together in one confirmed operation. Use for arbitrary selections that are not a single pattern."),
         dst: external_exports.string().describe("Destination: an existing folder to move into, or (single src) the new name."),
         usePcre: external_exports.boolean().default(false).describe('Interpret "src" as a PCRE pattern and move EVERY match.'),
@@ -22760,11 +22997,12 @@ function registerMutate(server, rt) {
       const d = assertRemotePath(dst, "dst");
       if (srcs && srcs.length > 0) {
         const list = srcs.map((s2, i) => assertRemotePath(s2, `srcs[${i}]`));
-        const shown = list.slice(0, 50).join("\n");
-        const more = list.length > 50 ? `
-\u2026(${list.length} total; showing first 50)` : "";
-        const gate2 = checkConfirm(rt, "mega_mv", { srcs: list, dst: d }, confirm, `This will move ${list.length} item(s) to ${d}:
-${shown}${more}`);
+        const summary = [
+          `This will move ${list.length} item(s) to ${d}:`,
+          ...list.slice(0, 50),
+          ...list.length > 50 ? [`\u2026(${list.length} total; showing first 50)`] : []
+        ];
+        const gate2 = checkConfirm(rt, "mega_mv", { srcs: list, dst: d }, confirm, summary);
         if (gate2) return gate2;
         const { done, failed } = await runBulk(rt, "mv", list, [d]);
         return ok(`Moved ${done}/${list.length} item(s) to ${d}${failed ? `; ${failed} failed` : ""}.`, { dst: d, moved: done, failed });
@@ -22787,7 +23025,7 @@ ${t}`
         return ok(`Moved ${done}/${g.handles.length} node(s) to ${d}${failed ? `; ${failed} failed` : ""}.`, { dst: d, moved: done, failed });
       }
       if (!src) throw new ValidationError('Provide "src" (a path or pattern) or "srcs" (a list).');
-      const s = assertRemotePath(src, "src");
+      const s = assertNoWildcard(assertRemotePath(src, "src"), "src");
       const gate = checkConfirm(rt, "mega_mv", { src: s, dst: d }, confirm, `This will move/rename ${s} to ${d}.`);
       if (gate) return gate;
       return runToResult(rt, "mv", [s, d], () => ok(`Moved ${s} -> ${d}.`, { src: s, dst: d }));
@@ -22812,7 +23050,14 @@ ${t}`
       if (raw.length === 0) throw new ValidationError("Provide localPath or localPaths.");
       const lps = raw.map((p) => assertLocalPath(p));
       const rp = assertRemotePath(remotePath);
-      const gate = checkConfirm(rt, "mega_put", { localPaths: lps, remotePath: rp, background }, confirm, `This will upload ${lps.length} item(s) to ${rp}.`);
+      const warn = sessionStoreWarning(lps, { binDir: await rt.getBinDir() });
+      const summary = [
+        `This will upload ${lps.length} item(s) to ${rp}:`,
+        ...lps.slice(0, PREVIEW_MAX).map((p) => `  ${p}`),
+        ...lps.length > PREVIEW_MAX ? [`  ...(${lps.length} total; showing first ${PREVIEW_MAX})`] : [],
+        ...warn.split("\n")
+      ];
+      const gate = checkConfirm(rt, "mega_put", { localPaths: lps, remotePath: rp, background }, confirm, summary);
       if (gate) return gate;
       const args = ["-c", ...background ? ["-q"] : [], ...lps, rp];
       return runToResult(rt, "put", args, () => ok(`Uploaded ${lps.length} item(s) -> ${rp}.`, { localPaths: lps, remotePath: rp, background }));
@@ -22838,7 +23083,7 @@ ${t}`
     },
     async ({ remotePath, link, localDir, password, background, ignoreQuotaWarn, merge: merge2, usePcre, confirm }) => guardRun(async () => {
       const ld = assertLocalPath(localDir, "localDir");
-      if (password !== void 0 && password.includes(NUL)) throw new ValidationError("password contains a NUL byte.");
+      if (password !== void 0) assertSecret(password, "password");
       const isLink = link !== void 0 && link !== "";
       const transferOpts = [
         ...background ? ["-q"] : [],
@@ -22864,7 +23109,7 @@ ${t}`
         const { done, failed } = await runPerHandle(rt, "get", g.handles, (h) => [...transferOpts, h, ld]);
         return ok(`Downloaded ${done} node(s)${failed ? `; ${failed} failed` : ""} into ${ld}.`, { downloaded: done, failed, localDir: ld });
       }
-      const source = isLink ? assertNoFlag(link, "link") : remotePath !== void 0 && remotePath !== "" ? assertRemotePath(remotePath) : "";
+      const source = isLink ? assertNoFlag(link, "link") : remotePath !== void 0 && remotePath !== "" ? assertNoWildcard(assertRemotePath(remotePath), "remotePath") : "";
       if (!source) throw new ValidationError("Provide remotePath or link.");
       const gate = checkConfirm(
         rt,
@@ -22918,7 +23163,6 @@ function parseExportLink(raw) {
 
 // src/tools/dangerous.ts
 var SHARE_LEVEL = { read: "0", readwrite: "1", full: "2", owner: "3" };
-var NUL2 = String.fromCharCode(0);
 function registerDangerous(server, rt) {
   server.registerTool(
     "mega_logout",
@@ -22994,7 +23238,7 @@ ${t}`
         const { done, failed } = await runPerHandle(rt, "rm", g.handles, (h) => ["-r", "-f", h]);
         return ok(`Deleted ${done} node(s)${failed ? `; ${failed} failed` : ""}.`, { deleted: done, failed });
       }
-      const rp = assertRemotePath(remotePath);
+      const rp = assertNoWildcard(assertRemotePath(remotePath), "remotePath");
       const gate = checkConfirm(rt, "mega_rm", { remotePath: rp }, confirm, `This will PERMANENTLY delete ${rp} and all its contents.`);
       if (gate) return gate;
       return runToResult(rt, "rm", ["-r", "-f", rp], () => ok(`Deleted ${rp}.`, { remotePath: rp, deleted: true }));
@@ -23014,6 +23258,7 @@ ${t}`
     },
     async ({ remotePath, all, confirm }) => guardRun(async () => {
       const rp = assertOptionalRemotePath(remotePath);
+      if (rp) assertNoWildcard(rp, "remotePath");
       if (!all && !rp) throw new ValidationError("Provide a remotePath, or set all=true to clear the whole account.");
       const summary = all ? "This will delete ALL prior file versions across the entire account." : `This will delete prior file versions of ${rp}.`;
       const gate = checkConfirm(rt, "mega_deleteversions", { remotePath: rp ?? null, all }, confirm, summary);
@@ -23049,8 +23294,8 @@ ${link}` : `No public link for ${rp2}.`, { remotePath: rp2, link });
         });
       }
       if (action === "create") {
-        if (password !== void 0 && password.includes(NUL2)) throw new ValidationError("password contains a NUL byte.");
-        if (expire !== void 0) assertNoFlag(expire, "expire");
+        if (password !== void 0) assertSecret(password, "password");
+        const exp = expire === void 0 ? void 0 : assertFlagValue(expire, "expire");
         const note = writable ? " These are WRITABLE links \u2014 anyone with the URL can UPLOAD into the folder." : "";
         const createArgs = (node) => [
           "-a",
@@ -23058,7 +23303,7 @@ ${link}` : `No public link for ${rp2}.`, { remotePath: rp2, link });
           ...writable ? ["--writable"] : [],
           ...megaHosted ? ["--mega-hosted"] : [],
           ...password ? [`--password=${password}`] : [],
-          ...expire ? [`--expire=${expire}`] : [],
+          ...exp ? [`--expire=${exp}`] : [],
           node
         ];
         if (usePcre) {
@@ -23077,7 +23322,7 @@ ${t}`
           const { done, failed } = await runPerHandle(rt, "export", g.handles, createArgs);
           return ok(`Created ${done} public link(s)${failed ? `; ${failed} failed` : ""}.`, { created: done, failed });
         }
-        const rp2 = assertRemotePath(remotePath);
+        const rp2 = assertNoWildcard(assertRemotePath(remotePath), "remotePath");
         const gate2 = checkConfirm(
           rt,
           "mega_export:create",
@@ -23159,7 +23404,7 @@ ${t}`
           const { done, failed } = await runPerHandle(rt, "share", g.handles, addArgs);
           return ok(`Shared ${done} node(s) with ${withEmail}${failed ? `; ${failed} failed` : ""}.`, { withEmail, shared: done, failed });
         }
-        const rp2 = assertRemotePath(remotePath ?? "", "remotePath");
+        const rp2 = assertNoWildcard(assertRemotePath(remotePath ?? "", "remotePath"), "remotePath");
         const gate2 = checkConfirm(rt, "mega_share:add", { remotePath: rp2, withEmail, level: level ?? "read" }, confirm, `This will share ${rp2} with ${withEmail} (${level ?? "read"} access).`);
         if (gate2) return gate2;
         return runToResult(rt, "share", addArgs(rp2), () => ok(`Shared ${rp2} with ${withEmail} (${level ?? "read"}).`, { remotePath: rp2, withEmail, level: level ?? "read" }));
@@ -23244,7 +23489,6 @@ function registerContacts(server, rt) {
 // src/tools/manage.ts
 var TRANSFER_FLAG = { pause: "-p", resume: "-r", cancel: "-c" };
 var IPC_FLAG = { accept: "-a", deny: "-d", ignore: "-i" };
-var NUL3 = String.fromCharCode(0);
 function registerManage(server, rt) {
   server.registerTool(
     "mega_attr_set",
@@ -23354,17 +23598,15 @@ function registerManage(server, rt) {
     },
     async ({ email: email2, action, message, confirm }) => guardRun(async () => {
       const em = assertNoFlag(email2, "email");
-      if (message !== void 0 && message.includes(String.fromCharCode(0))) {
-        throw new ValidationError("message contains a NUL byte.");
-      }
+      const msg = message === void 0 ? void 0 : assertFlagValue(message, "message");
       const summary = action === "delete" ? `This will withdraw the contact invitation to ${em}.` : action === "resend" ? `This will resend the contact invitation to ${em}.` : `This will send a contact invitation email to ${em}.`;
-      const gate = checkConfirm(rt, "mega_invite", { email: em, action, message: message ?? null }, confirm, summary);
+      const gate = checkConfirm(rt, "mega_invite", { email: em, action, message: msg ?? null }, confirm, summary);
       if (gate) return gate;
       const args = [];
       if (action === "delete") args.push("-d");
       else if (action === "resend") args.push("-r");
       args.push(em);
-      if (action === "send" && message) args.push(`--message=${message}`);
+      if (action === "send" && msg) args.push(`--message=${msg}`);
       return runToResult(rt, "invite", args, () => ok(summary.replace(/^This will /, "Done: "), { email: em, action }));
     })
   );
@@ -23406,12 +23648,12 @@ function registerManage(server, rt) {
       if (!/^https?:\/\//i.test(lk) && !lk.includes("#") && !/^mega:/i.test(lk)) {
         throw new ValidationError("link does not look like a MEGA public link.");
       }
-      if (password !== void 0 && password.includes(NUL3)) throw new ValidationError("password contains a NUL byte.");
+      const pw = password === void 0 ? void 0 : assertSecret(password, "password");
       const rp = assertRemotePath(remotePath);
       const summary = `This will import the contents of the provided link into ${rp}.`;
       const gate = checkConfirm(rt, "mega_import", { link: lk, remotePath: rp, hasPassword: password !== void 0 && password !== "" }, confirm, summary);
       if (gate) return gate;
-      const args = [lk, ...password ? [`--password=${password}`] : [], rp];
+      const args = [lk, ...pw ? [`--password=${pw}`] : [], rp];
       return runToResult(rt, "import", args, () => ok(`Imported the link into ${rp}.`, { remotePath: rp }));
     })
   );
@@ -23540,7 +23782,10 @@ function registerSync(server, rt) {
     async ({ localPath, remotePath, confirm }) => guardRun(async () => {
       const lp = assertLocalPath(localPath);
       const rp = assertRemotePath(remotePath);
-      const summary = `This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`;
+      const summary = [
+        `This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`,
+        ...sessionStoreWarning([lp], { twoWay: true, binDir: await rt.getBinDir() }).split("\n")
+      ];
       const gate = checkConfirm(rt, "mega_sync_add", { localPath: lp, remotePath: rp }, confirm, summary);
       if (gate) return gate;
       return runToResult(rt, "sync", [lp, rp], () => ok(`Started sync ${lp} <-> ${rp}.`, { localPath: lp, remotePath: rp }));
@@ -23599,13 +23844,14 @@ function registerSync(server, rt) {
     async ({ localPath, remotePath, period, numBackups, confirm }) => guardRun(async () => {
       const lp = assertLocalPath(localPath);
       const rp = assertRemotePath(remotePath);
-      if (period.includes(String.fromCharCode(0)) || period.trim() === "") {
-        throw new ValidationError("period is empty or invalid.");
-      }
-      const summary = `This will configure a periodic backup of ${lp} into ${rp} (period "${period}", keep ${numBackups}).`;
-      const gate = checkConfirm(rt, "mega_backup_add", { localPath: lp, remotePath: rp, period, numBackups }, confirm, summary);
+      const per = assertFlagValue(period, "period");
+      const summary = [
+        `This will configure a periodic backup of ${lp} into ${rp} (period "${per}", keep ${numBackups}).`,
+        ...sessionStoreWarning([lp], { binDir: await rt.getBinDir() }).split("\n")
+      ];
+      const gate = checkConfirm(rt, "mega_backup_add", { localPath: lp, remotePath: rp, period: per, numBackups }, confirm, summary);
       if (gate) return gate;
-      const args = [lp, rp, `--period=${period}`, `--num-backups=${numBackups}`];
+      const args = [lp, rp, `--period=${per}`, `--num-backups=${numBackups}`];
       return runToResult(rt, "backup", args, () => ok(`Configured backup ${lp} -> ${rp}.`, { localPath: lp, remotePath: rp }));
     })
   );
@@ -23696,17 +23942,20 @@ function registerSync(server, rt) {
 // src/tools/cat.ts
 var DEFAULT_MAX = 1048576;
 var HARD_MAX = 10485760;
-var NUL4 = String.fromCharCode(0);
+var NUL = String.fromCharCode(0);
+var REPLACEMENT = "\uFFFD";
 function looksBinary(s) {
-  if (s.includes(NUL4)) return true;
+  if (s.includes(NUL)) return true;
   const sample = s.slice(0, 8192);
   if (sample.length === 0) return false;
   let nonText = 0;
   for (let i = 0; i < sample.length; i++) {
     const c = sample.charCodeAt(i);
-    if (c < 9 || c > 13 && c < 32) nonText++;
+    if (c === 27) return true;
+    if (c < 9 || c > 13 && c < 32 || c === 127) nonText++;
+    else if (sample[i] === REPLACEMENT) nonText++;
   }
-  return nonText / sample.length > 0.3;
+  return nonText / sample.length > 0.05;
 }
 function registerCat(server, rt) {
   server.registerTool(
@@ -23761,10 +24010,10 @@ function registerAll(server, rt) {
 
 // src/index.ts
 function resolveVersion() {
-  const here = dirname3(fileURLToPath3(import.meta.url));
+  const here = dirname4(fileURLToPath3(import.meta.url));
   for (const rel of ["../manifest.json", "../package.json"]) {
     try {
-      const v = JSON.parse(readFileSync(join6(here, rel), "utf8")).version;
+      const v = JSON.parse(readFileSync(join7(here, rel), "utf8")).version;
       if (typeof v === "string" && v) return v;
     } catch {
     }

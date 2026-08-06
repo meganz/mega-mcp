@@ -1,7 +1,7 @@
 import type { RunResult } from './types.js';
 
 /**
- * MEGAcmd client exit codes (§A.2). The client negates the internal negative
+ * MEGAcmd client exit codes. The client negates the internal negative
  * MCMD_* enum to a positive POSIX code, all < 256. Drive control flow off these
  * numbers, never off stderr text.
  */
@@ -69,8 +69,7 @@ export function redact(text: string): string {
 
 /**
  * Map an exit code (+ optional stderr) to a user-facing message. Pairs the
- * numeric table with a defensive stderr fallback for unknown/divergent codes
- * (§A.2 caveat).
+ * numeric table with a defensive stderr fallback for unknown/divergent codes.
  */
 export function classifyExit(
   result: Pick<RunResult, 'code' | 'stderr' | 'spawnError' | 'timedOut' | 'maxBufferExceeded'>,

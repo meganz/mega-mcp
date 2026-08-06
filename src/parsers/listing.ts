@@ -28,7 +28,7 @@ export interface CappedListing {
  * at most `max` non-empty lines AND at most MAX_LISTING_CHARS characters,
  * starting at data-line `offset`. Two bounds, not one — the line cap keeps the
  * row COUNT sane; the char cap keeps a page of very wide rows from overflowing
- * the tool response regardless of line count (HARD CONSTRAINT 4). At least one
+ * the tool response regardless of line count. At least one
  * data line is always emitted (even if it alone exceeds the char budget) so
  * paging can never livelock on a single monster row.
  *

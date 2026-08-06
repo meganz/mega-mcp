@@ -17,7 +17,26 @@ MCP server configuration.
   the plan tier, but a fail-closed allowlist parser returns only plan + storage —
   the raw `session` id, master/recovery key, and payment data are never returned.
 - Destructive and data-moving actions (`rm`, `deleteversions`, `export`, `share`,
-  `get`, `put`, `mv`) are **confirm-gated** via a two-call token protocol.
+  `get`, `put`, `mv`) are **confirm-gated** via a two-call token protocol: the first
+  call returns a preview plus a single-use token and executes nothing; only a second
+  call carrying that token runs.
+- **The session store is off-limits to every tool.** MEGAcmd's `session` file holds
+  material from which the account **master key** can be recovered, and unlike a
+  session id the master key cannot be rotated. No local path that resolves to that
+  store — under `$HOME`, beside the MEGAcmd executable on Windows, or through any
+  spelling the OS folds to the same object — can be read or written. A bulk backup
+  that merely *contains* it is allowed but says so in the preview. Transfers into
+  the MEGAcmd program directory are refused too, since a file dropped there would be
+  loaded by the MEGAcmd process itself.
+
+> [!NOTE]
+> **What the confirmation protocol is and is not.** MCP has no native confirm
+> dialog, so the two-call token is a *two-phase commit*, not proof a human agreed:
+> the token goes to the model, and nothing stops a model from calling twice in the
+> same turn. It reliably prevents accidental one-shot damage and gives your MCP
+> client a preview to show you — but the control that actually asks *you* is your
+> client's own tool-approval prompt. If you set a tool to "always allow", you are
+> removing the human checkpoint, not just the click.
 
 > [!IMPORTANT]
 > **These guardrails are enforced at the MCP layer only — they do not sandbox
@@ -195,9 +214,15 @@ that out-of-band session automatically.
   `mega_version`, `mega_mediainfo`, `mega_attr`, `mega_errorcode`
 - Read-only (auto), sync/backup status: `mega_sync_list`, `mega_backup_list`,
   `mega_sync_issues`, `mega_sync_config`
-- Read-only matching options: `ls`/`find` accept `usePcre` (Perl regex). The
-  destructive/exfiltration ops (`rm`/`export`/`share`/`get`) also accept
-  `usePcre`, but first show the matched node set in their confirmation preview.
+- Read-only matching options: `ls`/`find` accept `usePcre` (Perl regex) and native
+  `*`/`?` wildcards. The destructive/exfiltration ops (`rm`/`export`/`share`/`get`)
+  also accept `usePcre`, but first show the matched node set in their confirmation
+  preview and then act on exactly those nodes.
+- **Matching many nodes destructively requires `usePcre`.** Since 1.0.2 the
+  destructive and link-creating tools no longer accept native `*`/`?` in a path.
+  MEGAcmd expands those **server-side, after you approve**, so the preview could
+  name one node while several were affected — `usePcre: true` lists the matches
+  before you confirm and operates on exactly those.
 - Mutating (auto): `mega_mkdir`, `mega_cp`
 - Settings: `mega_config` (show is auto; changing a value is confirm-gated;
   turning HTTPS off is refused)

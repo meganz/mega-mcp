@@ -6,21 +6,10 @@ import { ok, err } from '../mcpResult.js';
 import { ensureMacLoginHelper } from '../download/megacmd.js';
 
 /**
- * Out-of-band login instructions. Login MUST use the MEGAcmd interactive shell,
- * where `login <email>` prompts for the password at a HIDDEN prompt. The
- * one-shot `mega-login` client is non-interactive and would require the password
- * as an argument (exposed in argv/shell history), which we never instruct. The
- * password is never seen by the AI either way. `helperPath` is the (self-healed)
- * double-click helper when available.
- */
-/**
- * Resolve a directory to its real on-disk path. Under an MSIX-packaged Claude
- * the connector's %LOCALAPPDATA% is redirected to a package-private LocalCache:
- * the connector sees the virtual path (C:\Users\<u>\AppData\Local\MEGAcmd) but a
- * normal user terminal needs the real physical path
- * (…\Packages\<family>\LocalCache\Local\MEGAcmd). fs.realpath native (Windows:
- * GetFinalPathNameByHandle) resolves the redirect. Falls back to the input on
- * any error (non-MSIX installs already return the same path).
+ * Resolve a directory to its real on-disk path. Under an MSIX-packaged Claude the
+ * connector's %LOCALAPPDATA% is redirected to a package-private LocalCache, so the
+ * connector sees a virtual path where a normal user terminal needs the physical one.
+ * realpath native (Windows: GetFinalPathNameByHandle) resolves the redirect.
  */
 function realDir(dir: string): string {
   try {
@@ -30,6 +19,12 @@ function realDir(dir: string): string {
   }
 }
 
+/**
+ * Out-of-band login instructions. Login MUST use the MEGAcmd interactive shell,
+ * where `login <email>` prompts for the password at a HIDDEN prompt; the one-shot
+ * `mega-login` client would need the password in argv (and shell history), so we
+ * never instruct it. The password is never seen by the AI either way.
+ */
 function loginInstructions(binDir: string | null, helperPath: string | null): string {
   const lines = [
     'Not logged in to MEGA. Log in yourself - your password is entered at a hidden prompt and is never seen by the AI assistant.',
@@ -55,9 +50,8 @@ function loginInstructions(binDir: string | null, helperPath: string | null): st
 }
 
 /**
- * mega_whoami - report the logged-in MEGA account (Section C). Read-only,
- * auto-allow. Returns ONLY { loggedIn, email? }; never session material
- * (HARD CONSTRAINT 2).
+ * mega_whoami - report the logged-in MEGA account. Read-only, auto-allow.
+ * Returns ONLY { loggedIn, email? }; never session material.
  */
 export function registerWhoami(server: McpServer, rt: Runtime): void {
   server.registerTool(

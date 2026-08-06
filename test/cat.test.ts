@@ -15,6 +15,7 @@ function fakeRt(run: Runtime['run'], config: Partial<Config> = {}): Runtime {
     confirm: createConfirmStore(),
     run,
     getResolved: async () => null,
+    getBinDir: async () => null,
     invalidateResolved: () => {},
     getAuthState: async () => ({ loggedIn: true, reason: 'ok' }),
     ensureReady: async () => ({ loggedIn: true, reason: 'ok' }),

@@ -19,7 +19,7 @@ export interface DownloadSpec {
 export interface Config {
   /** User-configured directory containing the mega-* client binaries (optional). */
   megacmdDir?: string;
-  /** Base dir for bundled binaries (C2). Platform/arch subdir is appended at resolve time. */
+  /** Base dir for bundled binaries. Platform/arch subdir is appended at resolve time. */
   bundledDir?: string;
   /** Per-user cache root where a runtime-downloaded MEGAcmd is stored. */
   cacheDir: string;

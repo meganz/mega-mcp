@@ -2,12 +2,11 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
-import { assertRemotePath, assertOptionalRemotePath, assertNoFlag, ValidationError } from '../paths.js';
+import { assertRemotePath, assertOptionalRemotePath, assertNoFlag, assertFlagValue, assertSecret, assertNoWildcard, ValidationError } from '../paths.js';
 import { parseExportLink } from '../parsers/exportLink.js';
 import { guardRun, runToResult, checkConfirm, pcreGate, runPerHandle } from './helpers.js';
 
 const SHARE_LEVEL: Record<string, string> = { read: '0', readwrite: '1', full: '2', owner: '3' };
-const NUL = String.fromCharCode(0);
 
 export function registerDangerous(server: McpServer, rt: Runtime): void {
   // mega_logout — end the current MEGA session (server-side invalidation).
@@ -99,7 +98,9 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
           const { done, failed } = await runPerHandle(rt, 'rm', g.handles, (h) => ['-r', '-f', h]);
           return ok(`Deleted ${done} node(s)${failed ? `; ${failed} failed` : ''}.`, { deleted: done, failed });
         }
-        const rp = assertRemotePath(remotePath);
+        // No native wildcard here: MEGAcmd would expand it AFTER approval, so the
+        // one-line preview could not name what is actually being deleted.
+        const rp = assertNoWildcard(assertRemotePath(remotePath), 'remotePath');
         const gate = checkConfirm(rt, 'mega_rm', { remotePath: rp }, confirm, `This will PERMANENTLY delete ${rp} and all its contents.`);
         if (gate) return gate;
         return runToResult(rt, 'rm', ['-r', '-f', rp], () => ok(`Deleted ${rp}.`, { remotePath: rp, deleted: true }));
@@ -123,10 +124,11 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
     async ({ remotePath, all, confirm }) =>
       guardRun(async () => {
         const rp = assertOptionalRemotePath(remotePath);
+        if (rp) assertNoWildcard(rp, 'remotePath');
         if (!all && !rp) throw new ValidationError('Provide a remotePath, or set all=true to clear the whole account.');
         const summary = all
           ? 'This will delete ALL prior file versions across the entire account.'
-          : `This will delete prior file versions of ${rp}.`;
+          : `This will delete prior file versions of ${rp as string}.`;
         const gate = checkConfirm(rt, 'mega_deleteversions', { remotePath: rp ?? null, all }, confirm, summary);
         if (gate) return gate;
         const args = all ? ['-f', '--all'] : ['-f', rp as string];
@@ -165,8 +167,8 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
           });
         }
         if (action === 'create') {
-          if (password !== undefined && password.includes(NUL)) throw new ValidationError('password contains a NUL byte.');
-          if (expire !== undefined) assertNoFlag(expire, 'expire');
+          if (password !== undefined) assertSecret(password, 'password');
+          const exp = expire === undefined ? undefined : assertFlagValue(expire, 'expire');
           const note = writable ? ' These are WRITABLE links — anyone with the URL can UPLOAD into the folder.' : '';
           const createArgs = (node: string) => [
             '-a',
@@ -174,7 +176,7 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
             ...(writable ? ['--writable'] : []),
             ...(megaHosted ? ['--mega-hosted'] : []),
             ...(password ? [`--password=${password}`] : []),
-            ...(expire ? [`--expire=${expire}`] : []),
+            ...(exp ? [`--expire=${exp}`] : []),
             node,
           ];
           if (usePcre) {
@@ -192,7 +194,9 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
             const { done, failed } = await runPerHandle(rt, 'export', g.handles, createArgs);
             return ok(`Created ${done} public link(s)${failed ? `; ${failed} failed` : ''}.`, { created: done, failed });
           }
-          const rp = assertRemotePath(remotePath);
+          // A wildcard here would publish a link per matched node while the preview
+          // named one — the exfiltration equivalent of the mega_rm case.
+          const rp = assertNoWildcard(assertRemotePath(remotePath), 'remotePath');
           const gate = checkConfirm(
             rt,
             'mega_export:create',
@@ -281,7 +285,7 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
             const { done, failed } = await runPerHandle(rt, 'share', g.handles, addArgs);
             return ok(`Shared ${done} node(s) with ${withEmail}${failed ? `; ${failed} failed` : ''}.`, { withEmail, shared: done, failed });
           }
-          const rp = assertRemotePath(remotePath ?? '', 'remotePath');
+          const rp = assertNoWildcard(assertRemotePath(remotePath ?? '', 'remotePath'), 'remotePath');
           const gate = checkConfirm(rt, 'mega_share:add', { remotePath: rp, withEmail, level: level ?? 'read' }, confirm, `This will share ${rp} with ${withEmail} (${level ?? 'read'} access).`);
           if (gate) return gate;
           return runToResult(rt, 'share', addArgs(rp), () => ok(`Shared ${rp} with ${withEmail} (${level ?? 'read'}).`, { remotePath: rp, withEmail, level: level ?? 'read' }));

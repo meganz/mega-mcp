@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
 import { ExitCode, classifyExit } from '../errors.js';
-import { assertRemotePath, assertLocalPath, assertNoFlag, ValidationError } from '../paths.js';
+import { assertRemotePath, assertLocalPath, assertNoFlag, assertFlagValue, sessionStoreWarning, ValidationError } from '../paths.js';
 import { capLines } from '../parsers/listing.js';
 import { guardRun, runToResult, checkConfirm } from './helpers.js';
 
@@ -54,7 +54,11 @@ export function registerSync(server: McpServer, rt: Runtime): void {
       guardRun(async () => {
         const lp = assertLocalPath(localPath);
         const rp = assertRemotePath(remotePath);
-        const summary = `This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`;
+        // Lines, so the store warning keeps its shape while lp/rp stay escaped.
+        const summary = [
+          `This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`,
+          ...sessionStoreWarning([lp], { twoWay: true, binDir: await rt.getBinDir() }).split('\n'),
+        ];
         const gate = checkConfirm(rt, 'mega_sync_add', { localPath: lp, remotePath: rp }, confirm, summary);
         if (gate) return gate;
         return runToResult(rt, 'sync', [lp, rp], () => ok(`Started sync ${lp} <-> ${rp}.`, { localPath: lp, remotePath: rp }));
@@ -129,13 +133,14 @@ export function registerSync(server: McpServer, rt: Runtime): void {
       guardRun(async () => {
         const lp = assertLocalPath(localPath);
         const rp = assertRemotePath(remotePath);
-        if (period.includes(String.fromCharCode(0)) || period.trim() === '') {
-          throw new ValidationError('period is empty or invalid.');
-        }
-        const summary = `This will configure a periodic backup of ${lp} into ${rp} (period "${period}", keep ${numBackups}).`;
-        const gate = checkConfirm(rt, 'mega_backup_add', { localPath: lp, remotePath: rp, period, numBackups }, confirm, summary);
+        const per = assertFlagValue(period, 'period');
+        const summary = [
+          `This will configure a periodic backup of ${lp} into ${rp} (period "${per}", keep ${numBackups}).`,
+          ...sessionStoreWarning([lp], { binDir: await rt.getBinDir() }).split('\n'),
+        ];
+        const gate = checkConfirm(rt, 'mega_backup_add', { localPath: lp, remotePath: rp, period: per, numBackups }, confirm, summary);
         if (gate) return gate;
-        const args = [lp, rp, `--period=${period}`, `--num-backups=${numBackups}`];
+        const args = [lp, rp, `--period=${per}`, `--num-backups=${numBackups}`];
         return runToResult(rt, 'backup', args, () => ok(`Configured backup ${lp} -> ${rp}.`, { localPath: lp, remotePath: rp }));
       }),
   );

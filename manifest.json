@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "mega-cloud-mcp",
   "display_name": "MEGA Cloud MCP",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Operate your MEGA cloud account (list, search, upload, download, share) via MEGAcmd.",
   "long_description": "Wraps the MEGAcmd CLI so an AI assistant can manage files in your end-to-end encrypted MEGA account. You log in out-of-band yourself in the MEGAcmd interactive shell (login <email>); no credentials ever pass through the AI. Destructive and data-moving actions require explicit confirmation.",
   "author": { "name": "Mega Limited", "email": "jsh@mega.co.nz", "url": "https://github.com/meganz" },

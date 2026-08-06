@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
-import { assertOptionalRemotePath, assertRemotePath, assertNoFlag, assertConstraint } from '../paths.js';
+import { assertOptionalRemotePath, assertRemotePath, assertNoFlag, assertConstraint, assertFlagValue } from '../paths.js';
 import { capLines, decodeCursor, pageInfo, headerRowsUpTo } from '../parsers/listing.js';
 import { parseDf } from '../parsers/df.js';
 import { guardRun, runToResult } from './helpers.js';
@@ -110,7 +110,7 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
         if (offset === null) return err('Invalid pageToken. Omit it to start from the beginning of the results.');
         const args: string[] = [];
         if (path) args.push(path);
-        if (pattern) args.push(`--pattern=${pattern}`);
+        if (pattern) args.push(`--pattern=${assertFlagValue(pattern, 'pattern')}`);
         if (type) args.push(`--type=${type === 'folder' ? 'd' : 'f'}`);
         if (mtime !== undefined) args.push(`--mtime=${assertConstraint(mtime, 'mtime')}`);
         if (size !== undefined) args.push(`--size=${assertConstraint(size, 'size')}`);

@@ -32,6 +32,7 @@ SUBMISSION.md
 WINDOWS-MSIX-INVESTIGATION-REQUEST.md
 SPEC.md
 DESIGN.md
+WINDOWS-REVIEW.md
 
 # Env (broaden beyond .env / .env.local)
 .env.*

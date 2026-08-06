@@ -2,12 +2,11 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok } from '../mcpResult.js';
-import { assertRemotePath, assertNoFlag, ValidationError } from '../paths.js';
+import { assertRemotePath, assertNoFlag, assertFlagValue, assertSecret, ValidationError } from '../paths.js';
 import { guardRun, runToResult, checkConfirm } from './helpers.js';
 
 const TRANSFER_FLAG: Record<string, string> = { pause: '-p', resume: '-r', cancel: '-c' };
 const IPC_FLAG: Record<string, string> = { accept: '-a', deny: '-d', ignore: '-i' };
-const NUL = String.fromCharCode(0);
 
 /**
  * Confirm-gated management mutations surfaced after the command-surface
@@ -148,22 +147,25 @@ export function registerManage(server: McpServer, rt: Runtime): void {
       guardRun(async () => {
         // z.string().email() accepts a leading "-"; re-guard against flag parsing.
         const em = assertNoFlag(email, 'email');
-        if (message !== undefined && message.includes(String.fromCharCode(0))) {
-          throw new ValidationError('message contains a NUL byte.');
-        }
+        // Was NUL-only, unlike every sibling field here: a double quote in the
+        // message re-tokenized the command, so a previewed "send" could arrive as
+        // `-d` (withdraw) with the message silently truncated. A leading "-" is
+        // fine because the value is embedded in a single --message=<v> token.
+        const msg = message === undefined ? undefined : assertFlagValue(message, 'message');
         const summary =
           action === 'delete'
             ? `This will withdraw the contact invitation to ${em}.`
             : action === 'resend'
               ? `This will resend the contact invitation to ${em}.`
               : `This will send a contact invitation email to ${em}.`;
-        const gate = checkConfirm(rt, 'mega_invite', { email: em, action, message: message ?? null }, confirm, summary);
+        // Bind the VALIDATED message, so the token pins what actually gets sent.
+        const gate = checkConfirm(rt, 'mega_invite', { email: em, action, message: msg ?? null }, confirm, summary);
         if (gate) return gate;
         const args: string[] = [];
         if (action === 'delete') args.push('-d');
         else if (action === 'resend') args.push('-r');
         args.push(em);
-        if (action === 'send' && message) args.push(`--message=${message}`);
+        if (action === 'send' && msg) args.push(`--message=${msg}`);
         return runToResult(rt, 'invite', args, () => ok(summary.replace(/^This will /, 'Done: '), { email: em, action }));
       }),
   );
@@ -216,13 +218,15 @@ export function registerManage(server: McpServer, rt: Runtime): void {
         if (!/^https?:\/\//i.test(lk) && !lk.includes('#') && !/^mega:/i.test(lk)) {
           throw new ValidationError('link does not look like a MEGA public link.');
         }
-        if (password !== undefined && password.includes(NUL)) throw new ValidationError('password contains a NUL byte.');
+        const pw = password === undefined ? undefined : assertSecret(password, 'password');
         const rp = assertRemotePath(remotePath);
         const summary = `This will import the contents of the provided link into ${rp}.`;
         // Bind only the presence of a password into the token, never its value.
         const gate = checkConfirm(rt, 'mega_import', { link: lk, remotePath: rp, hasPassword: password !== undefined && password !== '' }, confirm, summary);
         if (gate) return gate;
-        const args = [lk, ...(password ? [`--password=${password}`] : []), rp];
+        // The VALIDATED password, not the raw one: an embedded quote here would
+        // re-tokenize the command and redirect the import to another destination.
+        const args = [lk, ...(pw ? [`--password=${pw}`] : []), rp];
         return runToResult(rt, 'import', args, () => ok(`Imported the link into ${rp}.`, { remotePath: rp }));
       }),
   );

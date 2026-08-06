@@ -206,13 +206,22 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
  * without re-downloading. Written to a stable per-user dir (NOT into the install
  * location, which may be /Applications or a purgeable cache).
  */
+/**
+ * Single-quote a value for POSIX sh. JSON.stringify is NOT a substitute: it yields
+ * a DOUBLE-quoted string, and bash still expands `$(...)`, backticks and `${...}`
+ * inside those, so an install path carrying any of them would execute.
+ */
+function shQuote(v: string): string {
+  return `'${v.replaceAll("'", `'\\''`)}'`;
+}
+
 export async function ensureMacLoginHelper(binDir: string): Promise<string | null> {
   if (process.platform !== 'darwin' || !binDir) return null;
   const dir = join(homedir(), 'Library', 'Application Support', 'mega-cloud-mcp');
   const helperPath = join(dir, 'Login to MEGA.command');
   const script = `#!/bin/bash
 # Log in to MEGA. Your password is entered at a hidden prompt and never leaves this machine.
-DIR=${JSON.stringify(binDir)}
+DIR=${shQuote(binDir)}
 export PATH="$DIR:$PATH"
 # Ensure the background server is up (no-op if it already is).
 "$DIR/mega-cmd" >/dev/null 2>&1 &
@@ -254,29 +263,42 @@ export function sanitizeVersion(v: string): string {
  *  - Linux: no per-binary code signature exists, so fall back to the
  *    install-time SHA-256 when one was recorded (cache installs only).
  *
- * Fails CLOSED (false) only when a signature IS present and does not match.
- * Returns true when it cannot meaningfully verify — no binDir, a layout that
- * isn't a signable .app bundle, or Linux with no recorded hash — so a genuinely
- * working install is never blocked merely by the absence of a signature.
+ * Fails CLOSED (false) when a signature IS present and does not match, and for a
+ * 'cache' install whose layout is not a signable .app — we created that layout
+ * ourselves, so a cache install that is no longer an .app has been tampered with.
+ * Returns true only where verification is genuinely impossible: no binDir, a
+ * NON-cache layout that isn't an .app (loose bundled/PATH binaries), or Linux with
+ * no recorded hash — so a working install is never blocked for lacking a signature.
  */
 export async function verifyResolvedBinary(
-  resolved: { binDir: string | null; serverBin: string },
-  opts: { teamId?: string; serverSha256?: string } = {},
+  resolved: { binDir: string | null; serverBin: string; clientBin?: string; source?: string },
+  opts: { teamId?: string; serverSha256?: string; winThumbprint?: string } = {},
 ): Promise<boolean> {
   try {
     if (process.platform === 'darwin') {
       if (!resolved.binDir) return true;
       // binDir is <...>/MEGAcmd.app/Contents/MacOS; the signable unit is the
-      // enclosing .app. If the layout isn't an .app (e.g. loose bundled
-      // binaries) we can't codesign-verify it → treat as unverifiable, allow.
+      // enclosing .app. A layout that isn't an .app is unverifiable — allowed for
+      // sources we did not lay out, refused for 'cache' (we installed that as an
+      // .app, so anything else means it was relocated or replaced under us).
+      // One check covers both binaries here: they live inside the same sealed bundle.
       const app = resolve(resolved.binDir, '..', '..');
-      if (!basename(app).endsWith('.app')) return true;
+      if (!basename(app).endsWith('.app')) return resolved.source !== 'cache';
       await verifySignatureMac(app, opts.teamId);
       return true;
     }
     if (process.platform === 'win32') {
       if (!resolved.binDir) return true; // no concrete path to point Authenticode at
-      await verifyAuthenticodeWin(resolved.serverBin);
+      // BOTH binaries, because Windows has no bundle seal: they are two loose
+      // files in a directory that (at the stock %LOCALAPPDATA%\MEGAcmd location)
+      // the unprivileged user can write. Verifying only the server left the file
+      // we actually launch — MEGAclient.exe — unchecked, so replacing it while
+      // leaving the genuinely-signed server alone passed the gate.
+      // The thumbprint pin is forwarded here too; it used to apply only to the
+      // downloaded installer, so an operator who set it got nothing at launch.
+      for (const exe of new Set([resolved.serverBin, resolved.clientBin].filter((p): p is string => !!p))) {
+        await verifyAuthenticodeWin(exe, opts.winThumbprint);
+      }
       return true;
     }
     if (process.platform === 'linux') {
@@ -482,16 +504,28 @@ function launchViaExplorer(target: string): void {
 async function verifyAuthenticodeWin(exe: string, thumbprint?: string): Promise<void> {
   // Identity pin (Windows analogue of the macOS Developer-ID team-id pin):
   //  - Status must be 'Valid' (trusted chain; blocks self-signed / untrusted).
-  //  - the signer Organization must be EXACTLY "Mega Limited" — anchored on the
-  //    O= field at a comma/end boundary so "O=Mega Limited Evil" does NOT pass
-  //    (the old unanchored `-notmatch 'Mega Limited'` substring would have).
+  //  - the signer Organization must be EXACTLY "Mega Limited".
   //  - if a certificate thumbprint is configured, it must match exactly.
+  //
+  // The O= comparison reads the PARSED RDN list, one per line, never the flattened
+  // DN string. Matching the flat form is unsafe however it is anchored, because
+  // .NET renders an RDN value containing a comma in double quotes: a certificate
+  // whose CN is `Evil Corp, O=Mega Limited, X` flattens to
+  // `CN="Evil Corp, O=Mega Limited, X", O=Evil Corp, …`, satisfying even a
+  // boundary-anchored `O=Mega Limited(,|$)` while the real Organization is
+  // "Evil Corp". This is not hypothetical quoting: MEGA's own certificate carries
+  // `STREET="Level 21, Huawei Centre 120 Albert Street"`.
+  // Not GetNameInfo(SimpleName) either — that returns the CN, which is a weaker
+  // claim than the Organization a CA actually vets.
   const ps =
     `$ErrorActionPreference='Stop'; ` +
     `$s = Get-AuthenticodeSignature -LiteralPath $env:MEGA_VERIFY_PATH; ` +
     `if ($s.Status -ne 'Valid') { exit 3 }; ` +
-    `if ($s.SignerCertificate.Subject -notmatch 'O=Mega Limited(,|$)') { exit 4 }; ` +
-    `if ($env:MEGA_VERIFY_THUMBPRINT -and ($s.SignerCertificate.Thumbprint -ne $env:MEGA_VERIFY_THUMBPRINT)) { exit 5 }; ` +
+    `$c = $s.SignerCertificate; ` +
+    `if (-not $c) { exit 4 }; ` +
+    `$rdns = $c.SubjectName.Format($true) -split "\`r?\`n" | ForEach-Object { $_.Trim() }; ` +
+    `if (-not ($rdns -ccontains 'O=Mega Limited')) { exit 4 }; ` +
+    `if ($env:MEGA_VERIFY_THUMBPRINT -and ($c.Thumbprint -ne $env:MEGA_VERIFY_THUMBPRINT)) { exit 5 }; ` +
     `exit 0`;
   try {
     await pExecFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], {
