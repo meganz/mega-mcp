@@ -3,7 +3,7 @@
 // receive every commit on the `release` branch automatically, so all of these must hold:
 //   1. dist/plugin-server.js matches a fresh build of src/
 //   2. package.json, manifest.json and .codex-plugin/plugin.json share one version
-//   3. .agents/plugins/marketplace.json lists the plugin from the repo root
+//   3. .agents/plugins/marketplace.json pins the plugin to this repo's `release` branch
 //   4. the bundle starts on its own (no node_modules) and serves its tools over stdio
 import { spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -51,9 +51,19 @@ await check('marketplace lists the plugin', () => {
   const plugin = readJson('.codex-plugin/plugin.json');
   const entry = marketplace.plugins?.find((candidate) => candidate.name === plugin.name);
   if (!entry) throw new Error(`.agents/plugins/marketplace.json has no entry named "${plugin.name}".`);
-  const path = typeof entry.source === 'string' ? entry.source : entry.source?.path;
-  if (!['.', './'].includes(path)) {
-    throw new Error(`"${plugin.name}" must point at the repo root ("./"), got ${JSON.stringify(entry.source)}.`);
+  // The catalog is read from whatever branch the user's marketplace clone tracks,
+  // which is the DEFAULT branch (main) when they add the repo URL in the app and
+  // leave the ref empty. A `local` source would then install main's files too,
+  // skipping release entirely. Pinning the plugin itself to `release` here is what
+  // makes release the production branch for every install path. Checked strictly:
+  // if Codex can't resolve a source it SKIPS the entry, so a typo would make the
+  // plugin silently vanish from the directory rather than fail.
+  const repoUrl = readJson('package.json').repository?.url?.replace(/^git\+/, '');
+  const src = entry.source;
+  if (src?.source !== 'url' || src.url !== repoUrl || src.ref !== 'release' || src.path !== undefined || src.sha !== undefined) {
+    throw new Error(
+      `"${plugin.name}" must be pinned to release: {"source":"url","url":${JSON.stringify(repoUrl)},"ref":"release"}, got ${JSON.stringify(src)}.`,
+    );
   }
   if (!['AVAILABLE', 'INSTALLED_BY_DEFAULT', 'NOT_AVAILABLE'].includes(entry.policy?.installation)) {
     throw new Error(`"${plugin.name}" needs policy.installation (AVAILABLE, INSTALLED_BY_DEFAULT or NOT_AVAILABLE).`);
@@ -66,7 +76,7 @@ await check('marketplace lists the plugin', () => {
   if (!servers.some((server) => server.args?.includes('./dist/plugin-server.js'))) {
     throw new Error(`${plugin.mcpServers} does not launch ./dist/plugin-server.js.`);
   }
-  return `${plugin.name}@${marketplace.name}`;
+  return `${plugin.name}@${marketplace.name} <- ${src.ref}`;
 });
 
 await check('bundle runs standalone', async () => {

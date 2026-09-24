@@ -90,7 +90,11 @@ Install the server in your MCP client:
 - **Claude Desktop:** double-click `mega-cloud-mcp.mcpb` and approve it.
 - **ChatGPT desktop app / OpenAI Codex (plugin):** add this repo as a plugin
   marketplace, then install **MEGA Cloud MCP** from the Plugins Directory (Work
-  or Codex), or run `codex plugin add mega-mcp@mega`:
+  or Codex), or run `codex plugin add mega-mcp@mega`.
+
+  In the app: **Plugins → Add → Add a marketplace**, paste
+  `https://github.com/meganz/mega-mcp` as the Source (leave the other fields
+  empty), then search for **MEGA Cloud MCP** and install it. From the CLI:
 
   ```bash
   codex plugin marketplace add meganz/mega-mcp --ref release
@@ -106,8 +110,9 @@ Install the server in your MCP client:
   ref = "release"
   ```
 
-  Updates install automatically: Codex checks the `release` branch when it
-  starts (`codex plugin marketplace upgrade mega` updates right away). The
+  However the marketplace is added, with or without a ref, the plugin itself is
+  pinned to the `release` branch. Updates install automatically: Codex checks
+  `release` when it starts (`codex plugin marketplace upgrade mega` updates right away). The
   plugin runs the checked-in single-file bundle `dist/plugin-server.js`, so it
   needs Node.js but no `node_modules`. It works wherever Codex runs locally
   (ChatGPT desktop app, Codex CLI, IDE extension), but not in ChatGPT on the
@@ -232,7 +237,17 @@ that out-of-band session automatically.
 ### Releasing the Codex plugin
 
 Plugin users track the `release` branch and get whatever lands there the next
-time Codex starts, so treat `release` as production:
+time Codex starts, so treat `release` as production.
+
+That holds for every install path because `.agents/plugins/marketplace.json`
+pins the plugin's source to `release` (`"source": "url"`, `"ref": "release"`),
+and `check:plugin` fails if that pin changes. The catalog file itself, however,
+is read from whichever branch the user's marketplace clone tracks: the default
+branch (`main`) for anyone who added the repo URL in the app without a ref. A
+change to `marketplace.json` therefore goes live as soon as it reaches `main`.
+The pin also means a marketplace install never runs your local, unreleased
+checkout, so test local builds with a personal marketplace or a hand-registered
+server instead.
 
 1. Land changes on `main`. Whenever `src/` changes, run `npm run build:plugin`
    and commit `dist/plugin-server.js` with it. CI runs `npm run check:plugin`

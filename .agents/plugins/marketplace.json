@@ -7,8 +7,9 @@
     {
       "name": "mega-mcp",
       "source": {
-        "source": "local",
-        "path": "./"
+        "source": "url",
+        "url": "https://github.com/meganz/mega-mcp.git",
+        "ref": "release"
       },
       "policy": {
         "installation": "AVAILABLE",
