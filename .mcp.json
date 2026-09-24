@@ -4,7 +4,10 @@
       "command": "node",
       "args": [
         "./dist/plugin-server.js"
-      ]
+      ],
+      "env": {
+        "MEGA_MCP_EXPOSE_FILES": "false"
+      }
     }
   }
 }
