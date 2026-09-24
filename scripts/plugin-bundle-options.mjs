@@ -19,4 +19,8 @@ export const pluginBundleOptions = {
   format: 'esm',
   sourcemap: false,
   legalComments: 'none',
+  // Marks this bundle as the Codex-plugin distribution; see src/buildFlags.ts.
+  // Only the prompt-to-enable-file-reading path is gated on it, and only this
+  // bundle gets it, so dist/index.js (MCPB / manual stdio) is unaffected.
+  define: { __MEGA_PLUGIN_BUILD__: 'true' },
 };

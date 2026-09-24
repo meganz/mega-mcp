@@ -201,6 +201,11 @@ Removing the connector does **not** automatically remove MEGAcmd or your session
    remove the package (Linux) / delete `~/Library/Caches/mega-cloud-mcp`
    (if the cache fallback was used).
 3. Remove the session store if desired: delete `~/.megaCmd`.
+4. Codex plugin only: if you told the assistant not to ask again about reading
+   file contents, that answer outlives an uninstall and would apply to a
+   reinstall. Ask the assistant to turn file reading off **before** removing the
+   plugin, or delete `file-reading.json` from the plugin's data directory
+   (falling back to the cache directory in step 2).
 
 ## Development
 
@@ -274,10 +279,19 @@ Don't push to `release` directly or force-push it.
   `mega_users`, `mega_showpcr`, `mega_userattr`
 - Opt-in only (`expose_account_details`, off by default — surfaces your own login
   metadata + financial PII): `mega_sessions`, `mega_balance`
-- Opt-in only (`expose_file_contents`, off by default — brings file content into
-  the conversation): `mega_cat` (read a file's text, capped to 1 MB / max 10 MB,
-  text-only). File content is treated as untrusted data; destructive/exfiltration
-  tools stay confirm-gated so embedded instructions cannot cause silent harm.
+- Opt-in only (off by default — brings file content into the conversation):
+  `mega_cat` (read a file's text, capped to 1 MB / max 10 MB, text-only). File
+  content is treated as untrusted data; destructive/exfiltration tools stay
+  confirm-gated so embedded instructions cannot cause silent harm. How it is
+  turned on depends on the distribution:
+  - **Claude Desktop (MCPB):** the `expose_file_contents` checkbox in the
+    extension's settings. Hand-registered servers: `MEGA_MCP_EXPOSE_FILES=true`.
+  - **Codex plugin:** a plugin-provided server's env can't be changed from
+    Codex, so the assistant asks instead. When a request needs a file's contents
+    it calls `mega_file_reading` (confirm-gated), which enables `mega_cat` **until
+    the app is restarted** — you are asked again after that — unless you say not
+    to ask again. Ask the assistant to stop reading your files
+    at any time; that turns it off immediately and clears a remembered answer.
 
 `mega_account` runs `whoami -l` (the only source of the plan tier) but returns
 ONLY plan + storage via a fail-closed allowlist parser — the session list,

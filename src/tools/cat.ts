@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
 import { classifyExit, ExitCode } from '../errors.js';
@@ -61,8 +61,8 @@ export function looksBinary(s: string): boolean {
  * instructions embedded in a file cannot cause silent damage — the user still
  * sees a confirmation preview before anything is deleted/shared/uploaded.
  */
-export function registerCat(server: McpServer, rt: Runtime): void {
-  server.registerTool(
+export function registerCat(server: McpServer, rt: Runtime): RegisteredTool {
+  return server.registerTool(
     'mega_cat',
     {
       title: 'MEGA: read file',
