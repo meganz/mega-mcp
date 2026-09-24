@@ -88,13 +88,30 @@ What this extension does with your data:
 Install the server in your MCP client:
 
 - **Claude Desktop:** double-click `mega-cloud-mcp.mcpb` and approve it.
-- **OpenAI Codex plugin:** this repo includes Codex plugin wrapper files:
-  `.codex-plugin/plugin.json` and `.mcp.json`. The Codex wrapper runs the
-  checked-in single-file bundle at `dist/plugin-server.js`, so an installed
-  plugin does not need `node_modules`. Rebuild that bundle after source changes
-  with `npm install && npm run build:plugin`. The wrapper does **not** need to
-  live on public GitHub unless you want other people or a remote marketplace to
-  install it from that source.
+- **ChatGPT desktop app / OpenAI Codex (plugin):** add this repo as a plugin
+  marketplace, then install **MEGA Cloud MCP** from the Plugins Directory (Work
+  or Codex), or run `codex plugin add mega-mcp@mega`:
+
+  ```bash
+  codex plugin marketplace add meganz/mega-mcp --ref release
+  ```
+
+  Without the Codex CLI, add the same source to `~/.codex/config.toml` and
+  restart the app:
+
+  ```toml
+  [marketplaces.mega]
+  source_type = "git"
+  source = "https://github.com/meganz/mega-mcp.git"
+  ref = "release"
+  ```
+
+  Updates install automatically: Codex checks the `release` branch when it
+  starts (`codex plugin marketplace upgrade mega` updates right away). The
+  plugin runs the checked-in single-file bundle `dist/plugin-server.js`, so it
+  needs Node.js but no `node_modules`. It works wherever Codex runs locally
+  (ChatGPT desktop app, Codex CLI, IDE extension), but not in ChatGPT on the
+  web, which can't start a local MCP server.
 - **OpenAI Codex / other MCP clients:** build the server (`npm install && npm run
   build`), then register it as a standard stdio MCP server — for example, in an
   `mcpServers` config block:
@@ -191,6 +208,7 @@ Removing the connector does **not** automatically remove MEGAcmd or your session
 npm install
 npm run build      # tsc -> dist/
 npm run build:plugin # bundle Codex plugin server -> dist/plugin-server.js
+npm run check:plugin # verify bundle == src/, versions, marketplace entry, standalone start
 npm test           # vitest unit tests (no live MEGAcmd needed)
 npm run typecheck
 
@@ -205,6 +223,26 @@ npm run pack            # build -> stage -> validate -> pack  =>  mega-cloud-mcp
 To exercise live MEGA operations you must (1) install MEGAcmd and (2) log in
 yourself in the MEGAcmd interactive shell (`login <email>`). The server detects
 that out-of-band session automatically.
+
+### Releasing the Codex plugin
+
+Plugin users track the `release` branch and get whatever lands there the next
+time Codex starts, so treat `release` as production:
+
+1. Land changes on `main`. Whenever `src/` changes, run `npm run build:plugin`
+   and commit `dist/plugin-server.js` with it. CI runs `npm run check:plugin`
+   (plus typecheck and tests), which fails if the bundle doesn't match `src/`,
+   the versions in `package.json`, `manifest.json` and
+   `.codex-plugin/plugin.json` differ, the marketplace entry is invalid, or the
+   bundle can't start without `node_modules`.
+2. Bump the version with `npm version patch` (or `minor` / `major`). It also
+   updates `manifest.json` and `.codex-plugin/plugin.json`, then commits and tags.
+3. Push: `git push origin main --follow-tags`.
+4. Promote with `npm run release:plugin`. It re-runs the checks, then
+   fast-forwards `release` to `main`; add `-- --dry-run` to preview what would
+   ship.
+
+Don't push to `release` directly or force-push it.
 
 ## Tools
 
