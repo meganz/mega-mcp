@@ -28,8 +28,9 @@ describe('acquireMegacmd safety guards', () => {
   it('refuses when no URL is configured (or unsupported OS)', async () => {
     const res = await acquireMegacmd(baseCfg({ url: undefined, sha256Allow: [] }));
     expect(res.ok).toBe(false);
-    // darwin: no_url; other platforms short-circuit earlier with unsupported_os.
-    expect(['no_url', 'unsupported_os']).toContain(res.reason);
+    // darwin: no_url; linux never downloads (package-manager install is left to the
+    // user) -> manual_install; other platforms short-circuit earlier with unsupported_os.
+    expect(['no_url', 'manual_install', 'unsupported_os']).toContain(res.reason);
   });
 
   it('refuses a non-MEGA download host (host pin); hash pin is optional, signature is the gate', async () => {
@@ -38,8 +39,9 @@ describe('acquireMegacmd safety guards', () => {
     // optional rollback protection. The host allowlist still rejects pre-download.
     const res = await acquireMegacmd(baseCfg({ url: 'https://evil.example.com/MEGAcmdSetup.dmg', sha256Allow: [] }));
     expect(res.ok).toBe(false);
-    // darwin: host pin throws before any download -> 'network'; other OSes short-circuit unsupported_os.
-    expect(['network', 'unsupported_os']).toContain(res.reason);
+    // darwin: host pin throws before any download -> 'network'; linux never downloads ->
+    // 'manual_install'; other OSes short-circuit unsupported_os.
+    expect(['network', 'manual_install', 'unsupported_os']).toContain(res.reason);
   });
 });
 
