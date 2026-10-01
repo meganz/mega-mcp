@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "mega": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/dist/plugin-server.js"
+      ],
+      "env": {
+        "MEGA_MCP_EXPOSE_FILES": "false"
+      }
+    }
+  }
+}

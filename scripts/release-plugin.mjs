@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Promotes main to the `release` branch that Codex users install from. Whatever lands on
-// `release` reaches every user on their next Codex start, so this refuses to push unless
-// main is clean, matches origin/main and passes the plugin checks.
+// Promotes main to the `release` branch that Codex users install from, and that the Claude
+// directory tracks for plugins/mega-mcp. Whatever lands on `release` reaches every Codex
+// user on their next start, so this refuses to push unless main is clean, matches
+// origin/main and passes the plugin checks.
 //
 // Usage: npm run release:plugin [-- --dry-run]
 import { execFileSync } from 'node:child_process';
@@ -19,8 +20,8 @@ const fail = (message) => {
 if (git('rev-parse', '--abbrev-ref', 'HEAD') !== 'main') fail('check out main first.');
 if (git('status', '--porcelain', '--untracked-files=no')) fail('commit or stash your changes first.');
 // Untracked files in these paths would pass the local checks but be missing from the release.
-if (git('ls-files', '--others', '--exclude-standard', '--', 'src', 'scripts', 'dist', '.agents', '.codex-plugin')) {
-  fail('untracked files under src/, scripts/, dist/, .agents/ or .codex-plugin/: commit or remove them first.');
+if (git('ls-files', '--others', '--exclude-standard', '--', 'src', 'scripts', 'dist', '.agents', '.codex-plugin', '.claude-plugin', 'plugins')) {
+  fail('untracked files under src/, scripts/, dist/, .agents/, .codex-plugin/, .claude-plugin/ or plugins/: commit or remove them first.');
 }
 
 git('fetch', 'origin');

@@ -10,10 +10,11 @@ import { registerAll } from './tools/index.js';
 import { isPluginBuild } from './buildFlags.js';
 
 /** Single source of truth for the version: the bundle's manifest.json (one dir
- * up from dist/index.js), falling back to package.json, then a sentinel. */
+ * up from dist/index.js), falling back to package.json, then the Claude plugin
+ * manifest (plugins/mega-mcp ships neither of the first two), then a sentinel. */
 function resolveVersion(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  for (const rel of ['../manifest.json', '../package.json']) {
+  for (const rel of ['../manifest.json', '../package.json', '../.claude-plugin/plugin.json']) {
     try {
       const v = JSON.parse(readFileSync(join(here, rel), 'utf8')).version;
       if (typeof v === 'string' && v) return v;

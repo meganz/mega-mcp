@@ -2,9 +2,10 @@
 
 An MCP server that lets an AI assistant operate a **MEGA** cloud account by
 wrapping the [MEGAcmd](https://github.com/meganz/MEGAcmd) CLI. It works with any
-MCP client: it ships as a **Claude Desktop Extension** (`.mcpb`) for one-click
-install, and runs under **OpenAI Codex** or any other MCP client via a standard
-MCP server configuration.
+MCP client: it ships as a **Claude Code** and an **OpenAI Codex** plugin from this
+repo's plugin marketplace, as a **Claude Desktop Extension** (`.mcpb`) for Claude
+Desktop chat, and runs under any other MCP client via a standard MCP server
+configuration.
 
 ## Security model (non-negotiable)
 
@@ -85,12 +86,41 @@ What this extension does with your data:
 
 ## Getting started
 
-Install the server in your MCP client:
+Install the server in your MCP client. Where your client supports plugins,
+install from this repo's plugin marketplace: new releases then reach you
+through the `release` branch, with nothing to reinstall.
 
-- **Claude Desktop:** double-click `mega-cloud-mcp.mcpb` and approve it.
-- **ChatGPT desktop app / OpenAI Codex (plugin):** add this repo as a plugin
-  marketplace, then install **MEGA Cloud MCP** from the Plugins Directory (Work
-  or Codex), or run `codex plugin add mega-mcp@mega`.
+- **Claude desktop app (plugin, recommended):**
+
+  1. Open **Customize → Plugins** (the same page is on claude.ai).
+  2. Select **Add → Add marketplace**, enter `meganz/mega-mcp`, and confirm.
+  3. Find **MEGA Cloud MCP** among the plugins the marketplace adds, open it,
+     and select **Add**.
+
+  The plugin is saved to your Claude account. Its MCP server runs in the
+  desktop app's **Code** tab, and in Claude Code on any computer where you sign
+  in with the same account. Claude chat can't start it (see **Claude Desktop
+  chat** below). To get new releases, select **Check for updates** on the
+  Plugins page, or turn on **Sync automatically** for the marketplace.
+
+  From the Claude Code CLI instead, run these in a session:
+
+  ```text
+  /plugin marketplace add meganz/mega-mcp
+  /plugin install mega-mcp@mega
+  ```
+
+  The CLI doesn't auto-update third-party marketplaces by default: turn on
+  auto-update for `mega` under `/plugin` → **Marketplaces**, or run
+  `claude plugin update mega-mcp@mega`.
+
+  However the marketplace is added, the plugin is pinned to the `release`
+  branch. It (`plugins/mega-mcp/`) runs the same single-file bundle as the
+  Codex plugin, so it needs Node.js but no `node_modules`; to try a local
+  checkout, run `claude --plugin-dir ./plugins/mega-mcp`.
+- **ChatGPT desktop app / OpenAI Codex (plugin, recommended):** add this repo
+  as a plugin marketplace, then install **MEGA Cloud MCP** from the Plugins
+  Directory (Work or Codex), or run `codex plugin add mega-mcp@mega`.
 
   In the app: **Plugins → Add → Add a marketplace**, paste
   `https://github.com/meganz/mega-mcp` as the Source (leave the other fields
@@ -115,9 +145,18 @@ Install the server in your MCP client:
   `release` when it starts (`codex plugin marketplace upgrade mega` updates right away). The
   plugin runs the checked-in single-file bundle `dist/plugin-server.js`, so it
   needs Node.js but no `node_modules`. It works wherever Codex runs locally
-  (ChatGPT desktop app, Codex CLI, IDE extension), but not in ChatGPT on the
-  web, which can't start a local MCP server.
-- **OpenAI Codex / other MCP clients:** build the server (`npm install && npm run
+  (ChatGPT desktop app, Codex CLI, IDE extension), but not on the web or
+  mobile (see below).
+- **Claude Desktop chat:** chat doesn't start a plugin's local MCP server, so
+  in the desktop app's chat install the desktop extension instead: double-click
+  `mega-cloud-mcp.mcpb` and approve it. It doesn't update itself; install the
+  new `.mcpb` for each release.
+- **Not available on the web or mobile, in Claude, ChatGPT or Codex:** this
+  server runs on your computer, next to MEGAcmd and your MEGA login session.
+  Claude and ChatGPT on the web or mobile can only connect to remote MCP
+  servers, and Codex cloud tasks (Codex on the web) run on OpenAI's servers,
+  not your computer. Use one of the desktop apps or CLIs above instead.
+- **Other MCP clients (manual):** build the server (`npm install && npm run
   build`), then register it as a standard stdio MCP server — for example, in an
   `mcpServers` config block:
 
@@ -210,15 +249,16 @@ Removing the connector does **not** automatically remove MEGAcmd or your session
    file contents, that answer outlives an uninstall and would apply to a
    reinstall. Ask the assistant to turn file reading off **before** removing the
    plugin, or delete `file-reading.json` from the plugin's data directory
-   (falling back to the cache directory in step 2).
+   (falling back to the cache directory in step 2). The Claude Code plugin keeps
+   that answer in its own data directory, which Claude Code deletes on uninstall.
 
 ## Development
 
 ```bash
 npm install
 npm run build      # tsc -> dist/
-npm run build:plugin # bundle Codex plugin server -> dist/plugin-server.js
-npm run check:plugin # verify bundle == src/, versions, marketplace entry, standalone start
+npm run build:plugin # bundle plugin server -> dist/plugin-server.js, copied into plugins/mega-mcp/
+npm run check:plugin # verify bundle == src/, versions, both marketplace entries, Claude plugin copies, standalone start
 npm test           # vitest unit tests (no live MEGAcmd needed)
 npm run typecheck
 
@@ -234,10 +274,13 @@ To exercise live MEGA operations you must (1) install MEGAcmd and (2) log in
 yourself in the MEGAcmd interactive shell (`login <email>`). The server detects
 that out-of-band session automatically.
 
-### Releasing the Codex plugin
+### Releasing the Codex and Claude plugins
 
 Plugin users track the `release` branch and get whatever lands there the next
-time Codex starts, so treat `release` as production.
+time Codex starts, so treat `release` as production. The Claude plugin is meant
+to be submitted to Anthropic's directory (<https://claude.ai/directory/manage>,
+**Plugin bundle**) with plugin path `plugins/mega-mcp` and tracked branch
+`release`, so the directory scans each release too.
 
 That holds for every install path because `.agents/plugins/marketplace.json`
 pins the plugin's source to `release` (`"source": "url"`, `"ref": "release"`),
@@ -247,16 +290,21 @@ branch (`main`) for anyone who added the repo URL in the app without a ref. A
 change to `marketplace.json` therefore goes live as soon as it reaches `main`.
 The pin also means a marketplace install never runs your local, unreleased
 checkout, so test local builds with a personal marketplace or a hand-registered
-server instead.
+server instead. `.claude-plugin/marketplace.json` does the same for Claude
+Code: its `git-subdir` source pins `plugins/mega-mcp` to `release`, and
+`check:plugin` fails if that pin changes. (Codex reads only
+`.agents/plugins/marketplace.json`, so the two catalogs don't collide.)
 
 1. Land changes on `main`. Whenever `src/` changes, run `npm run build:plugin`
-   and commit `dist/plugin-server.js` with it. CI runs `npm run check:plugin`
-   (plus typecheck and tests), which fails if the bundle doesn't match `src/`,
-   the versions in `package.json`, `manifest.json` and
-   `.codex-plugin/plugin.json` differ, the marketplace entry is invalid, or the
-   bundle can't start without `node_modules`.
+   and commit `dist/plugin-server.js` and the copies it writes into
+   `plugins/mega-mcp/` with it. CI runs `npm run check:plugin` (plus typecheck
+   and tests), which fails if the bundle doesn't match `src/`, the versions in
+   `package.json`, `manifest.json` and the two plugin manifests differ, the
+   marketplace entry is invalid, `plugins/mega-mcp/` is out of date, or the
+   plugin can't start without `node_modules`.
 2. Bump the version with `npm version patch` (or `minor` / `major`). It also
-   updates `manifest.json` and `.codex-plugin/plugin.json`, then commits and tags.
+   updates `manifest.json`, `.codex-plugin/plugin.json` and
+   `plugins/mega-mcp/.claude-plugin/plugin.json`, then commits and tags.
 3. Push: `git push origin main --follow-tags`.
 4. Promote with `npm run release:plugin`. It re-runs the checks, then
    fast-forwards `release` to `main`; add `-- --dry-run` to preview what would
@@ -301,8 +349,8 @@ Don't push to `release` directly or force-push it.
   turned on depends on the distribution:
   - **Claude Desktop (MCPB):** the `expose_file_contents` checkbox in the
     extension's settings. Hand-registered servers: `MEGA_MCP_EXPOSE_FILES=true`.
-  - **Codex plugin:** a plugin-provided server's env can't be changed from
-    Codex, so the assistant asks instead. When a request needs a file's contents
+  - **Codex and Claude Code plugins:** a plugin-provided server's env can't be
+    changed from Codex (or from Cowork), so the assistant asks instead. When a request needs a file's contents
     it calls `mega_file_reading` (confirm-gated), which enables `mega_cat` **until
     the app is restarted** — you are asked again after that — unless you say not
     to ask again. Ask the assistant to stop reading your files

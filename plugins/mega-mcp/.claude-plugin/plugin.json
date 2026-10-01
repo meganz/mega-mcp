@@ -1,0 +1,21 @@
+{
+  "name": "mega-mcp",
+  "displayName": "MEGA Cloud MCP",
+  "version": "1.0.3",
+  "description": "Operate your MEGA cloud account (list, search, upload, download, share) through a local MEGAcmd MCP server. You log in yourself outside the conversation, and destructive or data-moving actions need your confirmation.",
+  "author": {
+    "name": "Mega Limited",
+    "email": "jsh@mega.co.nz",
+    "url": "https://mega.io"
+  },
+  "homepage": "https://github.com/meganz/mega-mcp#readme",
+  "repository": "https://github.com/meganz/mega-mcp",
+  "license": "MIT",
+  "keywords": [
+    "mega",
+    "mcp",
+    "cloud-storage",
+    "files",
+    "megacmd"
+  ]
+}

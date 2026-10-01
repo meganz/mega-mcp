@@ -42,8 +42,9 @@ export function registerAll(server: McpServer, rt: Runtime): void {
  * only when the host's own settings said so (the MCPB checkbox, or the env var
  * for a hand-registered server). Nothing about Claude Desktop changes.
  *
- * The Codex plugin build has no such setting to read - a plugin-provided MCP
- * server's env is fixed by the plugin and user config cannot reach it - so the
+ * The plugin build (Codex and Claude plugins) has no such setting to read - a
+ * plugin-provided MCP server's env is fixed by the plugin, and neither Codex nor
+ * Cowork lets user config reach it - so the
  * tool is ALWAYS registered and merely starts disabled, and mega_file_reading
  * flips it after asking. Registering-then-disabling (rather than registering
  * late) is what makes that possible at all: the SDK emits tools/list_changed on

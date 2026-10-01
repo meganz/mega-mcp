@@ -28,6 +28,23 @@ describe('file-reading preference store', () => {
     }
   });
 
+  it('uses Claude Code\'s CLAUDE_PLUGIN_DATA when PLUGIN_DATA is absent', () => {
+    const data = tmp();
+    const claudeData = tmp();
+    const cache = tmp();
+    try {
+      expect(stateDir(configWith(cache), { CLAUDE_PLUGIN_DATA: claudeData } as NodeJS.ProcessEnv)).toBe(claudeData);
+      expect(
+        stateDir(configWith(cache), { PLUGIN_DATA: data, CLAUDE_PLUGIN_DATA: claudeData } as NodeJS.ProcessEnv),
+      ).toBe(data);
+      expect(stateDir(configWith(cache), { CLAUDE_PLUGIN_DATA: ' ' } as NodeJS.ProcessEnv)).toBe(cache);
+    } finally {
+      rmSync(claudeData, { recursive: true, force: true });
+      rmSync(data, { recursive: true, force: true });
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
+
   it('round-trips the remembered answer and clears it', () => {
     const dir = tmp();
     const cfg = configWith(dir);

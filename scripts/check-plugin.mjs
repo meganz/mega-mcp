@@ -1,20 +1,30 @@
 #!/usr/bin/env node
-// Release gate for the Codex plugin. Users install it from this repo's Git marketplace and
-// receive every commit on the `release` branch automatically, so all of these must hold:
+// Release gate for the Codex and Claude plugins. Codex users install from this repo's Git
+// marketplace and receive every commit on the `release` branch automatically, and the
+// Claude directory scans plugins/mega-mcp on that same branch, so all of these must hold:
 //   1. dist/plugin-server.js matches a fresh build of src/
-//   2. package.json, manifest.json and .codex-plugin/plugin.json share one version
+//   2. package.json, manifest.json and both plugin manifests share one version
 //   3. .agents/plugins/marketplace.json pins the plugin to this repo's `release` branch
-//   4. the bundle starts on its own (no node_modules) and serves its tools over stdio
+//   4. plugins/mega-mcp holds exact copies of the bundle, LICENSE and NOTICE, launches the
+//      bundle from ${CLAUDE_PLUGIN_ROOT}, and has nothing that makes Claude Code run npm
+//   5. .claude-plugin/marketplace.json pins plugins/mega-mcp to the `release` branch too
+//   6. the Claude plugin folder starts on its own (no node_modules), reports its version
+//      and serves its tools over stdio
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { createInterface } from 'node:readline';
 import { build } from 'esbuild';
-import { outfile, pluginBundleOptions, root } from './plugin-bundle-options.mjs';
+import { claudePluginDir, claudePluginMirrors, outfile, pluginBundleOptions, root } from './plugin-bundle-options.mjs';
 
 const REQUIRED_TOOLS = ['mega_whoami', 'mega_ls'];
 const SMOKE_TIMEOUT_MS = 30_000;
+const CLAUDE_MANIFEST = 'plugins/mega-mcp/.claude-plugin/plugin.json';
+const CLAUDE_SERVER_ARG = '${CLAUDE_PLUGIN_ROOT}/dist/plugin-server.js';
+// Claude Code runs `npm ci` / `bun install` when a plugin root has package.json plus one of
+// these, and the directory holds such a version for a reviewer.
+const INSTALL_TRIGGERS = ['package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'bun.lock', 'bun.lockb'];
 
 const readJson = (relativePath) => JSON.parse(readFileSync(join(root, relativePath), 'utf8'));
 const failures = [];
@@ -38,7 +48,7 @@ await check('bundle matches src/', async () => {
 });
 
 await check('versions match', () => {
-  const files = ['package.json', 'manifest.json', '.codex-plugin/plugin.json'];
+  const files = ['package.json', 'manifest.json', '.codex-plugin/plugin.json', CLAUDE_MANIFEST];
   const versions = files.map((file) => `${file}=${readJson(file).version}`);
   if (new Set(files.map((file) => readJson(file).version)).size !== 1) {
     throw new Error(`${versions.join(', ')}: run \`node scripts/sync-versions.mjs\`.`);
@@ -46,7 +56,7 @@ await check('versions match', () => {
   return readJson('package.json').version;
 });
 
-await check('marketplace lists the plugin', () => {
+await check('Codex marketplace lists the plugin', () => {
   const marketplace = readJson('.agents/plugins/marketplace.json');
   const plugin = readJson('.codex-plugin/plugin.json');
   const entry = marketplace.plugins?.find((candidate) => candidate.name === plugin.name);
@@ -79,17 +89,64 @@ await check('marketplace lists the plugin', () => {
   return `${plugin.name}@${marketplace.name} <- ${src.ref}`;
 });
 
-await check('bundle runs standalone', async () => {
-  // Run a copy outside the repo so a dependency that escaped bundling can't resolve
-  // from node_modules.
+await check('Claude plugin folder is complete', () => {
+  const stale = claudePluginMirrors.filter(({ from, to }) => !existsSync(to) || !readFileSync(from).equals(readFileSync(to)));
+  if (stale.length) {
+    const names = stale.map(({ to }) => relative(root, to)).join(', ');
+    throw new Error(`${names} differ from the repo root: run \`npm run build:plugin\` and commit them.`);
+  }
+  const triggers = INSTALL_TRIGGERS.filter((name) => existsSync(join(claudePluginDir, name)));
+  if (triggers.length) {
+    throw new Error(`remove ${triggers.join(', ')} from plugins/mega-mcp: the bundle needs no install step.`);
+  }
+  const servers = Object.values(readJson('plugins/mega-mcp/.mcp.json').mcpServers ?? {});
+  // The directory blocks a server path that isn't spelled out from ${CLAUDE_PLUGIN_ROOT}
+  // when the plugin is a subfolder of the repository, as this one is.
+  if (!servers.some((server) => server.command === 'node' && server.args?.includes(CLAUDE_SERVER_ARG))) {
+    throw new Error(`plugins/mega-mcp/.mcp.json must launch \`node ${CLAUDE_SERVER_ARG}\`.`);
+  }
+  return readJson(CLAUDE_MANIFEST).name;
+});
+
+await check('Claude marketplace lists the plugin', () => {
+  const marketplace = readJson('.claude-plugin/marketplace.json');
+  const plugin = readJson(CLAUDE_MANIFEST);
+  const entry = marketplace.plugins?.find((candidate) => candidate.name === plugin.name);
+  if (!entry) throw new Error(`.claude-plugin/marketplace.json has no entry named "${plugin.name}".`);
+  // Same trap as the Codex marketplace: `/plugin marketplace add meganz/mega-mcp` reads the
+  // catalog from the default branch (main), so a relative "./plugins/mega-mcp" source would
+  // install main's files. A git-subdir source pinned to `release` keeps every install on
+  // release.
+  const repoUrl = readJson('package.json').repository?.url?.replace(/^git\+/, '');
+  const expected = { source: 'git-subdir', url: repoUrl, path: 'plugins/mega-mcp', ref: 'release' };
+  const src = entry.source ?? {};
+  const keys = Object.keys(src);
+  if (keys.length !== Object.keys(expected).length || keys.some((key) => src[key] !== expected[key])) {
+    throw new Error(`"${plugin.name}" must be pinned to release: ${JSON.stringify(expected)}, got ${JSON.stringify(entry.source)}.`);
+  }
+  // Entry display fields override plugin.json in Claude Code, and they are all users see
+  // before installing from a non-relative source, so they must not drift from plugin.json.
+  // version is left to plugin.json, which wins over the entry anyway.
+  for (const field of ['displayName', 'description']) {
+    if (entry[field] !== plugin[field]) throw new Error(`"${plugin.name}".${field} differs from ${CLAUDE_MANIFEST}.`);
+  }
+  if (entry.version !== undefined) throw new Error(`"${plugin.name}" must not set version: ${CLAUDE_MANIFEST} owns it.`);
+  return `${plugin.name}@${marketplace.name} <- ${src.ref}`;
+});
+
+await check('plugin runs standalone', async () => {
+  // Run a copy of the Claude plugin folder outside the repo, the way Claude Code installs
+  // it, so a dependency that escaped bundling can't resolve from node_modules. The bundle
+  // is byte-identical to dist/plugin-server.js, so this covers the Codex plugin too.
   const dir = mkdtempSync(join(tmpdir(), 'mega-plugin-check-'));
   try {
-    const entry = join(dir, 'plugin-server.js');
-    copyFileSync(outfile, entry);
-    const tools = await listTools(entry);
+    cpSync(claudePluginDir, dir, { recursive: true });
+    const { tools, version } = await listTools(join(dir, 'dist', 'plugin-server.js'));
     const missing = REQUIRED_TOOLS.filter((name) => !tools.includes(name));
     if (missing.length) throw new Error(`tools/list is missing ${missing.join(', ')}.`);
-    return `${tools.length} tools`;
+    const expected = readJson('package.json').version;
+    if (version !== expected) throw new Error(`server reports version ${version}, expected ${expected}.`);
+    return `${tools.length} tools, v${version}`;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -100,18 +157,20 @@ if (failures.length) {
   process.exitCode = 1;
 }
 
-// Minimal newline-delimited JSON-RPC client: initialize, then tools/list.
+// Minimal newline-delimited JSON-RPC client: initialize, then tools/list. Resolves to the
+// tool names and the version the server reported in serverInfo.
 function listTools(entry) {
   return new Promise((resolveTools, reject) => {
     const child = spawn(process.execPath, [entry], { cwd: dirname(entry), stdio: ['pipe', 'pipe', 'pipe'] });
+    let version;
     let stderr = '';
     let settled = false;
-    const finish = (err, tools) => {
+    const finish = (err, result) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       child.kill();
-      if (!err) return resolveTools(tools);
+      if (!err) return resolveTools(result);
       const tail = stderr.trim().slice(-500);
       reject(new Error(tail ? `${err.message}\n    stderr: ${tail}` : err.message));
     };
@@ -133,10 +192,11 @@ function listTools(entry) {
       }
       if (message.error) return finish(new Error(`JSON-RPC error: ${JSON.stringify(message.error)}`));
       if (message.id === 1) {
+        version = message.result.serverInfo?.version;
         send({ method: 'notifications/initialized' });
         send({ id: 2, method: 'tools/list' });
       } else if (message.id === 2) {
-        finish(null, message.result.tools.map((tool) => tool.name));
+        finish(null, { tools: message.result.tools.map((tool) => tool.name), version });
       }
     });
 

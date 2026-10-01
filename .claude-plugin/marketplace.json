@@ -1,0 +1,22 @@
+{
+  "name": "mega",
+  "owner": {
+    "name": "Mega Limited",
+    "url": "https://mega.io"
+  },
+  "description": "MEGA's plugins for Claude Code and Cowork.",
+  "plugins": [
+    {
+      "name": "mega-mcp",
+      "displayName": "MEGA Cloud MCP",
+      "description": "Operate your MEGA cloud account (list, search, upload, download, share) through a local MEGAcmd MCP server. You log in yourself outside the conversation, and destructive or data-moving actions need your confirmation.",
+      "category": "productivity",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/meganz/mega-mcp.git",
+        "path": "plugins/mega-mcp",
+        "ref": "release"
+      }
+    }
+  ]
+}

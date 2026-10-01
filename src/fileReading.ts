@@ -4,7 +4,7 @@ import type { Config } from './types.js';
 
 /**
  * Persistence for the "don't ask me again" answer to the file-reading prompt
- * (Codex plugin build only — see src/buildFlags.ts).
+ * (plugin build only — see src/buildFlags.ts).
  *
  * Everything here FAILS CLOSED: an unreadable, malformed or absent store means
  * "not remembered", so the worst case is being asked once more, never reading
@@ -17,17 +17,19 @@ const FILE = 'file-reading.json';
  *
  * PLUGIN_DATA is the per-plugin writable directory the Codex host injects; the
  * Agent Plugins MCP schema forbids a plugin from SETTING PLUGIN_ROOT/PLUGIN_DATA
- * in its own `env` block, which is what tells us the host owns them. Preferring
- * it matters for more than tidiness: the marketplace installs each release into
- * its own version directory, so anything written next to the bundle is orphaned
- * by the next update, while PLUGIN_DATA persists across them.
+ * in its own `env` block, which is what tells us the host owns them.
+ * CLAUDE_PLUGIN_DATA is Claude Code's equivalent, exported to a plugin's stdio
+ * servers. Preferring them matters for more than tidiness: both hosts install
+ * each release into its own version directory, so anything written next to the
+ * bundle is orphaned by the next update, while the data directory persists
+ * across them (and Claude Code deletes it on uninstall).
  *
- * cacheDir is the fallback for hosts that don't inject it (and for tests). It is
+ * cacheDir is the fallback for hosts that inject neither (and for tests). It is
  * already this connector's per-user writable root, so it exists and is writable
  * wherever the connector runs at all.
  */
 export function stateDir(config: Config, env: NodeJS.ProcessEnv = process.env): string {
-  const injected = env.PLUGIN_DATA?.trim();
+  const injected = env.PLUGIN_DATA?.trim() || env.CLAUDE_PLUGIN_DATA?.trim();
   return injected ? injected : config.cacheDir;
 }
 

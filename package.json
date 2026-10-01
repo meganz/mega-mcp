@@ -35,7 +35,7 @@
     "build:plugin": "node scripts/build-plugin-bundle.mjs",
     "check:plugin": "node scripts/check-plugin.mjs",
     "release:plugin": "node scripts/release-plugin.mjs",
-    "version": "node scripts/sync-versions.mjs && git add manifest.json .codex-plugin/plugin.json",
+    "version": "node scripts/sync-versions.mjs && git add manifest.json .codex-plugin/plugin.json plugins/mega-mcp/.claude-plugin/plugin.json",
     "prepack": "npm run build:plugin",
     "prepublishOnly": "npm run build && npm run build:plugin && npm run typecheck && npm test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
