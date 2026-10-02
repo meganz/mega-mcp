@@ -98,9 +98,9 @@ through the `release` branch, with nothing to reinstall.
      and select **Add**.
 
   The plugin is saved to your Claude account. Its MCP server runs in the
-  desktop app's **Code** tab, and in Claude Code on any computer where you sign
-  in with the same account. Claude chat can't start it (see **Claude Desktop
-  chat** below). To get new releases, select **Check for updates** on the
+  desktop app's **Code** tab, in **Cowork** tasks that run on your computer,
+  and in Claude Code on any computer where you sign in with the same account.
+  Claude chat can't start it (see **Claude Desktop chat** below). To get new releases, select **Check for updates** on the
   Plugins page, or turn on **Sync automatically** for the marketplace.
 
   From the Claude Code CLI instead, run these in a session:

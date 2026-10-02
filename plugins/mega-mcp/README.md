@@ -9,6 +9,9 @@ client, on your own computer.
 ## Where it works
 
 - **Claude Code** (terminal, IDE extensions and the desktop app's Code tab).
+- **Cowork** tasks that run on your computer in the Claude desktop app. Cowork
+  tasks that run in the cloud, such as ones started on the web or mobile,
+  can't reach your computer, so the tools aren't available there.
 - **Not in Claude chat** (claude.ai on the web, the desktop app's chat, mobile):
   chat doesn't start local MCP servers, so the plugin's tools are unavailable
   there. For the desktop app's chat, use the MEGA Cloud MCP desktop extension

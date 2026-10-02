@@ -10,6 +10,10 @@
   },
   "homepage": "https://github.com/meganz/mega-mcp#readme",
   "repository": "https://github.com/meganz/mega-mcp",
+  "documentationUrl": "https://github.com/meganz/mega-mcp/blob/main/plugins/mega-mcp/README.md",
+  "privacyPolicyUrl": "https://mega.io/privacy",
+  "supportUrl": "https://mega.io/contact",
+  "termsOfServiceUrl": "https://mega.io/terms",
   "license": "MIT",
   "keywords": [
     "mega",
