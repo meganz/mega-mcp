@@ -17,4 +17,4 @@ for (const { from, to } of claudePluginMirrors) {
   mkdirSync(dirname(to), { recursive: true });
   copyFileSync(from, to);
 }
-console.log(`Copied the bundle, LICENSE and NOTICE into ${relative(root, claudePluginDir)}/`);
+console.log(`Copied the bundle, LICENSE, NOTICE and icon into ${relative(root, claudePluginDir)}/`);

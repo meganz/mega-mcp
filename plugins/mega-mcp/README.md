@@ -63,6 +63,11 @@ stop reading your files at any time.
 - **Sends:** MEGAcmd talks to MEGA's servers to carry out the operations you
   ask for, using the session you created when you logged in. The plugin has no
   backend of its own, sends nothing to its authors and collects no telemetry.
+- **Never reads credentials:** the server works out where MEGAcmd keeps its
+  login session (`~/.megaCmd`, or beside the MEGAcmd executable on Windows)
+  only so it can refuse every tool path that resolves there. It never reads,
+  copies or returns that session or any other credential; only MEGAcmd itself
+  uses the session you created when you logged in.
 - **Shares with Claude:** as with any tool, the arguments Claude passes and the
   results the tools return become part of your conversation, for example a
   folder listing, a path or a public link you created. File contents enter the

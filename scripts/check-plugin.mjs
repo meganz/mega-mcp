@@ -5,8 +5,8 @@
 //   1. dist/plugin-server.js matches a fresh build of src/
 //   2. package.json, manifest.json and both plugin manifests share one version
 //   3. .agents/plugins/marketplace.json pins the plugin to this repo's `release` branch
-//   4. plugins/mega-mcp holds exact copies of the bundle, LICENSE and NOTICE, launches the
-//      bundle from ${CLAUDE_PLUGIN_ROOT}, and has nothing that makes Claude Code run npm
+//   4. plugins/mega-mcp holds exact copies of the bundle, LICENSE, NOTICE and icon, launches
+//      the bundle from ${CLAUDE_PLUGIN_ROOT}, and has nothing that makes Claude Code run npm
 //   5. .claude-plugin/marketplace.json pins plugins/mega-mcp to the `release` branch too
 //   6. the Claude plugin folder starts on its own (no node_modules), reports its version
 //      and serves its tools over stdio

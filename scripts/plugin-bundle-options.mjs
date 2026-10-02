@@ -13,10 +13,13 @@ export const outfile = join(root, 'dist', 'plugin-server.js');
 // install. Symlinks are refused by the directory, so these root files are copied
 // in by build-plugin-bundle.mjs and check-plugin.mjs verifies the copies.
 export const claudePluginDir = join(root, 'plugins', 'mega-mcp');
+// The directory takes .claude-plugin/icon.png as the listing icon, but only from the
+// first commit the portal saves or submits; adding or changing it later has no effect.
 export const claudePluginMirrors = [
   ['dist/plugin-server.js', 'dist/plugin-server.js'],
   ['LICENSE', 'LICENSE'],
   ['NOTICE', 'NOTICE'],
+  ['assets/icon.png', '.claude-plugin/icon.png'],
 ].map(([from, to]) => ({ from: join(root, from), to: join(claudePluginDir, to) }));
 
 export const pluginBundleOptions = {
