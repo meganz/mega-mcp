@@ -1,6 +1,6 @@
 {
   "name": "mega-cloud-mcp",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "MCP server that lets an AI assistant operate a MEGA cloud account via the MEGAcmd CLI.",
   "license": "MIT",
   "author": "Mega Limited <jsh@mega.co.nz>",

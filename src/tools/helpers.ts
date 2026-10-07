@@ -4,7 +4,7 @@ import { posix } from 'node:path';
 import type { Runtime } from '../runtime.js';
 import type { RunResult } from '../types.js';
 import { ok, err } from '../mcpResult.js';
-import { ValidationError, assertNoInshareEnumeration, storeCopyIn } from '../paths.js';
+import { ValidationError, storeCopyIn } from '../paths.js';
 import { classifyExit, ExitCode } from '../errors.js';
 import { capLines } from '../parsers/listing.js';
 
@@ -36,9 +36,7 @@ export async function pcreMatchPreview(
   rt: Runtime,
   pattern: string,
   max = PLAN_MAX,
-): Promise<{ ok: true; count: number; handles: string[]; paths: string[]; text: string } | { ok: false; error: string }> {
-  // The match listing below is returned in the preview, in-share paths included.
-  assertNoInshareEnumeration(pattern, true, rt.config.exposeContacts);
+): Promise<{ ok: true; count: number; handles: string[]; paths: string[]; topPaths: string[]; text: string } | { ok: false; error: string }> {
   const r = await rt.run('find', [pattern, '--use-pcre', '--show-handles']);
   if (r.code !== 0) return { ok: false, error: classifyExit(r) };
   // The listing prints node NAMES raw, one per line, and a name may contain a
@@ -76,20 +74,9 @@ export async function pcreMatchPreview(
   const note =
     (top.length > max ? `\n...(${top.length} total; showing first ${max})` : '') +
     (top.length < new Set(entries.map((e) => e.handle)).size ? '\n(Matched folders are acted on as a whole, together with everything inside them.)' : '');
-  return { ok: true, count: top.length, handles, paths: entries.map((e) => e.path), text: (shown || '(no matches)') + note };
+  return { ok: true, count: top.length, handles, paths: entries.map((e) => e.path), topPaths: top.map((e) => e.path), text: (shown || '(no matches)') + note };
 }
 
-/**
- * Hide the sharer's email in incoming-share paths (`<email>:<folder>`) of a status
- * listing, unless contact details are exposed. Transfers, syncs and backups of a
- * shared folder print those paths, and the sharer's address is third-party data
- * gated everywhere else.
- */
-export function hideContacts(text: string, exposeContacts: boolean): string {
-  // MEGAcmd shortens long paths in these listings ("alice@e..."), so the address is
-  // not always whole: any run around an "@" up to a path separator or blank goes.
-  return exposeContacts ? text : text.replace(/[^\s/:<>"']*@[^\s/:<>"']*:?/g, '<contact>:');
-}
 
 /** Per-process key: binds a secret into a confirm token without keeping or echoing it. */
 const SECRET_KEY = randomBytes(32);
@@ -164,7 +151,7 @@ export async function pcreGate(
   confirm: string | undefined,
   pattern: string,
   summaryFor: (count: number, text: string) => string,
-  checkPath?: (path: string) => void,
+  checkPath?: (path: string, topmost: boolean) => void,
 ): Promise<{ proceed: false; result: CallToolResult } | { proceed: true; handles: string[] }> {
   if (!confirm) {
     const prev = await pcreMatchPreview(rt, pattern);
@@ -172,7 +159,9 @@ export async function pcreGate(
     assertPlanSize(prev.count, 'matching nodes');
     // Checked on the PINNED set: execution runs on these handles and nothing else,
     // so a match refused here cannot come back in the second call.
-    if (checkPath) for (const p of prev.paths) checkPath(p);
+    // `topmost` tells what is acted on from what goes along inside it.
+    const tops = new Set(prev.topPaths);
+    if (checkPath) for (const p of prev.paths) checkPath(p, tops.has(p));
     // (prev.count counts the topmost matches only: their contents go with them.)
     // Split into lines so the match listing keeps its structure; each line is
     // then escaped individually, since the node names in it come from the cloud
@@ -262,6 +251,68 @@ export async function assertNoStoreCopyBelow(rt: Runtime, remotePath: string): P
       `${remotePath} contains a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY, so it is not copied, moved, downloaded, shared or published. Delete that .megaCmd folder from the cloud first.`,
     );
   }
+}
+
+/**
+ * What a confirmation preview must say about a DESTINATION (MCP-4): whether what
+ * lands there becomes visible to other people - an outgoing share or a public link
+ * on the folder or any folder above it, or someone else's incoming share - and,
+ * with `overwrite`, whether an existing FILE there is replaced. Read from MEGAcmd's
+ * own listings; nothing from them (recipients' emails, links) is shown.
+ */
+export async function destinationNotes(rt: Runtime, dst: string, opts: { overwrite?: boolean } = {}): Promise<string[]> {
+  if (dst.startsWith('//from/')) {
+    return [`${dst} is a folder someone else shared with you: its owner, and anyone they share it with, will see what is placed there.`];
+  }
+  const notes: string[] = [];
+  const chain = ancestorsOf(dst);
+  // `share /` prints "<path>, shared with <email>...", `export /` prints
+  // "<path> (<details>, shared as exported ...)", one line per shared/exported node.
+  const shared = await listedPaths(rt, 'share', (line) => {
+    const i = line.lastIndexOf(', shared');
+    return i > 0 ? line.slice(0, i) : null;
+  });
+  const exported = await listedPaths(rt, 'export', (line) => {
+    const i = line.lastIndexOf(' (');
+    return i > 0 && line.includes('exported') ? line.slice(0, i) : null;
+  });
+  if (!shared || !exported) notes.push('(Could not check whether the destination is shared or has a public link.)');
+  const sharedAt = shared && chain.find((p) => shared.has(p));
+  const linkedAt = exported && chain.find((p) => exported.has(p));
+  const self = dst.replace(/(.)\/+$/, '$1');
+  const subject = (at: string) => (at === self ? dst : `${dst} is inside ${at}, which`);
+  if (sharedAt) notes.push(`${subject(sharedAt)} is shared with other people: they will be able to see what is placed there.`);
+  if (linkedAt) notes.push(`${subject(linkedAt)} has a public link: anyone with the link will be able to see what is placed there.`);
+  if (opts.overwrite && (await remoteKind(rt, dst)) === 'file') notes.push(`${dst} is an existing FILE: it will be REPLACED.`);
+  return notes;
+}
+
+/** What is at a cloud path. `find <path> --type=d` lists a folder itself, and nothing for a file. */
+export async function remoteKind(rt: Runtime, path: string): Promise<'folder' | 'file' | 'missing' | 'unknown'> {
+  const r = await rt.run('find', [path, '--type=d', '--print-only-handles']);
+  if (r.code === ExitCode.NOTFOUND) return 'missing';
+  if (r.code !== 0) return 'unknown';
+  return r.stdout.trim() ? 'folder' : 'file';
+}
+
+/** `/a/b/c` -> [/a, /a/b, /a/b/c] (and `/` itself). */
+function ancestorsOf(p: string): string[] {
+  const parts = p.replace(/\/+$/, '').split('/').filter(Boolean);
+  return ['/', ...parts.map((_, i) => `/${parts.slice(0, i + 1).join('/')}`)];
+}
+
+async function listedPaths(rt: Runtime, cmd: 'share' | 'export', pathOf: (line: string) => string | null): Promise<Set<string> | null> {
+  const r = await rt.run(cmd, ['/']);
+  if (r.spawnError) return null;
+  // No shares / no links at all is reported as "not found" by some versions.
+  if (r.code === ExitCode.NOTFOUND) return new Set();
+  if (r.code !== 0) return null;
+  const paths = new Set<string>();
+  for (const raw of r.stdout.split(/\r?\n/)) {
+    const p = pathOf(raw.trim());
+    if (p) paths.add(p.replace(/(.)\/+$/, '$1'));
+  }
+  return paths;
 }
 
 /**

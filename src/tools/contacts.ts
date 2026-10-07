@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok } from '../mcpResult.js';
 import { capLines } from '../parsers/listing.js';
+import { hideUserSecrets } from '../parsers/attributes.js';
 import { guardRun, runToResult } from './helpers.js';
 
 const RO = { readOnlyHint: true, openWorldHint: true } as const;
@@ -85,8 +86,11 @@ export function registerContacts(server: McpServer, rt: Runtime): void {
       guardRun(async () => {
         const args = [...(list ? ['--list'] : []), ...(user ? [`--user=${user}`] : [])];
         return runToResult(rt, 'userattr', args, (r) => {
-          const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
-          return ok(text || '(no profile attributes)', { attrCount: total, truncated, user: user ?? null });
+          // Only plain profile values: private attributes include the keyring.
+          const safe = hideUserSecrets(r.stdout);
+          const { text, total, truncated } = capLines(safe.text, rt.config.maxListLines);
+          const note = safe.hidden ? `\n(${safe.hidden} private or key attribute(s) not shown.)` : '';
+          return ok(`${text || '(no profile attributes)'}${note}`, { attrCount: total, truncated, user: user ?? null, hidden: safe.hidden });
         });
       }),
   );

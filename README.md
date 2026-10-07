@@ -19,7 +19,7 @@ configuration.
   the plan tier, but a fail-closed allowlist parser returns only plan + storage —
   the raw `session` id, master/recovery key, and payment data are never returned.
 - Destructive and data-moving actions (`rm`, `deleteversions`, `export`, `share`,
-  `get`, `put`, `mv`) are **confirm-gated** via a two-call token protocol: the first
+  `get`, `put`, `cp`, `mv`) are **confirm-gated** via a two-call token protocol: the first
   call returns a preview plus a single-use token and executes nothing; only a second
   call carrying that token runs.
 - **The session store is off-limits to every tool.** MEGAcmd's `session` file holds
@@ -350,10 +350,10 @@ Don't push to `release` directly or force-push it.
   `mega_user_remove`, `mega_user_verify`, `mega_transfer_control`, `mega_invite`,
   `mega_ipc`, `mega_import`, `mega_sync_add`, `mega_sync_control`,
   `mega_sync_ignore` (add/remove), `mega_backup_add`, `mega_backup_control`
-- Opt-in only (`expose_contacts`, off by default — surfaces contact PII):
-  `mega_users`, `mega_showpcr`, `mega_userattr`. With it off, `mega_mount` and
-  `mega_share` list ask first (they show the email addresses of people who share
-  with you or whom you share with), and incoming shares cannot be listed by pattern.
+- Opt-in only (`expose_contacts`, off by default): `mega_users`, `mega_showpcr`,
+  `mega_userattr`. Email addresses are not hidden anywhere: `mega_mount`,
+  `mega_share` list and the transfer/sync listings show sharers and recipients as
+  MEGAcmd prints them.
 - Opt-in only (`expose_account_details`, off by default — surfaces your own login
   metadata + financial PII): `mega_sessions`, `mega_balance`
 - Opt-in only (off by default — brings file content into the conversation):

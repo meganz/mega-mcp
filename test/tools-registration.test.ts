@@ -18,6 +18,15 @@ import type { Config, RunResult } from '../src/types.js';
 
 type ToolFn = (args: any) => Promise<CallToolResult>;
 
+/**
+ * Lookups a confirmation preview makes to describe a destination (MCP-4): the
+ * share list, the public-link list, and a file-or-folder probe. Filtered out where
+ * a test asserts the commands that actually ACT.
+ */
+const isProbe = (a: string[]) =>
+  ((a[0] === 'share' || a[0] === 'export') && a.length === 2 && a[1] === '/') || (a[0] === 'find' && a.includes('--type=d') && a.includes('--print-only-handles'));
+const acting = (argv: string[][]) => argv.filter((a) => !isProbe(a));
+
 function fakeRt(config: Partial<Config> = {}, run?: Runtime['run'], binDir: string | null = null): Runtime {
   return {
     config: { maxListLines: 1000, cacheDir: '/tmp/cache', download: { sha256Allow: [] }, exposeContacts: false, exposeAccountDetails: false, exposeFileContents: false, ...config },
@@ -119,21 +128,22 @@ describe('session-store exfiltration is refused by the tools themselves', () => 
       expect(summary).toMatch(/Left out: the MEGAcmd session store/);
       expect(summary).toMatch(/MASTER KEY/);
       expect(summary).toContain('.megaCmd');
-      expect(argv).toEqual([]);
+      expect(acting(argv)).toEqual([]);
 
       const done = await put({ localPath: home, remotePath: '/Backup', confirm: confirmToken });
       expect(done.isError).toBeFalsy();
       const dest = `/Backup/${home.split(/[\\/]/).pop()}`;
       // The destination folder first (so a missing one is not taken as a new
       // name), then the rebuilt home folder inside it.
-      expect(argv[0]).toEqual(['mkdir', '-p', '/Backup']);
-      expect(argv[1]).toEqual(['mkdir', '-p', dest]);
-      const puts = argv.filter((a) => a[0] === 'put');
+      const ran = acting(argv);
+      expect(ran[0]).toEqual(['mkdir', '-p', '/Backup']);
+      expect(ran[1]).toEqual(['mkdir', '-p', dest]);
+      const puts = ran.filter((a) => a[0] === 'put');
       expect(puts).toHaveLength(1);
       expect(puts[0]!.at(-1)).toBe(dest);
       expect(puts[0]!.some((a) => a.endsWith('notes.txt'))).toBe(true);
       // The store never reaches MEGAcmd's argv, in any spelling.
-      for (const a of argv.flat()) expect(a.toLowerCase()).not.toContain('.megacmd');
+      for (const a of ran.flat()) expect(a.toLowerCase()).not.toContain('.megacmd');
       expect((done.structuredContent as { excluded: string[] }).excluded).toHaveLength(1);
     });
   });
@@ -270,7 +280,7 @@ describe('cloud copies of the session store are refused by the tools themselves'
       const register = tool === 'mega_mv' ? registerMutate : registerDangerous;
       const res = await capture(register, rt).get(tool)!(args);
       refusedStore(res);
-      expect(argv.map((a) => a[0])).toEqual(['find', 'find']);
+      expect(acting(argv).map((a) => a[0])).toEqual(['find', 'find']);
     }
   });
 
@@ -285,7 +295,7 @@ describe('cloud copies of the session store are refused by the tools themselves'
     const done = await cp({ src: '/Docs/megaCmd-notes.txt', dst: '/x', confirm: (preview.structuredContent as any).confirmToken });
     expect(done.isError).toBeFalsy();
     // The copy first checks that no session-store copy lies below its source.
-    expect(argv.map((a) => a[0])).toEqual(['cat', 'cat', 'find', 'find', 'cp']);
+    expect(acting(argv).map((a) => a[0])).toEqual(['cat', 'cat', 'find', 'find', 'cp']);
   });
 });
 
@@ -443,12 +453,12 @@ describe('security-sweep regressions, at the tool boundary', () => {
     const cp = capture(registerMutate, rt).get('mega_cp')!;
     const preview = await cp({ src: '/Private/report.pdf', dst: '/Shared' });
     expect(preview.structuredContent).toMatchObject({ requiresConfirmation: true });
-    expect((preview.structuredContent as any).summary).toBe('This will copy /Private/report.pdf to /Shared.');
-    expect(argv.map((a) => a[0])).toEqual(['find']);
+    expect((preview.structuredContent as any).summary.split('\n')[0]).toBe('This will copy /Private/report.pdf to /Shared.');
+    expect(acting(argv).map((a) => a[0])).toEqual(['find']);
     // A token for one copy cannot be spent on another.
     const token = (preview.structuredContent as any).confirmToken;
     expect((await cp({ src: '/Private/other.pdf', dst: '/Shared', confirm: token })).isError).toBe(true);
-    expect(argv.map((a) => a[0])).toEqual(['find']);
+    expect(acting(argv).map((a) => a[0])).toEqual(['find']);
   });
 
   // The value is part of what is approved; the token always bound it, but the
@@ -849,28 +859,9 @@ describe('PCRE destructive ops show a dry-run preview', () => {
   });
 });
 
-describe('mega_share list contact-PII gate (#2)', () => {
-  it('confirm-gates the listing when exposeContacts is off (reveals recipient emails)', async () => {
-    const tools = capture(registerDangerous, fakeRt({ exposeContacts: false }));
-    const res = await tools.get('mega_share')!({ action: 'list' });
-    expect(res.isError).toBeFalsy();
-    expect(res.structuredContent).toMatchObject({ requiresConfirmation: true });
-    expect((res.content?.[0] as any).text).toMatch(/email/i);
-  });
-
-  // usePcre changes which folders are listed, so a token for one literal path must
-  // not be spendable as a regex over every folder.
-  it('binds usePcre into the listing token', async () => {
-    const tools = capture(registerDangerous, fakeRt({ exposeContacts: false }));
-    const first = await tools.get('mega_share')!({ action: 'list', remotePath: '/Team' });
-    const token = (first.structuredContent as any).confirmToken;
-    const replay = await tools.get('mega_share')!({ action: 'list', remotePath: '/Team', usePcre: true, confirm: token });
-    expect(replay.isError).toBe(true);
-    expect((replay.content?.[0] as any).text).toMatch(/invalid or expired/);
-  });
-
-  it('lists freely when exposeContacts is on (the persistent "always allow")', async () => {
-    const tools = capture(registerDangerous, fakeRt({ exposeContacts: true }));
+describe('mega_share list', () => {
+  it('lists without a confirmation (recipient emails are not hidden)', async () => {
+    const tools = capture(registerDangerous, fakeRt());
     const res = await tools.get('mega_share')!({ action: 'list' });
     expect(res.isError).toBeFalsy();
     expect(res.structuredContent).not.toMatchObject({ requiresConfirmation: true });

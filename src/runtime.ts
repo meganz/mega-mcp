@@ -6,7 +6,7 @@ import { ensureServerRunning } from './server.js';
 import { verifyResolvedBinary, macLoginHelperDir } from './download/megacmd.js';
 import { detectAuth, ensureReady } from './auth.js';
 import { publishMegacmdBinDir } from './paths.js';
-import { assertSafeInvocation } from './invocation.js';
+import { assertSafeInvocation, scrubSecrets } from './invocation.js';
 import { stateDir } from './fileReading.js';
 import { createConfirmStore, type ConfirmStore } from './confirm.js';
 
@@ -68,11 +68,13 @@ function configTrustRoots(config: Config): string[] {
 export interface RuntimeDeps {
   resolve?: typeof resolveBinaries;
   verify?: typeof verifyResolvedBinary;
+  exec?: typeof execClient;
 }
 
 export function createRuntime(config: Config, deps: RuntimeDeps = {}): Runtime {
   const resolveImpl = deps.resolve ?? resolveBinaries;
   const verifyImpl = deps.verify ?? verifyResolvedBinary;
+  const execImpl = deps.exec ?? execClient;
   // Arm the synchronous path guard before any tool can run. Publishing again from
   // getBinDir() only adds the resolved dir on top of these.
   publishMegacmdBinDir(null, configTrustRoots(config));
@@ -100,7 +102,7 @@ export function createRuntime(config: Config, deps: RuntimeDeps = {}): Runtime {
 
   const run: Runtime['run'] = async (cmd, args, opts) => {
     // Every call, whatever tool built it: see invocation.ts.
-    assertSafeInvocation(cmd, args, config.exposeContacts);
+    assertSafeInvocation(cmd, args);
     const resolved = await getResolved();
     if (!resolved) {
       return { code: -1, stdout: '', stderr: '', spawnError: 'NO_MEGACMD' };
@@ -147,7 +149,9 @@ export function createRuntime(config: Config, deps: RuntimeDeps = {}): Runtime {
         serverReady = undefined;
       }
     }
-    return execClient(resolved, cmd, args, opts);
+    const result = await execImpl(resolved, cmd, args, opts);
+    // Nothing a tool returns can carry a credential MEGAcmd printed next to it.
+    return { ...result, stdout: scrubSecrets(cmd, args, result.stdout), stderr: scrubSecrets(cmd, args, result.stderr) };
   };
 
   // Warm the published bin dir for the SYNCHRONOUS refusal guard, which cannot

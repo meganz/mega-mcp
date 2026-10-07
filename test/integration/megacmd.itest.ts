@@ -15,7 +15,7 @@
  *    real login session and nothing real is uploaded.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readdirSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { join, basename } from 'node:path';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -23,6 +23,8 @@ import { loadConfig } from '../../src/config.js';
 import { createRuntime, type Runtime } from '../../src/runtime.js';
 import { registerMutate } from '../../src/tools/mutate.js';
 import { registerDangerous } from '../../src/tools/dangerous.js';
+import { registerReadOnly } from '../../src/tools/readonly.js';
+import { registerAccountDetails } from '../../src/tools/account.js';
 import { ensureRemoteFolder } from '../../src/tools/helpers.js';
 import { publishMegacmdBinDir } from '../../src/paths.js';
 
@@ -221,6 +223,82 @@ describe.runIf(!!ACCOUNT)('real MEGAcmd behaviour the guards rely on', () => {
     const inner = existsSync(join(dest, 'mg')) ? readdirSync(join(dest, 'mg')).sort() : [];
     console.log('[itest] merge get ->', r.code, 'localDir:', JSON.stringify(top), 'localDir/mg:', JSON.stringify(inner));
     expect(r.code).toBe(0);
+  });
+
+  it('MCP-4: a copy preview names a public-link destination and a replaced file', async () => {
+    const src = tempTree({ 'c.txt': 'c', 'pub/keep.txt': 'k' });
+    await rt.run('put', ['-c', join(src, 'c.txt'), `${ROOT}/cp/`]);
+    await rt.run('put', ['-c', join(src, 'pub'), `${ROOT}/cp/`]);
+    await rt.run('put', ['-c', join(src, 'c.txt'), `${ROOT}/cp/existing.txt`]);
+    expect((await rt.run('export', ['-a', '-f', `${ROOT}/cp/pub`])).code).toBe(0);
+    const cp = tools(registerMutate).get('mega_cp')!;
+    const intoLink = text(await cp({ src: `${ROOT}/cp/c.txt`, dst: `${ROOT}/cp/pub` }));
+    console.log('[itest] cp into linked folder preview:\n' + intoLink.split('\n\n')[0]);
+    expect(intoLink).toMatch(/has a public link: anyone with the link/);
+    const ontoFile = text(await cp({ src: `${ROOT}/cp/c.txt`, dst: `${ROOT}/cp/existing.txt` }));
+    expect(ontoFile).toMatch(/existing FILE: it will be REPLACED/);
+    await rt.run('export', ['-d', `${ROOT}/cp/pub`]);
+  });
+
+  it('MCP-3: mega_attr shows custom attributes but never the s4 value', async () => {
+    const src = tempTree({ 'a.txt': 'a' });
+    await rt.run('put', ['-c', join(src, 'a.txt'), `${ROOT}/attr/`]);
+    const node = `${ROOT}/attr/a.txt`;
+    expect((await rt.run('attr', [node, '-s', 'note', 'hello'])).code).toBe(0);
+    const s4 = await rt.run('attr', [node, '-s', 's4', 'ITEST-S4-SECRET']);
+    console.log('[itest] setting s4 on a test node ->', s4.code, JSON.stringify(s4.stderr.trim()));
+    const res = await tools(registerReadOnly).get('mega_attr')!({ remotePath: node });
+    console.log('[itest] mega_attr ->\n' + text(res));
+    expect(text(res)).toContain('note = hello');
+    expect(text(res)).not.toContain('ITEST-S4-SECRET');
+    if (s4.code === 0) expect(text(res)).toMatch(/S4 settings are not shown/);
+  });
+
+  it('mega_put with a name uploads a file and a folder under that name', async () => {
+    const src = tempTree({ 'report.pdf': 'r', 'Photos/a.jpg': 'a' });
+    const put = tools(registerMutate).get('mega_put')!;
+    const f = await confirmed(put, { localPath: join(src, 'report.pdf'), remotePath: `${ROOT}/named`, name: 'report-2026.pdf' });
+    expect(f.isError, text(f)).toBeFalsy();
+    const d = await confirmed(put, { localPath: join(src, 'Photos'), remotePath: `${ROOT}/named`, name: 'Pics' });
+    expect(d.isError, text(d)).toBeFalsy();
+    expect(await cloudTree(`${ROOT}/named`)).toEqual(['/Pics', '/Pics/a.jpg', '/report-2026.pdf']);
+    // Again onto the existing file: replaced (a new version), not nested.
+    const again = await confirmed(put, { localPath: join(src, 'report.pdf'), remotePath: `${ROOT}/named`, name: 'report-2026.pdf' });
+    expect(again.isError, text(again)).toBeFalsy();
+    expect(await cloudTree(`${ROOT}/named`)).toEqual(['/Pics', '/Pics/a.jpg', '/report-2026.pdf']);
+    // Onto the existing folder: refused, since MEGAcmd would nest it.
+    expect(text(await put({ localPath: join(src, 'Photos'), remotePath: `${ROOT}/named`, name: 'Pics' }))).toMatch(/already exists as a folder/);
+  });
+
+  it('get into a localDir that does not exist: where MEGAcmd writes', async () => {
+    const src = tempTree({ 'dl/one.txt': '1' });
+    await rt.run('put', ['-c', join(src, 'dl'), `${ROOT}/dlsrc/`]);
+    await rt.run('put', ['-c', join(src, 'dl', 'one.txt'), `${ROOT}/dlsrc/`]);
+    const folderDest = join(local, 'missing-folder-dest');
+    const fileDest = join(local, 'missing-file-dest');
+    const a = await rt.run('get', [`${ROOT}/dlsrc/dl`, folderDest]);
+    const b = await rt.run('get', [`${ROOT}/dlsrc/one.txt`, fileDest]);
+    const describe = (p: string) => (!existsSync(p) ? 'missing' : statSync(p).isDirectory() ? `dir ${JSON.stringify(readdirSync(p).sort())}` : 'file');
+    console.log('[itest] get folder -> missing dir:', a.code, describe(folderDest), '| get file -> missing dir:', b.code, describe(fileDest));
+    // The item itself takes the missing localDir's name.
+    expect(describe(folderDest)).toBe('dir ["one.txt"]');
+    expect(describe(fileDest)).toBe('file');
+    // mega_get creates localDir first, so the item goes INTO it, as previewed.
+    const into = join(local, 'missing-tool-dest');
+    const get = tools(registerMutate).get('mega_get')!;
+    const res = await confirmed(get, { remotePath: `${ROOT}/dlsrc/dl`, localDir: into });
+    expect(res.isError, text(res)).toBeFalsy();
+    expect(readdirSync(into)).toEqual(['dl']);
+    expect(readdirSync(join(into, 'dl'))).toEqual(['one.txt']);
+  });
+
+  it('mega_sessions lists sessions without their session IDs', async () => {
+    const res = await tools(registerAccountDetails).get('mega_sessions')!({});
+    const out = text(res);
+    // Assert without printing: a failure must not put a session ID in the log.
+    expect(res.isError ?? false).toBe(false);
+    expect(/Session ID:/.test(out)).toBe(true);
+    expect(/Session ID:\s*(?!\[hidden\])\S/.test(out)).toBe(false);
   });
 
   it('names with spaces and non-ASCII characters survive the argv round trip', async () => {

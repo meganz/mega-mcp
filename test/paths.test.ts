@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { isAbsolute, resolve, join, sep, basename } from 'node:path';
 import { homedir } from 'node:os';
-import { realpathSync } from 'node:fs';
+import { realpathSync, existsSync } from 'node:fs';
 import { previewSafe } from '../src/tools/helpers.js';
 import {
   assertRemotePath,
@@ -132,14 +132,21 @@ describe('assertLocalPath — session-store coverage beyond ~/.megaCmd', () => {
     hits(`${homedir()}/Library/Caches/megacmd.mac/megacmd.socket`);
   });
 
-  it.runIf(process.platform !== 'win32')('refuses the POSIX no-HOME fallback /tmp/megacmd-<uid>', () => {
-    hits(`/tmp/megacmd-${process.getuid?.()}/session`);
+  it.runIf(process.platform !== 'win32')('refuses the POSIX no-HOME fallback /tmp/megacmd-<uid> when HOME is unusable', () => {
+    const saved = process.env.HOME;
+    process.env.HOME = '/nonexistent-home-for-test';
+    try {
+      hits(`/tmp/megacmd-${process.getuid?.()}/session`);
+      // The comparison must be symlink-proof on BOTH sides: /private/tmp/megacmd-<uid>
+      // IS the directory the "/tmp" spelling names, so knowing only one form is a hole.
+      if (process.platform === 'darwin') hits(`/private/tmp/megacmd-${process.getuid?.()}/session`);
+    } finally {
+      process.env.HOME = saved;
+    }
   });
 
-  it.runIf(process.platform === 'darwin')('refuses the fallback by its REAL path too (/tmp -> /private/tmp)', () => {
-    // The comparison must be symlink-proof on BOTH sides: /private/tmp/megacmd-<uid>
-    // IS the directory the "/tmp" spelling names, so knowing only one form is a hole.
-    hits(`/private/tmp/megacmd-${process.getuid?.()}/session`);
+  it.runIf(process.platform !== 'win32' && !existsSync(`/tmp/megacmd-${process.getuid?.()}`))('leaves /tmp usable when MEGAcmd is not using its fallback there', () => {
+    expect(() => assertDownloadTarget('/tmp', null)).not.toThrow();
   });
 
   it.runIf(process.platform !== 'win32')('refuses a symlink that points into the store', async () => {

@@ -5,7 +5,7 @@ import { ok, err } from '../mcpResult.js';
 import { ExitCode, classifyExit } from '../errors.js';
 import { assertRemotePath, assertLocalPath, assertNoFlag, assertFlagValue, assertNoStoreWithin, assertNoProtectedWithin, assertNotStoreCopy, ValidationError } from '../paths.js';
 import { capLines } from '../parsers/listing.js';
-import { guardRun, runToResult, checkConfirm, assertPlanSize, hideContacts, assertNoStoreCopyBelow } from './helpers.js';
+import { guardRun, runToResult, checkConfirm, assertPlanSize, assertNoStoreCopyBelow, destinationNotes } from './helpers.js';
 
 const RO = { readOnlyHint: true, openWorldHint: true } as const;
 const SYNC_CTRL: Record<string, string> = { pause: '-p', resume: '-e', delete: '-d' };
@@ -30,7 +30,7 @@ export function registerSync(server: McpServer, rt: Runtime): void {
     async () =>
       guardRun(async () =>
         runToResult(rt, 'sync', [], (r) => {
-          const { text, total, truncated } = capLines(hideContacts(r.stdout, rt.config.exposeContacts), rt.config.maxListLines);
+          const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
           return ok(text || '(no syncs configured)', { syncCount: total, truncated });
         }),
       ),
@@ -60,7 +60,8 @@ export function registerSync(server: McpServer, rt: Runtime): void {
         assertNoProtectedWithin(lp, 'sync');
         // A store copy anywhere BELOW the cloud folder would be synced down to disk.
         if (!confirm) await assertNoStoreCopyBelow(rt, rp);
-        const summary = `This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`;
+        const notes = confirm ? [] : await destinationNotes(rt, rp);
+        const summary = [`This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`, ...notes];
         const gate = checkConfirm(rt, 'mega_sync_add', { localPath: lp, remotePath: rp }, confirm, summary);
         if (gate) return gate;
         await assertNoStoreCopyBelow(rt, rp);
@@ -111,7 +112,7 @@ export function registerSync(server: McpServer, rt: Runtime): void {
         // as a clean empty result rather than an error.
         if (r.code === ExitCode.NOTFOUND) return ok('(no backups configured)', { backupCount: 0, truncated: false });
         if (r.code !== ExitCode.OK) return err(classifyExit(r), { ok: false, code: r.code });
-        const { text, total, truncated } = capLines(hideContacts(r.stdout, rt.config.exposeContacts), rt.config.maxListLines);
+        const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
         return ok(text || '(no backups configured)', { backupCount: total, truncated });
       }),
   );
@@ -138,7 +139,8 @@ export function registerSync(server: McpServer, rt: Runtime): void {
         const rp = assertRemotePath(remotePath);
         const per = assertFlagValue(period, 'period');
         assertNoStoreWithin(lp, 'back up', await rt.getBinDir());
-        const summary = `This will configure a periodic backup of ${lp} into ${rp} (period "${per}", keep ${numBackups}).`;
+        const notes = confirm ? [] : await destinationNotes(rt, rp);
+        const summary = [`This will configure a periodic backup of ${lp} into ${rp} (period "${per}", keep ${numBackups}).`, ...notes];
         const gate = checkConfirm(rt, 'mega_backup_add', { localPath: lp, remotePath: rp, period: per, numBackups }, confirm, summary);
         if (gate) return gate;
         const args = [lp, rp, `--period=${per}`, `--num-backups=${numBackups}`];
@@ -188,7 +190,7 @@ export function registerSync(server: McpServer, rt: Runtime): void {
         if (detail !== undefined) args.push('--detail', detail.toLowerCase() === 'all' ? '--all' : assertNoFlag(detail, 'detail'));
         if (limit !== undefined) args.push(`--limit=${limit}`);
         return runToResult(rt, 'sync-issues', args, (r) => {
-          const { text, total, truncated } = capLines(hideContacts(r.stdout, rt.config.exposeContacts), rt.config.maxListLines);
+          const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
           return ok(text || '(no sync issues)', { issueCount: total, truncated });
         });
       }),
@@ -223,7 +225,8 @@ export function registerSync(server: McpServer, rt: Runtime): void {
         filters: z.array(z.string()).optional().describe('Filter patterns (required for add/remove actions).'),
         confirm: z.string().optional().describe('Confirmation token from the first call.'),
       },
-      annotations: { title: 'MEGA: sync ignore filters', destructiveHint: false, openWorldHint: true },
+      // Destructive: removing an exclusion starts uploading what it kept out.
+      annotations: { title: 'MEGA: sync ignore filters', destructiveHint: true, openWorldHint: true },
     },
     async ({ action, target, filters, confirm }) =>
       guardRun(async () => {

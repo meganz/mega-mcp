@@ -32,16 +32,19 @@ function loginInstructions(binDir: string | null, helperPath: string | null): st
   if (helperPath) {
     lines.push('', `- Easiest: double-click this file in Finder:\n  ${helperPath}`);
   }
+  // The interactive shell is MEGAcmdShell on macOS and Windows, and mega-cmd in
+  // the Linux packages ("the interactive shell (mega-cmd)", megacmd.cpp).
+  const shell = process.platform === 'linux' ? 'mega-cmd' : 'MEGAcmdShell';
   if (binDir) {
     const launch =
       process.platform === 'win32'
         ? `"${join(realDir(binDir), 'MEGAcmdShell.exe')}"`
         : // Single-quoted like the .command helper: the user pastes this line, and
           // inside double quotes a path's $(…) or backticks would run.
-          `PATH=${shQuote(binDir)}:"$PATH" MEGAcmdShell`;
+          `PATH=${shQuote(binDir)}:"$PATH" ${shell}`;
     lines.push('', `- Or in a terminal:\n  ${launch}`);
   } else {
-    lines.push('', '- Start the MEGAcmd interactive shell (MEGAcmdShell).');
+    lines.push('', `- Start the MEGAcmd interactive shell (${shell}).`);
   }
   lines.push(
     '',

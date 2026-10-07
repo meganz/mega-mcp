@@ -24,7 +24,9 @@ user approves actions by reading the confirmation preview their app shows.
 ## Rules the code keeps
 
 1. **Login never passes through the assistant.** No tool takes the account password
-   or returns session or key material.
+   or returns session or key material — including keys MEGAcmd prints as attributes:
+   the S4 configuration of a node (`s4`, which can hold storage access keys) and
+   private user attributes such as the keyring.
 2. **The session store is never read, written, uploaded, downloaded into, copied,
    moved, shared or published** — locally (`~/.megaCmd` and its other locations,
    in any spelling of the path) or as a copy in the cloud (a `.megaCmd` folder, a
@@ -32,7 +34,10 @@ user approves actions by reading the confirmation preview their app shows.
 3. **What runs is what was previewed.** Every argument that changes a confirmed
    command is shown in its preview and bound into its confirmation token; every
    target is listed (at most 200 per confirmation); MEGAcmd reads back exactly the
-   words that were sent (`src/argv.ts`), so no value turns into an option.
+   words that were sent (`src/argv.ts`), so no value turns into an option. A preview
+   also says when its destination is shared or has a public link (so others will
+   see the result) and when the destination is itself an existing file that would
+   be replaced.
 4. **Transfers never write into the directories the connector depends on**: the
    MEGAcmd program and cache directories, the plugin's data directory (which holds
    the file-reading choice) and the macOS login helper — whether the destination is
@@ -40,12 +45,15 @@ user approves actions by reading the confirmation preview their app shows.
 5. **File contents reach the assistant only after the user agreed**, through the
    app's settings or the confirm-gated `mega_file_reading`. Turning reading off
    takes effect for every running server process sharing the plugin's data folder.
-6. **Third-party email addresses are shown only after the user agreed** (the
-   "Expose contact tools" setting, or a confirmation): contact lists, share
-   recipients, and the people who shared folders with the user.
 
-Rules 2-4 are enforced once more for every MEGAcmd call, whatever tool built it
-(`src/invocation.ts`), on top of each tool's own checks.
+Parts of rules 1-3 are enforced once more for every MEGAcmd call, whatever tool
+built it (`src/invocation.ts`), on top of each tool's own checks: only listed
+MEGAcmd commands run, credentials are removed from the outputs MEGAcmd prints them
+in, the argv round trip and the session-store copy check. Rule 4 is checked by
+each transfer tool.
+
+Email addresses - the user's, their contacts', share recipients' and sharers' -
+are not treated as secret: listings show them as MEGAcmd prints them.
 
 ## Known limits
 

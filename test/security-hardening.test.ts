@@ -10,16 +10,20 @@ import { registerReadOnly } from '../src/tools/readonly.js';
 import { registerSync } from '../src/tools/sync.js';
 import { registerConfig } from '../src/tools/config.js';
 import { registerCat, looksBinary } from '../src/tools/cat.js';
+import { registerContacts } from '../src/tools/contacts.js';
+import { registerManage } from '../src/tools/manage.js';
 import { createConfirmStore } from '../src/confirm.js';
 import { assertNoFlag, assertRemotePath, assertDownloadTarget, assertNoLocalGlob, publishMegacmdBinDir, assertLocalPath, assertNoStoreWithin, assertNoProtectedWithin, planUpload, ValidationError } from '../src/paths.js';
 import { createRuntime } from '../src/runtime.js';
 import type { Runtime } from '../src/runtime.js';
 import { verifyResolvedBinary } from '../src/download/megacmd.js';
 import { resolvePathBinDir } from '../src/resolve.js';
+import { registerWhoami } from '../src/tools/whoami.js';
 import { childEnv } from '../src/exec.js';
-import { assertSafeInvocation } from '../src/invocation.js';
+import { childEnv } from '../src/exec.js';
+import { assertSafeInvocation, scrubSecrets } from '../src/invocation.js';
 import { serializeLikeClient, splitLikeServer, survivesRoundTrip } from '../src/argv.js';
-import { localNamesOf, hideContacts } from '../src/tools/helpers.js';
+import { localNamesOf } from '../src/tools/helpers.js';
 import { storeCopyIn } from '../src/paths.js';
 import { homedir } from 'node:os';
 import type { Config, RunResult } from '../src/types.js';
@@ -54,6 +58,15 @@ function tools(register: (server: any, rt: Runtime) => unknown, rt: Runtime): Ma
 
 const text = (res: CallToolResult) => (res.content?.[0] as { text: string }).text;
 const token = (res: CallToolResult) => (res.structuredContent as { confirmToken: string }).confirmToken;
+
+/**
+ * Lookups a confirmation preview makes to describe a destination (MCP-4): the
+ * share list, the public-link list, and a file-or-folder probe. Filtered out where
+ * a test asserts the commands that actually ACT.
+ */
+const isProbe = (a: string[]) =>
+  ((a[0] === 'share' || a[0] === 'export') && a.length === 2 && a[1] === '/') || (a[0] === 'find' && a.includes('--type=d') && a.includes('--print-only-handles'));
+const acting = (argv: string[][]) => argv.filter((a) => !isProbe(a));
 
 /**
  * `find` prints node names raw, one per line. A name with a line break can add
@@ -123,7 +136,7 @@ describe('mega_put', () => {
       const preview = await put({ localPath: file, remotePath: '/Backup' });
       const done = await put({ localPath: file, remotePath: '/Backup', confirm: token(preview) });
       expect(done.isError).toBeFalsy();
-      expect(argv).toEqual([
+      expect(acting(argv)).toEqual([
         ['mkdir', '-p', '/Backup'],
         ['put', '-c', file, '/Backup'],
       ]);
@@ -140,7 +153,7 @@ describe('mega_put', () => {
       const preview = await put({ localPath: dir, remotePath: '/Backup' });
       const done = await put({ localPath: dir, remotePath: '/Backup', confirm: token(preview) });
       expect(done.isError).toBe(true);
-      expect(argv.map((a) => a[0])).toEqual(['mkdir']);
+      expect(acting(argv).map((a) => a[0])).toEqual(['mkdir']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -221,32 +234,15 @@ describe('download target: file versions', () => {
   });
 });
 
-/**
- * Incoming shares are listed as //from/<sharer-email>:<folder>, so listing them
- * reveals third-party email addresses - gated like mega_share list.
- */
-describe('incoming-share listings and contact details', () => {
-  it('mega_mount asks first when contact details are not exposed', async () => {
-    const { rt, argv } = recording();
-    const res = await tools(registerReadOnly, rt).get('mega_mount')!({});
-    expect(res.structuredContent).toMatchObject({ requiresConfirmation: true });
-    expect(text(res)).toMatch(/EMAIL ADDRESSES/);
-    expect(argv).toEqual([]);
-  });
-
-  it('mega_mount lists freely when contact details are exposed', async () => {
-    const { rt, argv } = recording(() => ({}), { exposeContacts: true });
-    await tools(registerReadOnly, rt).get('mega_mount')!({});
-    expect(argv).toEqual([['mount']]);
-  });
-
-  it('refuses enumerating incoming shares by pattern, but not a specific share', async () => {
-    const { rt } = recording();
+describe('email addresses are not hidden', () => {
+  it('mega_mount, in-share patterns and status listings show sharers as MEGAcmd prints them', async () => {
+    const { rt, argv } = recording(() => ({ stdout: 'D     //from/alice@example.com:Team/a   /tmp/a\n' }));
     const ro = tools(registerReadOnly, rt);
-    expect((await ro.get('mega_ls')!({ remotePath: '//from/*' })).isError).toBe(true);
-    expect((await ro.get('mega_find')!({ remotePath: '//f*' })).isError).toBe(true);
-    expect((await ro.get('mega_ls')!({ remotePath: '//from/a@b.c:Team' })).isError).toBeFalsy();
-    expect((await tools(registerDangerous, rt).get('mega_rm')!({ remotePath: '//from/.*', usePcre: true })).isError).toBe(true);
+    await ro.get('mega_mount')!({});
+    expect(argv).toEqual([['mount']]);
+    expect((await ro.get('mega_ls')!({ remotePath: '//from/*' })).isError).toBeFalsy();
+    expect(text(await ro.get('mega_transfers')!({}))).toContain('alice@example.com');
+    expect(() => assertSafeInvocation('ls', ['--use-pcre', '//from/.*'])).not.toThrow();
   });
 });
 
@@ -494,28 +490,18 @@ describe.runIf(process.platform === 'darwin' && existsSync('/System/Volumes/Data
 describe('the shared invocation gate', () => {
   it('refuses any value MEGAcmd would read back differently', () => {
     for (const args of [['\u0001-a'], ['\u001b-a'], ["'-a"], ['-a', '--password=pw\\', '--expire=1d', '/x']]) {
-      expect(() => assertSafeInvocation('killsession', args, false), JSON.stringify(args)).toThrow(/read differently/);
+      expect(() => assertSafeInvocation('killsession', args), JSON.stringify(args)).toThrow(/read differently/);
     }
-    expect(() => assertSafeInvocation('ls', ['/My Docs', '/日本語'], false)).not.toThrow();
-    expect(() => assertSafeInvocation('get', ['', '/x'], false)).not.toThrow();
+    expect(() => assertSafeInvocation('ls', ['/My Docs', '/日本語'])).not.toThrow();
+    expect(() => assertSafeInvocation('get', ['', '/x'])).not.toThrow();
   });
 
   it('keeps session-store copies out of every content command, but lets links be removed', () => {
-    expect(() => assertSafeInvocation('get', ['/Backup/.megaCmd/session', '/tmp/x'], false)).toThrow(/session store/);
-    expect(() => assertSafeInvocation('cp', ['/Backup/.mega?md', '/x'], false)).toThrow(/session store/);
-    expect(() => assertSafeInvocation('get', ['//from/a@b.c:.megaCmd', '/tmp/x'], false)).toThrow(/session store/);
-    expect(() => assertSafeInvocation('export', ['-d', '/Backup/.megaCmd'], false)).not.toThrow();
-    expect(() => assertSafeInvocation('rm', ['-r', '-f', '/Backup/.megaCmd'], false)).not.toThrow();
-  });
-
-  it('refuses in-share enumeration in any spelling unless contacts are exposed', () => {
-    for (const p of ['//from/*', '//f*', '//?rom/*', '//*/*']) {
-      expect(() => assertSafeInvocation('ls', [p], false), p).toThrow(/email addresses/);
-      expect(() => assertSafeInvocation('ls', [p], true), p).not.toThrow();
-    }
-    expect(() => assertSafeInvocation('ls', ['--use-pcre', '//from/.*'], false)).toThrow(/email addresses/);
-    expect(() => assertSafeInvocation('ls', ['//bin/*'], false)).not.toThrow();
-    expect(() => assertSafeInvocation('ls', ['//from/a@b.c:Team'], false)).not.toThrow();
+    expect(() => assertSafeInvocation('get', ['/Backup/.megaCmd/session', '/tmp/x'])).toThrow(/session store/);
+    expect(() => assertSafeInvocation('cp', ['/Backup/.mega?md', '/x'])).toThrow(/session store/);
+    expect(() => assertSafeInvocation('get', ['//from/a@b.c:.megaCmd', '/tmp/x'])).toThrow(/session store/);
+    expect(() => assertSafeInvocation('export', ['-d', '/Backup/.megaCmd'])).not.toThrow();
+    expect(() => assertSafeInvocation('rm', ['-r', '-f', '/Backup/.megaCmd'])).not.toThrow();
   });
 
   it('matches MEGAcmd on how it splits a joined command line', () => {
@@ -639,15 +625,6 @@ describe('destination folders and status listings', () => {
     }
   });
 
-  it('hides sharer emails in transfer and sync listings unless contacts are exposed', async () => {
-    const out = 'TYPE  SOURCE                         DESTINATION\nD     //from/alice@example.com:Team/a   /tmp/a\n';
-    const hidden = await tools(registerReadOnly, recording(() => ({ stdout: out })).rt).get('mega_transfers')!({});
-    expect(text(hidden)).not.toContain('alice@example.com');
-    expect(text(hidden)).toContain('<contact>:Team');
-    const shown = await tools(registerReadOnly, recording(() => ({ stdout: out }), { exposeContacts: true }).rt).get('mega_transfers')!({});
-    expect(text(shown)).toContain('alice@example.com');
-    expect(hideContacts('/Docs/report.pdf', false)).toBe('/Docs/report.pdf');
-  });
 });
 
 describe('final scoped review fixes', () => {
@@ -672,7 +649,7 @@ describe('final scoped review fixes', () => {
   it('no folder is created inside a cloud session-store copy', async () => {
     const { rt, argv } = recording();
     expect((await tools(registerMutate, rt).get('mega_mkdir')!({ remotePath: '/Backup/home/.megaCmd/x' })).isError).toBe(true);
-    expect(() => assertSafeInvocation('mkdir', ['-p', '/Backup/.megaCmd/x'], false)).toThrow(/session store/);
+    expect(() => assertSafeInvocation('mkdir', ['-p', '/Backup/.megaCmd/x'])).toThrow(/session store/);
     expect(argv).toEqual([]);
   });
 
@@ -693,18 +670,6 @@ describe('final scoped review fixes', () => {
     }
   });
 
-  it('the share-list preview says what it reveals', async () => {
-    const d = tools(registerDangerous, recording().rt).get('mega_share')!;
-    expect(text(await d({ action: 'list' }))).toMatch(/EVERY shared folder in the account/);
-    expect(text(await d({ action: 'list', remotePath: '/Team', pending: true }))).toMatch(/\/Team or any folder inside it is shared with, including pending/);
-    expect(text(await d({ action: 'list', remotePath: '/' }))).toMatch(/EVERY shared folder in the account/);
-  });
-
-  it('hides shortened sharer addresses too', () => {
-    expect(hideContacts('D  alice@e...am/a  /tmp/a', false)).not.toContain('alice');
-    expect(hideContacts('/Docs/report.pdf', false)).toBe('/Docs/report.pdf');
-  });
-
   // MEGAcmd closes EVERY other session for "all" and for any id decoding to the
   // all-ones invalid handle; only a real handle may name a single session.
   it('accepts only a real session handle', async () => {
@@ -720,5 +685,297 @@ describe('final scoped review fixes', () => {
 
   it('finds a store copy below a folder whose name merely looks like a wildcard', () => {
     expect(storeCopyIn('/Backup/*/.megaCmd')).toBe('name');
+  });
+});
+
+/**
+ * MCP-3: attribute listings never carry key material. MCP-4: a preview says when
+ * the destination is shared or publicly linked, and when a file is replaced.
+ */
+describe('MCP-3: attribute listings without key material', () => {
+  it('mega_attr drops the official s4 section (S4 access + secret keys)', async () => {
+    const out = 'The node has 1 custom attributes:\n\tnote = hello\nOfficial attributes:\n\ts4 = {"k":"AKIA-SECRET","s":"very-secret"}\n';
+    const res = await tools(registerReadOnly, recording(() => ({ stdout: out })).rt).get('mega_attr')!({ remotePath: '/Bucket' });
+    expect(text(res)).toContain('note = hello');
+    expect(text(res)).not.toMatch(/SECRET|very-secret|s4 =/);
+    expect(text(res)).toMatch(/S4 settings are not shown/);
+    expect(JSON.stringify(res.structuredContent)).not.toMatch(/SECRET/);
+  });
+
+  it('mega_userattr returns only plain profile values', async () => {
+    const out = [
+      '\tFirst name (firstname) = Ann',
+      '\tKeyring (*keyring) = cHJpdmF0ZS1rZXk=',
+      '\tKeys (^!keys) = c2VjcmV0',
+      '\tPublic key (+puEd255) = AAAA',
+      '',
+    ].join('\n');
+    const res = await tools(registerContacts, recording(() => ({ stdout: out }), { exposeContacts: true }).rt).get('mega_userattr')!({});
+    expect(text(res)).toContain('Ann');
+    expect(text(res)).not.toMatch(/cHJpdmF0ZS1rZXk=|c2VjcmV0|keyring|\^!keys/);
+    expect(text(res)).toMatch(/3 private or key attribute\(s\) not shown/);
+  });
+});
+
+describe('MCP-4: previews say who will see the result, and what is replaced', () => {
+  const listings = (cmd: string, args: string[]) => {
+    if (cmd === 'share' && args[0] === '/') return { stdout: '/Team, shared with bob@example.com, access read-only\n' };
+    if (cmd === 'export' && args[0] === '/') return { stdout: '/Public (folder, shared as exported permanent folder link: https://mega.nz/folder/x#y)\n' };
+    return {};
+  };
+  const summaryOf = (r: CallToolResult) => (r.structuredContent as { summary: string }).summary;
+
+  it('copying into a shared or publicly linked folder says so, without naming recipients', async () => {
+    const cp = tools(registerMutate, recording((c, a) => (c === 'find' && a.includes('--print-only-handles') ? { stdout: 'H:DIR\n' } : listings(c, a))).rt).get('mega_cp')!;
+    const intoShare = summaryOf(await cp({ src: '/Private/a.pdf', dst: '/Team/sub' }));
+    expect(intoShare).toMatch(/inside \/Team, which is shared with other people/);
+    expect(intoShare).not.toContain('bob@example.com');
+    expect(summaryOf(await cp({ src: '/Private/a.pdf', dst: '/Public' }))).toMatch(/\/Public has a public link/);
+    expect(summaryOf(await cp({ src: '/Private/a.pdf', dst: '/Public/in' }))).toMatch(/inside \/Public, which has a public link/);
+    expect(summaryOf(await cp({ src: '/Private/a.pdf', dst: '/Elsewhere' }))).not.toMatch(/share with|public link|REPLACED/);
+  });
+
+  it('copying or moving onto an existing file says it is replaced', async () => {
+    // An existing FILE lists nothing for `find --type=d`.
+    const rt = recording((c, a) => (c === 'find' && a.includes('--print-only-handles') ? { stdout: '' } : listings(c, a))).rt;
+    expect(summaryOf(await tools(registerMutate, rt).get('mega_cp')!({ src: '/a.txt', dst: '/b.txt' }))).toMatch(/\/b\.txt is an existing FILE: it will be REPLACED/);
+    expect(summaryOf(await tools(registerMutate, rt).get('mega_mv')!({ src: '/a.txt', dst: '/b.txt' }))).toMatch(/REPLACED/);
+  });
+
+  it("names someone else's shared folder as the destination", async () => {
+    const cp = tools(registerMutate, recording((c, a) => (c === 'find' && a.includes('--print-only-handles') ? { stdout: 'H:DIR\n' } : {})).rt).get('mega_cp')!;
+    expect(summaryOf(await cp({ src: '/a.txt', dst: '//from/x@y.z:Team' }))).toMatch(/someone else shared with you/);
+  });
+
+  it('uploads, imports, syncs and backups into a shared folder say so too', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mega-notes-'));
+    try {
+      const rt = recording((c, a) => (c === 'find' && a.includes('--print-only-handles') ? { stdout: 'H:DIR\n' } : listings(c, a))).rt;
+      const m = tools(registerMutate, rt);
+      const s = tools(registerSync, rt);
+      expect(summaryOf(await m.get('mega_put')!({ localPath: dir, remotePath: '/Team' }))).toMatch(/shared with other people/);
+      expect(summaryOf(await tools(registerManage, rt).get('mega_import')!({ link: 'https://mega.nz/folder/a#k', remotePath: '/Public/in' }))).toMatch(/public link/);
+      expect(summaryOf(await s.get('mega_sync_add')!({ localPath: dir, remotePath: '/Team' }))).toMatch(/shared with other people/);
+      expect(summaryOf(await s.get('mega_backup_add')!({ localPath: dir, remotePath: '/Public', period: '0 0 * * *', numBackups: 3 }))).toMatch(/public link/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * Sensitive output from MEGAcmd. Tools may run only the commands they need (the
+ * session, master-key, password and proxy commands are unreachable), and every
+ * output loses the credentials MEGAcmd prints next to a label before any tool
+ * sees it.
+ */
+describe('MEGAcmd commands and their output', () => {
+  it('refuses commands no tool needs - the ones that print sessions, keys or passwords', () => {
+    for (const cmd of ['session', 'masterkey', 'passwd', 'proxy', 'login', 'signup', 'confirm', 'webdav', 'ftp', 'exec', 'cancel']) {
+      expect(() => assertSafeInvocation(cmd, []), cmd).toThrow(/not one this connector runs/);
+    }
+    expect(() => assertSafeInvocation('ls', ['/'])).not.toThrow();
+  });
+
+  it('every MEGAcmd command named in the source is on the allowlist', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const files = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(dir, e.name)) : e.name.endsWith('.ts') ? [join(dir, e.name)] : []));
+    const used = new Set<string>();
+    for (const f of files(join(__dirname, '..', 'src'))) {
+      const src = readFileSync(f, 'utf8');
+      for (const m of src.matchAll(/(?:rt\.run|runToResult\(rt,|runPerHandle\(rt,|runBulk\(rt,)\s*\(?'([a-z-]+)'/g)) used.add(m[1] as string);
+    }
+    for (const s of ['speedlimit', 'https', 'graphics', 'log', 'permissions', 'reload', 'debug']) used.add(s);
+    expect(used.size).toBeGreaterThan(30);
+    for (const cmd of used) expect(() => assertSafeInvocation(cmd, []), cmd).not.toThrow(/not one this connector runs/);
+  });
+
+  it('removes credentials MEGAcmd prints next to a label, but keeps the link', () => {
+    // export, in the formats of megacmdexecuter.cpp
+    const out = [
+      'Exported /Team: https://mega.nz/folder/abc#def',
+      '          AuthToken = SECRET-TOKEN',
+      '          Share key encryption key = SECRET-SHARE-KEY',
+      '/Drop (folder, shared as exported permanent folder link: https://mega.nz/folder/x#y AuthToken=x#y:SECRET-FOLDER)',
+      '/a.txt (12 B, shared as exported permanent file link: https://mega.nz/file/x#y expires at Thu, 08 Oct 2026 AuthKey=SECRET-AUTHKEY)',
+    ].join('\n');
+    const clean = scrubSecrets('export', [], out);
+    expect(clean).not.toMatch(/SECRET-/);
+    expect(clean).toContain('https://mega.nz/folder/abc#def');
+    expect(clean).toContain('AuthToken = [hidden]');
+    expect(clean).toContain('AuthKey=[hidden])');
+    expect(scrubSecrets('users', ['-s'], out)).not.toMatch(/SECRET-(TOKEN|FOLDER|AUTHKEY)/);
+    expect(scrubSecrets('find', ['/x', '-l'], out)).not.toMatch(/SECRET-(TOKEN|FOLDER|AUTHKEY)/);
+    // whoami -l, as printed by MEGAcmd 2.6.0 (mega_sessions shows this block).
+    const sessions = '    * Current Session\n    Session ID: AbCdEfGhIjK\n    IP: 192.0.2.1\n    -----';
+    expect(scrubSecrets('whoami', ['-l'], sessions)).not.toContain('AbCdEfGhIjK');
+    expect(scrubSecrets('whoami', ['-l'], sessions)).toContain('Session ID: [hidden]');
+    // The login session token itself (logout --keep-session; never run).
+    const token = 'A'.repeat(80);
+    expect(scrubSecrets('logout', [], `You can also login with the session id: ${token}`)).not.toContain(token);
+  });
+
+  it('leaves file contents and names alone: only outputs that carry a credential are scrubbed', () => {
+    const text = 'Session: Opening keynote\npassword = hunter2\nconst authToken = await login();\nAuthKey=abc';
+    expect(scrubSecrets('cat', ['/notes.txt'], text)).toBe(text);
+    // Names the guards parse back (PCRE previews, mkdir "already exists").
+    const found = '/Talks/session: x <H:aaaaaaaa>\n/Talks/session: x/a.txt <H:bbbbbbbb>';
+    expect(scrubSecrets('find', ['/Talks', '--use-pcre', '--show-handles'], found)).toBe(found);
+    const exists = '[2026-10-07_03-49-59.658032 cmd ERR  Folder already exists: session: notes]';
+    expect(scrubSecrets('mkdir', ['-p', '/session: notes'], exists)).toBe(exists);
+    // An export of a path ending in "session" keeps its link.
+    const exported = 'Exported /Music/Jam session: https://mega.nz/folder/abc#def';
+    expect(scrubSecrets('export', ['-a', '/Music/Jam session'], exported)).toBe(exported);
+  });
+
+  it('the runtime scrubs credential-carrying output before a tool sees it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mega-scrub-'));
+    try {
+      const resolved = {
+        source: 'path' as const,
+        binDir: dir,
+        libDir: null,
+        clientInvocation: (cmd: string, args: string[]) => ({ bin: join(dir, `mega-${cmd}`), argv: args }),
+        serverBin: join(dir, 'mega-cmd'),
+      };
+      const rt = createRuntime(
+        { cacheDir: join(dir, 'cache'), systemAppBinDirs: [], download: { sha256Allow: [] }, maxListLines: 1000, exposeContacts: false, exposeAccountDetails: false, exposeFileContents: false } as Config,
+        {
+          resolve: async () => resolved,
+          verify: async () => true,
+          exec: async () => ({ code: 0, stdout: 'Exported /x: https://mega.nz/file/a#b\n  AuthToken = SECRET-TOKEN', stderr: 'Share key encryption key = SECRET-P' }),
+        },
+      );
+      const r = await rt.run('export', ['/x']);
+      expect(r.stdout).toContain('https://mega.nz/file/a#b');
+      expect(r.stdout + r.stderr).not.toMatch(/SECRET-/);
+    } finally {
+      publishMegacmdBinDir(null);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('final review fixes', () => {
+  const NOTFOUND = 53;
+
+  it('mega_put uploads one item under a new name, and the preview shows where each item lands', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mega-putname-'));
+    try {
+      writeFileSync(join(dir, 'report.pdf'), 'r');
+      const { rt, argv } = recording((cmd, args) => (cmd === 'find' && args[0] === '/Docs/report-2026.pdf' ? { code: NOTFOUND } : { stdout: 'H:aaaaaaaa' }));
+      const put = tools(registerMutate, rt).get('mega_put')!;
+      const preview = await put({ localPath: join(dir, 'report.pdf'), remotePath: '/Docs', name: 'report-2026.pdf' });
+      const { summary, confirmToken } = preview.structuredContent as { summary: string; confirmToken: string };
+      expect(summary).toContain(`${join(dir, 'report.pdf')}  ->  /Docs/report-2026.pdf`);
+      const done = await put({ localPath: join(dir, 'report.pdf'), remotePath: '/Docs', name: 'report-2026.pdf', confirm: confirmToken });
+      expect(done.isError).toBeFalsy();
+      const ran = acting(argv).filter((a) => a[0] !== 'find');
+      expect(ran).toEqual([
+        ['mkdir', '-p', '/Docs'],
+        ['put', '-c', join(dir, 'report.pdf'), '/Docs/report-2026.pdf'],
+      ]);
+      // Without a name, each item keeps its own name inside the folder.
+      const plain = await put({ localPath: join(dir, 'report.pdf'), remotePath: '/Docs' });
+      expect((plain.structuredContent as { summary: string }).summary).toContain('->  /Docs/report.pdf');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('mega_put refuses a name that is a path, a name for several items, and an existing folder', async () => {
+    const { rt, argv } = recording(() => ({ stdout: 'H:aaaaaaaa' }));
+    const put = tools(registerMutate, rt).get('mega_put')!;
+    for (const name of ['a/b', '..', '', 'x#1234567890', '.megaCmd']) {
+      expect((await put({ localPath: '/tmp/a', remotePath: '/Docs', name })).isError, name).toBe(true);
+    }
+    expect((await put({ localPaths: ['/tmp/a', '/tmp/b'], remotePath: '/Docs', name: 'n' })).isError).toBe(true);
+    // find lists a folder at /Docs/n: MEGAcmd would put the item inside it instead.
+    const res = await put({ localPath: '/tmp/a', remotePath: '/Docs', name: 'n' });
+    expect(text(res)).toMatch(/already exists as a folder/);
+    expect(acting(argv).filter((a) => a[0] !== 'find')).toEqual([]);
+  });
+
+  it('mega_get checks a localDir that does not exist yet as the landing place itself', async () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'mega-getmissing-')));
+    const root = join(base, 'cache', 'megacmd');
+    publishMegacmdBinDir(null, [root]);
+    try {
+      const get = tools(registerMutate, recording().rt).get('mega_get')!;
+      // MEGAcmd would create <root> as the downloaded folder and fill it.
+      expect(text(await get({ remotePath: '/My Stuff', localDir: root }))).toMatch(/Refusing/);
+      expect(text(await get({ remotePath: '/My Stuff', localDir: join(base, 'cache') }))).toMatch(/Refusing to download/);
+      // An ordinary missing folder is fine.
+      expect((await get({ remotePath: '/My Stuff', localDir: join(base, 'new') })).isError).toBeFalsy();
+    } finally {
+      publishMegacmdBinDir(null);
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('a PCRE download checks where the topmost matches land, not their contents', async () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'mega-pcretop-')));
+    const root = join(home, 'Library', 'Caches', 'x');
+    mkdirSync(root, { recursive: true });
+    publishMegacmdBinDir(null, [root]);
+    try {
+      const listing = '/Proj <H:aaaaaaaa>\n/Proj/Library <H:bbbbbbbb>';
+      const { rt } = recording((cmd, args) =>
+        cmd === 'find' && args.includes('--use-pcre')
+          ? { stdout: args.includes('--print-only-handles') ? 'H:aaaaaaaa\nH:bbbbbbbb' : listing }
+          : {},
+      );
+      const get = tools(registerMutate, rt).get('mega_get')!;
+      const res = await get({ remotePath: '^/Proj$', localDir: home, usePcre: true, background: true });
+      expect(res.isError).toBeFalsy();
+      expect((res.structuredContent as { summary: string }).summary).toMatch(/in the background/);
+    } finally {
+      publishMegacmdBinDir(null);
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('mega_mkdir creates a folder whose name starts with "*" (mkdir has no wildcards)', async () => {
+    const { rt, argv } = recording();
+    const mkdir = tools(registerMutate, rt).get('mega_mkdir')!;
+    expect((await mkdir({ remotePath: '/Projects/* To sort' })).isError).toBeFalsy();
+    expect(argv).toEqual([['mkdir', '-p', '/Projects/* To sort']]);
+    expect((await mkdir({ remotePath: '/x/.megaCmd/y' })).isError).toBe(true);
+  });
+
+  it('Linux login instructions name the shell the packages install (mega-cmd)', async () => {
+    const real = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    try {
+      const rt = {
+        ...recording().rt,
+        ensureReady: async () => ({ loggedIn: false, reason: 'not_logged_in' }),
+        getResolved: async () => ({ binDir: '/usr/bin' }),
+      } as unknown as Runtime;
+      const out = text(await tools(registerWhoami, rt).get('mega_whoami')!({}));
+      expect(out).toContain('mega-cmd');
+      expect(out).not.toContain('MEGAcmdShell');
+    } finally {
+      Object.defineProperty(process, 'platform', { value: real });
+    }
+  });
+
+  it('prepends the bin dir to Windows "Path" instead of shadowing it', () => {
+    const real = process.platform;
+    const saved = { PATH: process.env.PATH, Path: process.env.Path };
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      delete process.env.PATH;
+      process.env.Path = 'C:\\Windows\\system32';
+      const env = childEnv({ binDir: 'C:\\MEGAcmd', libDir: null } as never);
+      expect(env.Path).toBe('C:\\MEGAcmd;C:\\Windows\\system32');
+      expect(env.PATH).toBeUndefined();
+    } finally {
+      Object.defineProperty(process, 'platform', { value: real });
+      if (saved.Path === undefined) delete process.env.Path;
+      else process.env.Path = saved.Path;
+      process.env.PATH = saved.PATH;
+    }
   });
 });

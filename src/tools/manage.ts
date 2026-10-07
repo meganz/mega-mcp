@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok } from '../mcpResult.js';
 import { assertRemotePath, assertNoFlag, assertFlagValue, assertSecret, assertNoWildcard, ValidationError } from '../paths.js';
-import { guardRun, runToResult, checkConfirm, secretBinding } from './helpers.js';
+import { guardRun, runToResult, checkConfirm, secretBinding, destinationNotes } from './helpers.js';
 import { isPublicLink } from '../argv.js';
 
 const TRANSFER_FLAG: Record<string, string> = { pause: '-p', resume: '-r', cancel: '-c' };
@@ -222,7 +222,8 @@ export function registerManage(server: McpServer, rt: Runtime): void {
         }
         const pw = password === undefined ? undefined : assertSecret(password, 'password');
         const rp = assertRemotePath(remotePath);
-        const summary = `This will import the contents of the link ${lk} into ${rp}.`;
+        const notes = confirm ? [] : await destinationNotes(rt, rp);
+        const summary = [`This will import the contents of the link ${lk} into ${rp}.`, ...notes];
         // Bind only the presence of a password into the token, never its value.
         const gate = checkConfirm(rt, 'mega_import', { link: lk, remotePath: rp, password: secretBinding(password) }, confirm, summary);
         if (gate) return gate;

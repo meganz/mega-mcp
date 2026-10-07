@@ -9,7 +9,8 @@
  *
  * Crucially, the resumable login KEY is never present in `whoami -l` output at
  * all (it appears only in `logout -k` / `session`, which we never run), so it
- * cannot leak here. The "Session ID" surfaced is the killSession HANDLE.
+ * cannot leak here. The "Session ID" it prints (the killSession handle) is
+ * replaced with [hidden] by the runtime (src/invocation.ts scrubSecrets).
  *
  * Each extractor bounds its region so the two never overlap: the balance block
  * stops BEFORE "Current Active Sessions:", and the session block starts AT it.

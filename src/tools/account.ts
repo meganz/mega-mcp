@@ -51,14 +51,14 @@ export function registerAccount(server: McpServer, rt: Runtime): void {
  * relevant bounded block; the resumable login key is never in that output.
  */
 export function registerAccountDetails(server: McpServer, rt: Runtime): void {
-  // mega_sessions — list active login sessions (handle + IP/geo/UA). The handle
-  // is the killSession input, so this pairs with mega_killsession.
+  // mega_sessions — list active login sessions (IP/geo/UA). The session handle is
+  // scrubbed by the runtime (src/invocation.ts): it allows account actions.
   server.registerTool(
     'mega_sessions',
     {
       title: 'MEGA: active sessions',
       description:
-        'List the active login sessions on this account (session handle, IP, country, device, timestamps). Read-only. The handle can be passed to mega_killsession.',
+        'List the active login sessions on this account (IP, country, device, timestamps). Read-only. Session IDs are not shown: they allow account actions, so they never enter the conversation. To close one specific session the user provides its ID; otherwise mega_killsession closes all other sessions.',
       inputSchema: {},
       annotations: { title: 'MEGA: active sessions', ...RO },
     },

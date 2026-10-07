@@ -139,6 +139,15 @@ export function publishMegacmdBinDir(dir: string | null, roots: readonly string[
  * otherwise the published value is used. Windows only, since on posix the store is
  * under $HOME wherever the binary lives.
  */
+function homeIsDir(): boolean {
+  try {
+    const home = homedir();
+    return home !== '' && statSync(home).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function sessionStoreRoots(binDir?: string | null): string[] {
   binDir ??= publishedBinDir;
   const roots = new Set<string>();
@@ -157,8 +166,14 @@ function sessionStoreRoots(binDir?: string | null): string[] {
   // MEGAcmd's homeDirPath() does, so the two cannot disagree.
   for (const name of names) add(resolve(homedir(), name));
   // getuid() is undefined on win32 — the same platform with no /tmp fallback.
+  // MEGAcmd uses /tmp/megacmd-<uid> only when HOME is unset or not a directory
+  // (it is also its socket folder of last resort), so it is held when that is the
+  // case or when it exists; otherwise /tmp stays an ordinary download folder.
   const uid = process.getuid?.();
-  if (uid !== undefined) add(`/tmp/megacmd-${uid}`);
+  if (uid !== undefined) {
+    const fallback = `/tmp/megacmd-${uid}`;
+    if (!homeIsDir() || existsSync(fallback)) add(fallback);
+  }
   // win32 only: on posix the store is under $HOME wherever the binary lives, so
   // deriving a root from the install dir would invent one that never exists.
   if (isWin && binDir) for (const name of names) add(resolve(binDir, name));
@@ -689,8 +704,11 @@ function joinRemote(parent: string, name: string): string {
  *
  * A symlink is never descended into (a link back up the tree would loop); it is
  * left out when its target is, or contains, a store.
+ *
+ * `name` (a single item only) is the cloud name of the uploaded item instead of
+ * its local one.
  */
-export function planUpload(lps: string[], rp: string, binDir?: string | null): UploadPlan {
+export function planUpload(lps: string[], rp: string, binDir?: string | null, name?: string): UploadPlan {
   const stores = sessionStoreRoots(binDir)
     .filter((r) => existsSync(r))
     .map((r) => realpathBestEffort(r));
@@ -703,9 +721,9 @@ export function planUpload(lps: string[], rp: string, binDir?: string | null): U
   const steps: UploadStep[] = [];
   const excluded: string[] = [];
 
-  const split = (dir: string, remoteParent: string): void => {
+  const split = (dir: string, remoteParent: string, as?: string): void => {
     const listed = realpathBestEffort(normWinPath(dir));
-    const step: UploadStep = { dest: joinRemote(remoteParent, basename(normWinPath(dir))), sources: [] };
+    const step: UploadStep = { dest: joinRemote(remoteParent, as ?? basename(normWinPath(dir))), sources: [] };
     steps.push(step);
     let names: string[];
     try {
@@ -734,7 +752,7 @@ export function planUpload(lps: string[], rp: string, binDir?: string | null): U
   };
 
   for (const lp of lps) {
-    if (sessionStoresWithin(lp, binDir).length > 0 || containsStore(lp)) split(lp, rp);
+    if (sessionStoresWithin(lp, binDir).length > 0 || containsStore(lp)) split(lp, rp, name);
     else direct.push(lp);
   }
   if (direct.length > 0) steps.unshift({ dest: rp, sources: direct });
@@ -783,29 +801,6 @@ function globCanMatchStoreName(segment: string): boolean {
   // "*" and "?" can always stand for dot-free characters, so only a literal dot in
   // what remains after `.megacmd_` rules out a dot-free suffix.
   return [...step(states, '_')].some((i) => !g.slice(i).includes('.'));
-}
-
-/**
- * Refuse listing INCOMING shares by pattern while contact details are not exposed.
- *
- * MEGAcmd matches a path that starts with "//f" plus a wildcard (or a PCRE) against
- * `//from/<sharer-email>:<folder>`, so such a listing enumerates the email address
- * of everyone who shared a folder with the user - the same data mega_share list
- * and mega_mount only reveal after a confirmation. A specific in-share path is
- * fine: it names an address the caller already has.
- */
-export function assertNoInshareEnumeration(path: string | undefined, pattern: boolean, exposeContacts: boolean): void {
-  if (exposeContacts || !path) return;
-  // Any "//" root other than the rubbish bin and inbox may be resolved against
-  // //from/<email>:<folder>, and MEGAcmd skips leading blanks and control bytes,
-  // so neither may be used to step around the check.
-  const p = path.replace(/^[\x00-\x20]+/, '');
-  if (!p.startsWith('//') || p.startsWith('//bin/') || p.startsWith('//in/')) return;
-  if (pattern || /[*?]/.test(p)) {
-    throw new ValidationError(
-      'Listing incoming shares by pattern reveals the email addresses of the people who shared them. Use mega_mount (it asks first), or turn on the "Expose contact tools" setting.',
-    );
-  }
 }
 
 /**

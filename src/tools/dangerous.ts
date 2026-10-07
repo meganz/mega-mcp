@@ -41,7 +41,8 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
       description:
         'Log out of the current MEGA session on this machine (invalidates it server-side). Requires confirmation. Log back in out-of-band afterward.',
       inputSchema: { confirm: z.string().optional().describe('Confirmation token from the first call.') },
-      annotations: { title: 'MEGA: log out', destructiveHint: false, openWorldHint: true },
+      // Destructive: ends this login on the server; the user has to log in again.
+      annotations: { title: 'MEGA: log out', destructiveHint: true, openWorldHint: true },
     },
     async ({ confirm }) =>
       guardRun(async () => {
@@ -63,7 +64,7 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
       description:
         'Close other MEGA login sessions on this account (the current session is kept). By default closes ALL other sessions; optionally pass a specific sessionId. Requires confirmation.',
       inputSchema: {
-        sessionId: z.string().optional().describe('A specific session id to close (obtained out-of-band). Omit to close all other sessions.'),
+        sessionId: z.string().optional().describe('A specific session ID to close, only if the user gave it (no tool reveals session IDs). Omit to close all other sessions.'),
         confirm: z.string().optional().describe('Confirmation token from the first call.'),
       },
       annotations: { title: 'MEGA: close other sessions', destructiveHint: true, openWorldHint: true },
@@ -312,31 +313,6 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
       guardRun(async () => {
         if (action === 'list') {
           const rp = usePcre && remotePath ? assertNoFlag(remotePath, 'remotePath') : assertOptionalRemotePath(remotePath);
-          // The share listing contains the EMAIL ADDRESSES of share recipients
-          // (third-party PII). Gate it like the contact tools: free when the user
-          // has opted in via exposeContacts, otherwise confirm-gated so the user
-          // approves revealing those emails.
-          if (!rt.config.exposeContacts) {
-            const gate = checkConfirm(
-              rt,
-              'mega_share:list',
-              // usePcre changes WHICH folders are listed, so it is bound too: a
-              // token for one literal path must not list every regex match.
-              { remotePath: rp ?? null, pending: !!pending, usePcre: !!(usePcre && rp) },
-              confirm,
-              [
-                // `share <path>` walks the whole tree below the path, so every shared
-                // folder inside it is listed too.
-                `This will reveal the EMAIL ADDRESSES of the users ${
-                  !rp || rp === '/'
-                    ? 'EVERY shared folder in the account is shared with'
-                    : `${usePcre ? 'every folder matching ' : ''}${rp} or any folder inside it is shared with`
-                }${pending ? ', including pending invitations' : ''} (third-party contact info).`,
-                'Turn on the "Expose contact tools" setting to allow this without confirming each time.',
-              ],
-            );
-            if (gate) return gate;
-          }
           const args = [...(pending ? ['-p'] : []), ...(usePcre && rp ? ['--use-pcre'] : []), ...(rp ? [rp] : [])];
           return runToResult(rt, 'share', args, (r) => ok(r.stdout.trim().slice(0, 4000) || '(no shares)', { remotePath: rp ?? null, pending }));
         }

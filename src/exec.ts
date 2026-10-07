@@ -38,7 +38,11 @@ export function childEnv(resolved: Resolved): NodeJS.ProcessEnv {
   for (const key of Object.keys(env)) {
     if (UNSAFE_ENV.has(key) || key.startsWith('BASH_FUNC_') || key.startsWith('DYLD_')) delete env[key];
   }
-  if (resolved.binDir) env.PATH = prepend(resolved.binDir, env.PATH, process.platform === 'win32' ? ';' : ':');
+  if (resolved.binDir) {
+    // Windows usually spells it "Path", and a copy of process.env is case-sensitive.
+    const key = process.platform === 'win32' ? (Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH') : 'PATH';
+    env[key] = prepend(resolved.binDir, env[key], process.platform === 'win32' ? ';' : ':');
+  }
   // Bundled shared libs (Linux /opt/megacmd/lib) referenced by absolute RUNPATH
   // won't exist at our cache prefix, so point the loader at the extracted libs.
   if (resolved.libDir) env.LD_LIBRARY_PATH = prepend(resolved.libDir, env.LD_LIBRARY_PATH, ':');

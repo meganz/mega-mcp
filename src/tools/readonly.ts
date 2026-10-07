@@ -2,10 +2,11 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
-import { assertOptionalRemotePath, assertRemotePath, assertNoFlag, assertConstraint, assertFlagValue, assertNoInshareEnumeration } from '../paths.js';
+import { assertOptionalRemotePath, assertRemotePath, assertNoFlag, assertConstraint, assertFlagValue } from '../paths.js';
 import { capLines, decodeCursor, pageInfo, headerRowsUpTo } from '../parsers/listing.js';
 import { parseDf } from '../parsers/df.js';
-import { guardRun, runToResult, checkConfirm, hideContacts } from './helpers.js';
+import { hideNodeSecrets } from '../parsers/attributes.js';
+import { guardRun, runToResult, checkConfirm } from './helpers.js';
 
 const RO = { readOnlyHint: true, openWorldHint: true } as const;
 
@@ -23,7 +24,7 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
         showVersions: z.boolean().default(false).describe('Include prior file versions.'),
         showHandles: z.boolean().default(false).describe('Include node handles (H:XXXXXXXX).'),
         showCreationTime: z.boolean().default(false).describe('Show creation time instead of modification time.'),
-        all: z.boolean().default(false).describe('Show all entries, including hidden ones.'),
+        all: z.boolean().default(false).describe('No effect on this listing (MEGAcmd ignores -a in the long format used here); the FLAGS column already marks links (e) and shares (s).'),
         usePcre: z.boolean().default(false).describe('Interpret remotePath as a Perl-compatible regular expression.'),
         compact: z.boolean().default(false).describe('Compact, parseable output: ISO-8601 timestamps (2026-07-17T16:11:38) instead of RFC2822 — shorter rows, easy to filter by date (pair with showCreationTime to filter by upload time).'),
         pageToken: z.string().optional().describe('Opaque cursor from a previous call\'s nextPageToken, to fetch the next page of a large listing.'),
@@ -33,7 +34,6 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
     async ({ remotePath, recursive, showVersions, showHandles, showCreationTime, all, usePcre, compact, pageToken }) =>
       guardRun(async () => {
         const path = usePcre && remotePath ? assertNoFlag(remotePath, 'remotePath') : assertOptionalRemotePath(remotePath);
-        assertNoInshareEnumeration(path, usePcre, rt.config.exposeContacts);
         const offset = pageToken ? decodeCursor(pageToken) : 0;
         if (offset === null) return err('Invalid pageToken. Omit it to start from the beginning of the listing.');
         const args = ['-l', `--time-format=${compact ? 'ISO6081_WITH_TIME' : 'RFC2822'}`];
@@ -107,7 +107,6 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
     async ({ pattern, remotePath, type, mtime, size, showHandles, usePcre, pageToken }) =>
       guardRun(async () => {
         const path = assertOptionalRemotePath(remotePath);
-        assertNoInshareEnumeration(path, false, rt.config.exposeContacts);
         const offset = pageToken ? decodeCursor(pageToken) : 0;
         if (offset === null) return err('Invalid pageToken. Omit it to start from the beginning of the results.');
         const args: string[] = [];
@@ -142,7 +141,6 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
     async ({ remotePath, pageToken }) =>
       guardRun(async () => {
         const path = assertOptionalRemotePath(remotePath);
-        assertNoInshareEnumeration(path, false, rt.config.exposeContacts);
         const offset = pageToken ? decodeCursor(pageToken) : 0;
         if (offset === null) return err('Invalid pageToken. Omit it to start from the beginning of the tree.');
         const args: string[] = [];
@@ -172,7 +170,6 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
     async ({ remotePath }) =>
       guardRun(async () => {
         const path = assertOptionalRemotePath(remotePath);
-        assertNoInshareEnumeration(path, false, rt.config.exposeContacts);
         const args = ['-h']; // human-readable sizes
         if (path) args.push(path);
         return runToResult(rt, 'du', args, (r) => {
@@ -190,25 +187,12 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
     {
       title: 'MEGA: list roots',
       description:
-        "List the account root nodes and incoming shares (Cloud Drive, Inbox, Rubbish, shares). Read-only; does not mount anything. Asks for confirmation first unless contact details are exposed, since each incoming share shows its sharer's email address.",
-      inputSchema: { confirm: z.string().optional().describe('Confirmation token (only asked for when contact details are not exposed).') },
+        'List the account root nodes and incoming shares (Cloud Drive, Inbox, Rubbish, shares). Read-only; does not mount anything.',
+      inputSchema: {},
       annotations: { title: 'MEGA: list roots', ...RO },
     },
-    async ({ confirm }) =>
+    async () =>
       guardRun(async () => {
-        // Each incoming share is listed as //from/<sharer-email>:<folder>, so this
-        // reveals third-party email addresses exactly as the share listing does,
-        // and is gated the same way.
-        if (!rt.config.exposeContacts) {
-          const gate = checkConfirm(
-            rt,
-            'mega_mount',
-            {},
-            confirm,
-            'This will list your root folders, including incoming shares - which show the EMAIL ADDRESSES of the people who shared them with you (third-party contact info). Turn on the "Expose contact tools" setting to allow this without confirming each time.',
-          );
-          if (gate) return gate;
-        }
         return runToResult(rt, 'mount', [], (r) => {
           const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
           return ok(text || '(no roots)', { rootCount: total, truncated });
@@ -262,7 +246,7 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
         if (showCompleted) args.push('--show-completed');
         if (limit !== undefined) args.push(`--limit=${limit}`);
         return runToResult(rt, 'transfers', args, (r) => {
-          const { text, total, truncated } = capLines(hideContacts(r.stdout, rt.config.exposeContacts), rt.config.maxListLines);
+          const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
           const note = truncated ? `\n\n(${total} transfers; showing first ${rt.config.maxListLines})` : '';
           return ok(text ? `${text}${note}` : '(no active transfers)', { transferCount: total, truncated });
         });
@@ -284,7 +268,6 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
     async ({ remotePath }) =>
       guardRun(async () => {
         const rp = assertRemotePath(remotePath);
-        assertNoInshareEnumeration(rp, false, rt.config.exposeContacts);
         return runToResult(rt, 'mediainfo', [rp], (r) => {
           const text = r.stdout.trim().slice(0, 4000);
           return ok(text || '(no media metadata)', { remotePath: rp });
@@ -292,7 +275,7 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
       }),
   );
 
-  // mega_attr — view node attributes (labels, favourite, custom app attrs, s4).
+  // mega_attr — view node attributes (labels, favourite, custom app attrs; never s4).
   // READ FORM ONLY: the argv is hardcoded to the read form; we never accept
   // -s/-d or a value from the model (those mutate the node — a separate
   // confirm-gated tool's job, out of scope here).
@@ -308,10 +291,12 @@ export function registerReadOnly(server: McpServer, rt: Runtime): void {
     async ({ remotePath }) =>
       guardRun(async () => {
         const rp = assertRemotePath(remotePath);
-        assertNoInshareEnumeration(rp, false, rt.config.exposeContacts);
         return runToResult(rt, 'attr', [rp], (r) => {
-          const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
-          return ok(text || '(no attributes)', { remotePath: rp, lineCount: total, truncated });
+          // MCP-3: the official `s4` attribute can hold S4 access + secret keys.
+          const safe = hideNodeSecrets(r.stdout);
+          const { text, total, truncated } = capLines(safe.text, rt.config.maxListLines);
+          const note = safe.hidden ? '\n(S4 settings are not shown: they can contain storage access keys.)' : '';
+          return ok(`${text || '(no attributes)'}${note}`, { remotePath: rp, lineCount: total, truncated, hidden: safe.hidden });
         });
       }),
   );
