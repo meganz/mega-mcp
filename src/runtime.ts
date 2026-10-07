@@ -3,9 +3,10 @@ import { basename, join } from 'node:path';
 import { resolveBinaries, readActiveCacheMeta, resolvePathBinDir, serverName } from './resolve.js';
 import { execClient } from './exec.js';
 import { ensureServerRunning } from './server.js';
-import { verifyResolvedBinary } from './download/megacmd.js';
+import { verifyResolvedBinary, macLoginHelperDir } from './download/megacmd.js';
 import { detectAuth, ensureReady } from './auth.js';
 import { publishMegacmdBinDir } from './paths.js';
+import { stateDir } from './fileReading.js';
 import { createConfirmStore, type ConfirmStore } from './confirm.js';
 
 /**
@@ -23,7 +24,7 @@ export interface Runtime {
   /**
    * The install DIRECTORY, resolving the 'path' source's null binDir the same way
    * the integrity gate does. On Windows the session store sits next to the
-   * executable, so a null binDir makes sessionStoreWarning blind to the only store
+   * executable, so a null binDir makes the upload/sync store check blind to the only store
    * that actually exists — `getResolved()?.binDir` is not a safe substitute.
    */
   getBinDir(): Promise<string | null>;
@@ -51,6 +52,14 @@ function configTrustRoots(config: Config): string[] {
     ...(config.megacmdDir ? [config.megacmdDir] : []),
     ...(config.bundledDir ? [config.bundledDir] : []),
     config.cacheDir,
+    // The host-injected plugin data dir holds the remembered file-reading consent
+    // (file-reading.json), which the connector trusts at startup. A transfer that
+    // could write it would grant that consent without ever asking. Equal to
+    // cacheDir when no host injects one.
+    stateDir(config),
+    // The macOS login helper: a script the user is told to double-click, so a
+    // transfer must not be able to replace it.
+    ...(process.platform === 'darwin' ? [macLoginHelperDir()] : []),
   ];
 }
 
@@ -68,8 +77,8 @@ export function createRuntime(config: Config): Runtime {
     (binDirPromise ??= (async () => {
       const r = await getResolved();
       if (!r) return null;
-      // Same fall-back as the integrity gate below: 'path' carries a null binDir
-      // because its clients are invoked by bare name.
+      // Every source resolves to a concrete dir now, 'path' included; the
+      // fall-back only covers a Resolved built without one.
       const dir = r.binDir ?? (r.source === 'path' ? await resolvePathBinDir() : null);
       // Add the RESOLVED dir to what createRuntime already armed. This covers the
       // 'path' source, whose install dir is not in config at all.
@@ -90,8 +99,8 @@ export function createRuntime(config: Config): Runtime {
     // against the user's live MEGA session. Identity-based, so it survives
     // MEGAcmd self-updates (signer stays "Mega Limited"; see verifyResolvedBinary).
     integrityVerified ??= (async () => {
-      // 'path' has a null binDir (bare names invoked via PATH); resolve the real
-      // install dir so codesign/Authenticode has a concrete target to check.
+      // The install dir codesign/Authenticode checks: the same dir every client
+      // is launched from (see resolvePathBinDir for why 'path' needs this too).
       const binDir = await getBinDir();
       const serverBin = binDir ? join(binDir, serverName()) : resolved.serverBin;
       // The CLIENT is the binary this process actually launches, every call. On

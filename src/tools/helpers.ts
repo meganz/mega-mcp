@@ -7,6 +7,23 @@ import { classifyExit } from '../errors.js';
 import { capLines } from '../parsers/listing.js';
 
 /**
+ * Most targets one confirmed operation may act on. Every target is named in the
+ * preview — a preview that showed the first N and executed the rest would let a
+ * target nobody saw ride along with the approval — so the cap is what keeps that
+ * preview readable. A larger set is split into several confirmed operations.
+ */
+export const PLAN_MAX = 200;
+
+/** Refuse a plan the preview could not name in full. */
+export function assertPlanSize(count: number, what: string): void {
+  if (count > PLAN_MAX) {
+    throw new ValidationError(
+      `This would act on ${count} ${what}; at most ${PLAN_MAX} can be confirmed at once, so that every one is listed in the preview. Split it into smaller operations (a narrower pattern, or shorter lists).`,
+    );
+  }
+}
+
+/**
  * Dry-run preview for a PCRE pattern: enumerate the nodes a `--use-pcre`
  * operation would match (via `find <pattern> --use-pcre --show-handles`),
  * capturing each node's stable HANDLE. The confirmation preview shows the actual
@@ -16,8 +33,8 @@ import { capLines } from '../parsers/listing.js';
 export async function pcreMatchPreview(
   rt: Runtime,
   pattern: string,
-  max = 50,
-): Promise<{ ok: true; count: number; handles: string[]; text: string } | { ok: false; error: string }> {
+  max = PLAN_MAX,
+): Promise<{ ok: true; count: number; handles: string[]; paths: string[]; text: string } | { ok: false; error: string }> {
   const r = await rt.run('find', [pattern, '--use-pcre', '--show-handles']);
   if (r.code !== 0) return { ok: false, error: classifyExit(r) };
   const entries: { path: string; handle: string }[] = [];
@@ -30,7 +47,7 @@ export async function pcreMatchPreview(
   const handles = entries.map((e) => e.handle);
   const shown = entries.slice(0, max).map((e) => `${e.path} <${e.handle}>`).join('\n');
   const note = entries.length > max ? `\n...(${entries.length} total; showing first ${max})` : '';
-  return { ok: true, count: entries.length, handles, text: (shown || '(no matches)') + note };
+  return { ok: true, count: entries.length, handles, paths: entries.map((e) => e.path), text: (shown || '(no matches)') + note };
 }
 
 // Token -> the exact node handles resolved at preview time. Keyed by the confirm
@@ -54,7 +71,8 @@ function takePcrePlan(token: string): string[] | null {
  * resolve the pattern to concrete handles, show them in the preview, stash them
  * under the issued token. Second call: validate the token and return the stashed
  * handles. Returns `{ proceed: true, handles }` to execute, or `{ result }` to
- * return immediately (preview, invalid token, or expired plan).
+ * return immediately (preview, invalid token, or expired plan). `checkPath` may
+ * throw a ValidationError to refuse the whole operation over one matched path.
  */
 export async function pcreGate(
   rt: Runtime,
@@ -63,10 +81,15 @@ export async function pcreGate(
   confirm: string | undefined,
   pattern: string,
   summaryFor: (count: number, text: string) => string,
+  checkPath?: (path: string) => void,
 ): Promise<{ proceed: false; result: CallToolResult } | { proceed: true; handles: string[] }> {
   if (!confirm) {
     const prev = await pcreMatchPreview(rt, pattern);
     if (!prev.ok) return { proceed: false, result: err(prev.error) };
+    assertPlanSize(prev.count, 'matching nodes');
+    // Checked on the PINNED set: execution runs on these handles and nothing else,
+    // so a match refused here cannot come back in the second call.
+    if (checkPath) for (const p of prev.paths) checkPath(p);
     // Split into lines so the match listing keeps its structure; each line is
     // then escaped individually, since the node names in it come from the cloud
     // and are as untrusted as any other model-reachable value.

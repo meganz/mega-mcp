@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
-import { assertRemotePath, assertOptionalRemotePath, assertNoFlag, assertFlagValue, assertSecret, assertNoWildcard, ValidationError } from '../paths.js';
+import { assertRemotePath, assertOptionalRemotePath, assertNoFlag, assertFlagValue, assertSecret, assertNoWildcard, assertNotStoreCopy, ValidationError } from '../paths.js';
 import { parseExportLink } from '../parsers/exportLink.js';
 import { guardRun, runToResult, checkConfirm, pcreGate, runPerHandle } from './helpers.js';
 
@@ -188,6 +188,7 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
               confirm,
               rp,
               (n, t) => `This will create PUBLIC links for ${n} node(s) that anyone with the URL can access.${note}\n${t}`,
+              (p) => assertNotStoreCopy(p, 'A matched node'),
             );
             if (!g.proceed) return g.result;
             if (g.handles.length === 0) return ok('No matching nodes.', { created: 0 });
@@ -196,7 +197,7 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
           }
           // A wildcard here would publish a link per matched node while the preview
           // named one — the exfiltration equivalent of the mega_rm case.
-          const rp = assertNoWildcard(assertRemotePath(remotePath), 'remotePath');
+          const rp = assertNotStoreCopy(assertNoWildcard(assertRemotePath(remotePath), 'remotePath'));
           const gate = checkConfirm(
             rt,
             'mega_export:create',
@@ -219,7 +220,8 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
           const { done, failed } = await runPerHandle(rt, 'export', g.handles, (h) => ['-d', h]);
           return ok(`Removed ${done} public link(s)${failed ? `; ${failed} failed` : ''}.`, { removed: done, failed });
         }
-        const rp = assertRemotePath(remotePath);
+        // A wildcard would unpublish every match while the preview named one.
+        const rp = assertNoWildcard(assertRemotePath(remotePath), 'remotePath');
         const gate = checkConfirm(rt, 'mega_export:delete', { remotePath: rp }, confirm, `This will remove the public link for ${rp}.`);
         if (gate) return gate;
         return runToResult(rt, 'export', ['-d', rp], () => ok(`Public link removed for ${rp}.`, { remotePath: rp }));
@@ -257,7 +259,9 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
             const gate = checkConfirm(
               rt,
               'mega_share:list',
-              { remotePath: rp ?? null, pending: !!pending },
+              // usePcre changes WHICH folders are listed, so it is bound too: a
+              // token for one literal path must not list every regex match.
+              { remotePath: rp ?? null, pending: !!pending, usePcre: !!(usePcre && rp) },
               confirm,
               'This will reveal the EMAIL ADDRESSES of the users this folder is shared with (third-party contact info). Turn on the "Expose contact tools" setting to allow this without confirming each time.',
             );
@@ -279,13 +283,14 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
               confirm,
               rp,
               (n, t) => `This will share ${n} node(s) with ${withEmail} (${level ?? 'read'} access):\n${t}`,
+              (p) => assertNotStoreCopy(p, 'A matched node'),
             );
             if (!g.proceed) return g.result;
             if (g.handles.length === 0) return ok('No matching nodes.', { shared: 0 });
             const { done, failed } = await runPerHandle(rt, 'share', g.handles, addArgs);
             return ok(`Shared ${done} node(s) with ${withEmail}${failed ? `; ${failed} failed` : ''}.`, { withEmail, shared: done, failed });
           }
-          const rp = assertNoWildcard(assertRemotePath(remotePath ?? '', 'remotePath'), 'remotePath');
+          const rp = assertNotStoreCopy(assertNoWildcard(assertRemotePath(remotePath ?? '', 'remotePath'), 'remotePath'));
           const gate = checkConfirm(rt, 'mega_share:add', { remotePath: rp, withEmail, level: level ?? 'read' }, confirm, `This will share ${rp} with ${withEmail} (${level ?? 'read'} access).`);
           if (gate) return gate;
           return runToResult(rt, 'share', addArgs(rp), () => ok(`Shared ${rp} with ${withEmail} (${level ?? 'read'}).`, { remotePath: rp, withEmail, level: level ?? 'read' }));
@@ -300,7 +305,7 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
           const { done, failed } = await runPerHandle(rt, 'share', g.handles, rmArgs);
           return ok(`Revoked ${withEmail}'s access to ${done} node(s)${failed ? `; ${failed} failed` : ''}.`, { withEmail, revoked: done, failed });
         }
-        const rp = assertRemotePath(remotePath ?? '', 'remotePath');
+        const rp = assertNoWildcard(assertRemotePath(remotePath ?? '', 'remotePath'), 'remotePath');
         const gate = checkConfirm(rt, 'mega_share:remove', { remotePath: rp, withEmail }, confirm, `This will revoke ${withEmail}'s access to ${rp}.`);
         if (gate) return gate;
         return runToResult(rt, 'share', rmArgs(rp), () => ok(`Revoked ${withEmail}'s access to ${rp}.`, { remotePath: rp, withEmail }));

@@ -137,6 +137,35 @@ describe('resolvePathBinDir', () => {
   });
 });
 
+/**
+ * The PATH source used to launch every client by BARE name, so each command
+ * searched PATH again — while signature verification only checked the dir of the
+ * first `mega-whoami`. An earlier PATH dir holding just `mega-ls` then ran
+ * unverified. Every client must come from the one dir that was verified.
+ */
+describe('PATH source launches every client from the verified dir', () => {
+  it.skipIf(process.platform === 'win32')('ignores an earlier PATH dir that lacks mega-whoami', async () => {
+    const early = join(root, 'early');
+    const install = join(root, 'install');
+    mkdirSync(early, { recursive: true });
+    mkdirSync(install, { recursive: true });
+    for (const cmd of ['whoami', 'ls']) writeFileSync(join(install, clientName(cmd)), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    // Earlier on PATH, but no whoami: it must never be what runs.
+    writeFileSync(join(early, clientName('ls')), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+
+    const savedPath = process.env.PATH;
+    process.env.PATH = `${early}:${install}:${savedPath ?? ''}`;
+    try {
+      const r = await resolveBinaries(cfg());
+      expect(r?.source).toBe('path');
+      expect(r?.binDir).toBe(realpathSync(install));
+      expect(r?.clientInvocation('ls', []).bin).toBe(join(realpathSync(install), clientName('ls')));
+    } finally {
+      process.env.PATH = savedPath;
+    }
+  });
+});
+
 describe('buildClientInvocation', () => {
   // Both branches are asserted on every host: the function is pure in `win`, so
   // the expectations are spelled with the TARGET platform's separator rather than

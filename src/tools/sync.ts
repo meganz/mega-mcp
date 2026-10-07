@@ -3,9 +3,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
 import { ExitCode, classifyExit } from '../errors.js';
-import { assertRemotePath, assertLocalPath, assertNoFlag, assertFlagValue, sessionStoreWarning, ValidationError } from '../paths.js';
+import { assertRemotePath, assertLocalPath, assertNoFlag, assertFlagValue, assertNoStoreWithin, assertNoProtectedWithin, ValidationError } from '../paths.js';
 import { capLines } from '../parsers/listing.js';
-import { guardRun, runToResult, checkConfirm } from './helpers.js';
+import { guardRun, runToResult, checkConfirm, assertPlanSize } from './helpers.js';
 
 const RO = { readOnlyHint: true, openWorldHint: true } as const;
 const SYNC_CTRL: Record<string, string> = { pause: '-p', resume: '-e', delete: '-d' };
@@ -54,11 +54,10 @@ export function registerSync(server: McpServer, rt: Runtime): void {
       guardRun(async () => {
         const lp = assertLocalPath(localPath);
         const rp = assertRemotePath(remotePath);
-        // Lines, so the store warning keeps its shape while lp/rp stay escaped.
-        const summary = [
-          `This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`,
-          ...sessionStoreWarning([lp], { twoWay: true, binDir: await rt.getBinDir() }).split('\n'),
-        ];
+        assertNoStoreWithin(lp, 'sync', await rt.getBinDir());
+        // Two-way: cloud changes are written back below lp.
+        assertNoProtectedWithin(lp, 'sync');
+        const summary = `This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`;
         const gate = checkConfirm(rt, 'mega_sync_add', { localPath: lp, remotePath: rp }, confirm, summary);
         if (gate) return gate;
         return runToResult(rt, 'sync', [lp, rp], () => ok(`Started sync ${lp} <-> ${rp}.`, { localPath: lp, remotePath: rp }));
@@ -134,10 +133,8 @@ export function registerSync(server: McpServer, rt: Runtime): void {
         const lp = assertLocalPath(localPath);
         const rp = assertRemotePath(remotePath);
         const per = assertFlagValue(period, 'period');
-        const summary = [
-          `This will configure a periodic backup of ${lp} into ${rp} (period "${per}", keep ${numBackups}).`,
-          ...sessionStoreWarning([lp], { binDir: await rt.getBinDir() }).split('\n'),
-        ];
+        assertNoStoreWithin(lp, 'back up', await rt.getBinDir());
+        const summary = `This will configure a periodic backup of ${lp} into ${rp} (period "${per}", keep ${numBackups}).`;
         const gate = checkConfirm(rt, 'mega_backup_add', { localPath: lp, remotePath: rp, period: per, numBackups }, confirm, summary);
         if (gate) return gate;
         const args = [lp, rp, `--period=${per}`, `--num-backups=${numBackups}`];
@@ -235,10 +232,11 @@ export function registerSync(server: McpServer, rt: Runtime): void {
         }
         const fs = (filters ?? []).map((f) => assertNoFlag(f, 'filter'));
         if (fs.length === 0) throw new ValidationError('Provide at least one filter for add/remove.');
-        const summary = `This will ${action} ${fs.length} filter(s) on sync ${tgt} (changes what gets synced).`;
+        assertPlanSize(fs.length, 'filters');
+        const summary = [`This will ${action} ${fs.length} filter(s) on sync ${tgt} (changes what gets synced):`, ...fs.map((f) => `  ${f}`)];
         const gate = checkConfirm(rt, 'mega_sync_ignore', { action, target: tgt, filters: fs }, confirm, summary);
         if (gate) return gate;
-        return runToResult(rt, 'sync-ignore', [`--${action}`, ...fs, tgt], () => ok(summary.replace(/^This will /, 'Done: '), { action, target: tgt }));
+        return runToResult(rt, 'sync-ignore', [`--${action}`, ...fs, tgt], () => ok(`Done: ${action} ${fs.length} filter(s) on sync ${tgt}.`, { action, target: tgt }));
       }),
   );
 }

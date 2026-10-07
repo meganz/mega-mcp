@@ -25,10 +25,17 @@ configuration.
   material from which the account **master key** can be recovered, and unlike a
   session id the master key cannot be rotated. No local path that resolves to that
   store — under `$HOME`, beside the MEGAcmd executable on Windows, or through any
-  spelling the OS folds to the same object — can be read or written. A bulk backup
-  that merely *contains* it is allowed but says so in the preview. Transfers into
-  the MEGAcmd program directory are refused too, since a file dropped there would be
-  loaded by the MEGAcmd process itself.
+  spelling the OS folds to the same object — can be read or written. Uploading a
+  folder that *contains* it (such as your home folder) uploads everything else and
+  leaves the store out; a sync or backup of such a folder is refused, because it
+  cannot leave the store out reliably. A copy already in your cloud drive (from an
+  older version or another app) is refused as well: no tool reads, copies, moves,
+  shares or publishes a `.megaCmd` folder, or a wildcard that could match one.
+  Transfers into the MEGAcmd program directory are refused too, since a file dropped
+  there would be loaded by the MEGAcmd process itself, and so are transfers into
+  the connector's own data directory, which holds your saved "don't ask again"
+  answer for file reading, and into the folder of the macOS login helper. A download or two-way sync that would land *above* any of
+  these — and could therefore create or merge files inside them — is refused as well.
 
 > [!NOTE]
 > **What the confirmation protocol is and is not.** MCP has no native confirm
@@ -329,10 +336,14 @@ Don't push to `release` directly or force-push it.
   MEGAcmd expands those **server-side, after you approve**, so the preview could
   name one node while several were affected — `usePcre: true` lists the matches
   before you confirm and operates on exactly those.
-- Mutating (auto): `mega_mkdir`, `mega_cp`
-- Settings: `mega_config` (show is auto; changing a value is confirm-gated;
-  turning HTTPS off is refused)
-- Confirm-gated: `mega_mv`, `mega_put`, `mega_get`, `mega_thumbnail`, `mega_rm`,
+- **Every target is listed before you confirm.** One confirmed operation acts on
+  at most 200 items (PCRE matches, `mega_mv` lists, `mega_put` sources, sync
+  filters), and the preview names each one; a larger set is refused, to be split
+  into smaller operations.
+- Mutating (auto): `mega_mkdir`
+- Settings: `mega_config` (show is auto; changing a value, including turning
+  HTTPS off, is confirm-gated)
+- Confirm-gated: `mega_cp`, `mega_mv`, `mega_put`, `mega_get`, `mega_thumbnail`, `mega_rm`,
   `mega_deleteversions`, `mega_export` (create/delete), `mega_share` (add/remove),
   `mega_logout`, `mega_killsession`, `mega_attr_set`, `mega_userattr_set`,
   `mega_user_remove`, `mega_user_verify`, `mega_transfer_control`, `mega_invite`,

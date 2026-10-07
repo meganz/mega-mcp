@@ -1,6 +1,6 @@
 import { resolve, sep, dirname, basename, join } from 'node:path';
 import { homedir } from 'node:os';
-import { realpathSync, existsSync } from 'node:fs';
+import { realpathSync, existsSync, readdirSync, lstatSync } from 'node:fs';
 
 /** Thrown when a model-supplied path fails validation. */
 export class ValidationError extends Error {
@@ -106,15 +106,20 @@ function sessionStoreRoots(binDir?: string | null): string[] {
     roots.add(p);
     roots.add(realpathBestEffort(p));
   };
+  // MEGACMD_WORKING_FOLDER_SUFFIX renames the store to .megaCmd_<suffix>. MEGAcmd
+  // inherits this process's environment, so when it is set here that is the store
+  // actually in use; the plain name is kept too, since one may already exist.
+  const suffix = process.env.MEGACMD_WORKING_FOLDER_SUFFIX?.trim();
+  const names = ['.megaCmd', ...(suffix ? [`.megaCmd_${suffix}`] : [])];
   // No separate $HOME root: Node's homedir() reads HOME then getpwuid, exactly as
   // MEGAcmd's homeDirPath() does, so the two cannot disagree.
-  add(resolve(homedir(), '.megaCmd'));
+  for (const name of names) add(resolve(homedir(), name));
   // getuid() is undefined on win32 — the same platform with no /tmp fallback.
   const uid = process.getuid?.();
   if (uid !== undefined) add(`/tmp/megacmd-${uid}`);
   // win32 only: on posix the store is under $HOME wherever the binary lives, so
   // deriving a root from the install dir would invent one that never exists.
-  if (isWin && binDir) add(resolve(binDir, '.megaCmd'));
+  if (isWin && binDir) for (const name of names) add(resolve(binDir, name));
   return [...roots];
 }
 
@@ -134,15 +139,19 @@ function sessionStoreRoots(binDir?: string | null): string[] {
 function hitsSessionStore(rawAbs: string): boolean {
   const abs = normWinPath(rawAbs);
   for (const segment of abs.split(SEG_SPLIT)) {
-    const s = segment.toLowerCase();
-    // .megaCmd, plus the MEGACMD_WORKING_FOLDER_SUFFIX variant .megaCmd_<suffix>.
-    if (s === '.megacmd' || s.startsWith('.megacmd_')) return true;
+    if (isStoreName(segment)) return true;
     // macOS runtimeDirPath(): the command socket. No session material, but writing
     // there can hijack the channel to the running server. Name-only, since backing
     // up ~/Library/Caches carries away nothing but a socket.
-    if (s === 'megacmd.mac') return true;
+    if (fold(segment) === 'megacmd.mac') return true;
   }
   return sessionStoreRoots().some((r) => isAtOrUnder(abs, r));
+}
+
+/** .megaCmd, plus the MEGACMD_WORKING_FOLDER_SUFFIX variant .megaCmd_<suffix>. */
+function isStoreName(name: string): boolean {
+  const s = fold(name);
+  return s === '.megacmd' || s.startsWith('.megacmd_');
 }
 
 /**
@@ -196,11 +205,13 @@ function spellingsOf(abs: string): string[] {
  * user-chosen files is the point of this connector.
  */
 function assertNotConfigDir(abs: string): void {
-  for (const candidate of spellingsOf(abs)) {
-    if (hitsSessionStore(candidate)) {
-      throw new ValidationError('Refusing to access the MEGAcmd configuration directory.');
-    }
+  if (pathHitsSessionStore(abs)) {
+    throw new ValidationError('Refusing to access the MEGAcmd configuration directory.');
   }
+}
+
+function pathHitsSessionStore(abs: string): boolean {
+  return spellingsOf(abs).some(hitsSessionStore);
 }
 
 /**
@@ -227,7 +238,7 @@ function assertNotTrustRoot(abs: string): void {
     for (const root of trustRoots) {
       if (isAtOrUnder(normWinPath(candidate), root) || isAtOrUnder(normWinPath(candidate), realpathBestEffort(root))) {
         throw new ValidationError(
-          'Refusing to read or write inside the MEGAcmd program directory - a file placed there would be loaded by the MEGAcmd process itself.',
+          "Refusing to read or write inside the MEGAcmd program directory or this connector's data directory - a file placed there would be loaded by MEGAcmd or by the connector itself.",
         );
       }
     }
@@ -235,11 +246,72 @@ function assertNotTrustRoot(abs: string): void {
 }
 
 /**
+ * Every protected directory — session store or trust root — that lies BELOW
+ * `abs`: strictly below it, or (`inclusive`) at it as well.
+ *
+ * assertLocalPath only looks UP from a path. A transfer that creates or merges a
+ * whole tree writes below its destination too, so a destination ABOVE a protected
+ * directory reaches into it just the same — a cloud folder named like the data
+ * directory, downloaded with merge into the data directory's parent, lands inside
+ * it. Not filtered by existence, like every refusal path: a directory the transfer
+ * itself creates is the case that matters.
+ */
+function protectedBelow(abs: string, inclusive: boolean): string[] {
+  const forms = [...new Set([abs, resolve(abs)].flatMap(spellingsOf))].map(normWinPath);
+  const roots = [...trustRoots, ...sessionStoreRoots()].flatMap((r) => [r, realpathBestEffort(r)]);
+  const hits = new Set<string>();
+  for (const root of roots) {
+    for (const f of forms) {
+      if (isAtOrUnder(root, f) && (inclusive || fold(root) !== fold(f))) hits.add(root);
+    }
+  }
+  return [...hits];
+}
+
+/**
+ * Refuse a download whose result could land in a protected directory.
+ *
+ * `name` is the cloud node's name, so the download writes `<localDir>/<name>` and
+ * (for a folder) everything below it. That target must not be inside a protected
+ * directory, nor above one. When the name is not known before the download (a
+ * public link), anything directly in `localDir` could be the target, so every
+ * protected directory below `localDir` counts.
+ */
+export function assertDownloadTarget(localDir: string, name: string | null): void {
+  const known = name !== null && name !== '';
+  const target = known ? join(localDir, name) : localDir;
+  if (known) {
+    assertNotConfigDir(target);
+    assertNotTrustRoot(target);
+  }
+  const below = protectedBelow(target, known);
+  if (below.length > 0) {
+    throw new ValidationError(
+      `Refusing to download ${known ? `"${name}" ` : ''}into ${localDir}: the download could write into a directory MEGAcmd or this connector depends on (${below.join(', ')}). Choose a different destination folder${known ? '' : ', such as a subfolder'}.`,
+    );
+  }
+}
+
+/**
+ * Refuse a TWO-WAY sync of a folder that contains a protected directory: cloud
+ * changes are written back into the local tree, below the sync root.
+ */
+export function assertNoProtectedWithin(lp: string, what: string): void {
+  const below = protectedBelow(lp, false);
+  if (below.length > 0) {
+    throw new ValidationError(
+      `Refusing to ${what} ${lp}: it contains a directory MEGAcmd or this connector depends on (${below.join(', ')}), and changes from the cloud would be written into it. Choose a folder that does not contain it.`,
+    );
+  }
+}
+
+/**
  * EVERY session store contained INSIDE `abs` — for tools that read a path
- * recursively (upload / sync / backup). Warns rather than refuses: backing up
- * `$HOME` is legitimate, and MEGA encrypts uploads under this same account's master
- * key, so the copy only becomes a disclosure once that folder is exported or shared.
- * That is the user's call, so it feeds the confirmation preview.
+ * recursively (upload / sync / backup). Backing up `$HOME` is legitimate, so this
+ * does not refuse by itself: mega_put uploads such a folder WITHOUT the store
+ * (planUpload), and sync/backup, which cannot leave it out, refuse it
+ * (assertNoStoreWithin). Warning and allowing was not enough: once uploaded, the
+ * copy is an ordinary cloud file that mega_cat could read back into the model.
  *
  * All of them, not the first: sessionStoreRoots() lists $HOME/.megaCmd first and
  * unconditionally, but on Windows the real store is executable-relative
@@ -247,8 +319,8 @@ function assertNotTrustRoot(abs: string): void {
  * exist at all — so returning the first match named a directory holding nothing
  * while staying silent about the one holding the master key.
  *
- * Roots that do not exist are dropped: the warning is about material this read
- * would actually carry away, and an absent directory carries none. The REFUSAL
+ * Roots that do not exist are dropped: the concern is material this read would
+ * actually carry away, and an absent directory carries none. The REFUSAL
  * path deliberately does not filter that way — a download destination inside a
  * not-yet-created store must still be refused.
  */
@@ -261,7 +333,7 @@ export function sessionStoresWithin(abs: string, binDir?: string | null): string
   // match when the tree above them is itself symlinked — one store, listed twice.
   const hits = new Map<string, string>();
   for (const root of sessionStoreRoots(binDir)) {
-    // The store ITSELF is refused upstream, never warned about.
+    // The store ITSELF is refused upstream by assertLocalPath.
     if (forms.some((f) => fold(root) === fold(f))) continue;
     if (forms.some((f) => isAtOrUnder(root, f)) && existsSync(root)) {
       hits.set(fold(realpathBestEffort(root)), root);
@@ -479,23 +551,160 @@ export function assertLocalPath(p: string, field = 'localPath'): string {
   return abs;
 }
 
-/** Preview text for a recursive read that carries the session store along, else ''. */
-export function sessionStoreWarning(
-  paths: string[],
-  opts: { twoWay?: boolean; binDir?: string | null } = {},
-): string {
-  const { twoWay = false, binDir } = opts;
-  // Arrow, not a bare reference: Array.map would pass the index as `binDir`.
-  const found = paths.flatMap((p) => sessionStoresWithin(p, binDir));
-  const stores = [...new Set(found)];
-  if (stores.length === 0) return '';
-  const names = stores.map((s) => basename(s)).join('","');
-  const lines = [
-    `WARNING: this includes the MEGAcmd session store (${stores.join(', ')}), which holds this`,
-    "account's MASTER KEY - it cannot be rotated, and changing your password does not replace it.",
-    'Anyone you later share or export this folder to could read it.',
-  ];
-  if (twoWay) lines.push('A two-way sync can also WRITE into the live store and break your login.');
-  lines.push(`Exclude it first: mega_sync_ignore(action="add-exclusion", filters=["${names}"]).`);
-  return `\n\n${lines.join('\n')}`;
+/**
+ * Refuse a sync or backup of a folder that contains a session store.
+ *
+ * Unlike mega_put, these keep uploading the whole tree for as long as they run,
+ * and an exclusion added afterwards races the first scan — so the store cannot be
+ * left out reliably. A two-way sync could also write into the live store.
+ */
+export function assertNoStoreWithin(lp: string, what: string, binDir?: string | null): void {
+  const stores = sessionStoresWithin(lp, binDir);
+  if (stores.length === 0) return;
+  throw new ValidationError(
+    `Refusing to ${what} ${lp}: it contains the MEGAcmd session store (${stores.join(', ')}), which holds this ` +
+      "account's MASTER KEY, and a continuous sync/backup cannot reliably leave it out. Choose a folder that does " +
+      'not contain it, or use mega_put, which uploads a folder without the session store.',
+  );
+}
+
+/** One `put` of a plan: `sources` go INTO the cloud folder `dest`. */
+export interface UploadStep {
+  dest: string;
+  sources: string[];
+}
+
+export interface UploadPlan {
+  /** In execution order: a folder's step precedes the steps of its subfolders. */
+  steps: UploadStep[];
+  /** Local paths left out because they are (or lead into) a session store. */
+  excluded: string[];
+}
+
+function joinRemote(parent: string, name: string): string {
+  if (!name) return parent;
+  return `${parent.replace(/\/+$/, '')}/${name}`;
+}
+
+/**
+ * Plan an upload of `lps` into the cloud folder `rp` that leaves every MEGAcmd
+ * session store behind.
+ *
+ * MEGAcmd `put` has no exclude option, so a folder that contains a store is not
+ * uploaded whole. Instead the walk goes down the path to the store only: at each
+ * level, every sibling is uploaded whole into the matching cloud folder, and the
+ * store itself is skipped. The cloud tree comes out as `put` would have built it,
+ * minus the store. Folders that contain no store are uploaded whole, unchanged.
+ *
+ * A symlink is never descended into (a link back up the tree would loop); it is
+ * left out when its target is, or contains, a store.
+ */
+export function planUpload(lps: string[], rp: string, binDir?: string | null): UploadPlan {
+  const stores = sessionStoreRoots(binDir)
+    .filter((r) => existsSync(r))
+    .map((r) => realpathBestEffort(r));
+  const containsStore = (p: string): boolean => {
+    const real = realpathBestEffort(normWinPath(p));
+    return stores.some((st) => fold(st) !== fold(real) && isAtOrUnder(st, real));
+  };
+
+  const direct: string[] = [];
+  const steps: UploadStep[] = [];
+  const excluded: string[] = [];
+
+  const split = (dir: string, remoteParent: string): void => {
+    const listed = realpathBestEffort(normWinPath(dir));
+    const step: UploadStep = { dest: joinRemote(remoteParent, basename(normWinPath(dir))), sources: [] };
+    steps.push(step);
+    let names: string[];
+    try {
+      names = readdirSync(listed).sort();
+    } catch {
+      throw new ValidationError(`Could not list ${dir} to leave the MEGAcmd session store out of the upload.`);
+    }
+    for (const name of names) {
+      const child = join(listed, name);
+      let isLink = false;
+      try {
+        isLink = lstatSync(child).isSymbolicLink();
+      } catch {
+        // Vanished since the listing: nothing to upload.
+        continue;
+      }
+      if (isStoreName(name) || pathHitsSessionStore(child) || (isLink && containsStore(child))) {
+        excluded.push(child);
+        continue;
+      }
+      // Either way the name reaches argv: as a source, or as part of a cloud folder.
+      rejectArgvQuote(child, `"${name}" inside ${dir}`);
+      if (!isLink && containsStore(child)) split(child, step.dest);
+      else step.sources.push(child);
+    }
+  };
+
+  for (const lp of lps) {
+    if (sessionStoresWithin(lp, binDir).length > 0 || containsStore(lp)) split(lp, rp);
+    else direct.push(lp);
+  }
+  if (direct.length > 0) steps.unshift({ dest: rp, sources: direct });
+  return { steps, excluded };
+}
+
+/**
+ * Can the MEGAcmd glob `segment` ("*" = any run, "?" = one character) match a
+ * session-store name — `.megaCmd` itself or a `.megaCmd_<suffix>`? Case-folded,
+ * like the local guard.
+ *
+ * For the suffix variant only a DOT-FREE suffix is considered. Any suffix at all
+ * would make every pattern that starts with "*" match (`*.txt` matches
+ * `.megaCmd_x.txt`), refusing ordinary requests to guard a name that needs an
+ * unusual MEGACMD_WORKING_FOLDER_SUFFIX to exist at all.
+ */
+function globCanMatchStoreName(segment: string): boolean {
+  const g = fold(segment);
+  // Positions in `g` reachable so far; a "*" may also match nothing.
+  const close = (states: Set<number>): Set<number> => {
+    const out = new Set(states);
+    for (const i of states) for (let j = i; g[j] === '*'; j++) out.add(j + 1);
+    return out;
+  };
+  const step = (states: Set<number>, ch: string): Set<number> => {
+    const next = new Set<number>();
+    for (const i of states) {
+      if (g[i] === '*') next.add(i);
+      else if (g[i] === '?' || g[i] === ch) next.add(i + 1);
+    }
+    return close(next);
+  };
+  let states = close(new Set([0]));
+  for (const ch of '.megacmd') states = step(states, ch);
+  if (states.has(g.length)) return true;
+  // "*" and "?" can always stand for dot-free characters, so only a literal dot in
+  // what remains after `.megacmd_` rules out a dot-free suffix.
+  return [...step(states, '_')].some((i) => !g.slice(i).includes('.'));
+}
+
+/**
+ * Refuse a CLOUD path that names a copy of the session store.
+ *
+ * The local guard cannot see a store that was uploaded earlier (by an old version
+ * of this connector, the MEGA desktop app, or anything else): in the cloud it is
+ * just a folder called `.megaCmd`. Reading, copying, moving, sharing or publishing
+ * it would hand the account master key on all the same, so any segment with that
+ * name is refused — and so is a wildcard segment that MEGAcmd could expand to it.
+ */
+export function assertNotStoreCopy(p: string, field = 'remotePath'): string {
+  for (const segment of p.split('/')) {
+    if (isStoreName(segment)) {
+      throw new ValidationError(
+        `${field} is inside a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY. No tool reads, copies, moves, shares or publishes it.`,
+      );
+    }
+    if (/[*?]/.test(segment) && globCanMatchStoreName(segment)) {
+      throw new ValidationError(
+        `${field} contains a wildcard that could match a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY. Use a more specific pattern or the exact path.`,
+      );
+    }
+  }
+  return p;
 }

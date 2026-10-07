@@ -2,11 +2,12 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
-import { assertRemotePath, assertLocalPath, assertNoFlag, assertSecret, assertNoWildcard, sessionStoreWarning, ValidationError } from '../paths.js';
-import { guardRun, runToResult, checkConfirm, pcreGate, runPerHandle, runBulk } from './helpers.js';
+import { posix } from 'node:path';
+import { assertRemotePath, assertLocalPath, assertNoFlag, assertSecret, assertNoWildcard, assertNotStoreCopy, assertDownloadTarget, planUpload, ValidationError } from '../paths.js';
+import { guardRun, runToResult, checkConfirm, pcreGate, runPerHandle, runBulk, assertPlanSize } from './helpers.js';
 
-/** Max paths listed verbatim in a confirmation preview (matches pcreMatchPreview). */
-const PREVIEW_MAX = 50;
+/** Sources per `put` when a folder is uploaded piecewise around the session store. */
+const PUT_CHUNK = 200;
 
 export function registerMutate(server: McpServer, rt: Runtime): void {
   // mega_mkdir — create a folder (idempotent with -p). Auto-allow.
@@ -25,22 +26,28 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
       }),
   );
 
-  // mega_cp — copy within the cloud (non-destructive). Auto-allow.
+  // mega_cp — copy within the cloud. Non-destructive, but confirm-gated: a copy
+  // into a folder other people can reach (a share, or a folder with a public link)
+  // discloses the source exactly as mega_share / mega_export would, and those are
+  // gated. The preview names both ends, so a wildcard source is refused.
   server.registerTool(
     'mega_cp',
     {
       title: 'MEGA: copy',
-      description: 'Copy a MEGA cloud node to another cloud path.',
+      description: 'Copy a MEGA cloud node to another cloud path. Requires confirmation.',
       inputSchema: {
         src: z.string().describe('Source absolute MEGA path.'),
         dst: z.string().describe('Destination absolute MEGA path.'),
+        confirm: z.string().optional().describe('Confirmation token from the first call.'),
       },
       annotations: { title: 'MEGA: copy', destructiveHint: false, openWorldHint: true },
     },
-    async ({ src, dst }) =>
+    async ({ src, dst, confirm }) =>
       guardRun(async () => {
-        const s = assertRemotePath(src, 'src');
+        const s = assertNotStoreCopy(assertNoWildcard(assertRemotePath(src, 'src'), 'src'), 'src');
         const d = assertRemotePath(dst, 'dst');
+        const gate = checkConfirm(rt, 'mega_cp', { src: s, dst: d }, confirm, `This will copy ${s} to ${d}.`);
+        if (gate) return gate;
         return runToResult(rt, 'cp', [s, d], () => ok(`Copied ${s} -> ${d}.`, { src: s, dst: d }));
       }),
   );
@@ -82,12 +89,9 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
 
         // Mode 1: explicit list -> one multi-source `mv src1 src2 … dst`.
         if (srcs && srcs.length > 0) {
-          const list = srcs.map((s, i) => assertRemotePath(s, `srcs[${i}]`));
-          const summary = [
-            `This will move ${list.length} item(s) to ${d}:`,
-            ...list.slice(0, 50),
-            ...(list.length > 50 ? [`…(${list.length} total; showing first 50)`] : []),
-          ];
+          assertPlanSize(srcs.length, 'items');
+          const list = srcs.map((s, i) => assertNotStoreCopy(assertNoWildcard(assertRemotePath(s, `srcs[${i}]`), `srcs[${i}]`), `srcs[${i}]`));
+          const summary = [`This will move ${list.length} item(s) to ${d}:`, ...list.map((p) => `  ${p}`)];
           const gate = checkConfirm(rt, 'mega_mv', { srcs: list, dst: d }, confirm, summary);
           if (gate) return gate;
           const { done, failed } = await runBulk(rt, 'mv', list, [d]);
@@ -106,6 +110,7 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
             confirm,
             pattern,
             (n, t) => `This will move ${n} node(s) matching the pattern to ${d}:\n${t}`,
+            (p) => assertNotStoreCopy(p, 'A matched node'),
           );
           if (!g.proceed) return g.result;
           if (g.handles.length === 0) return ok('No matching nodes to move.', { dst: d, moved: 0 });
@@ -118,7 +123,7 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
         // one node while N were moved. Modes 1 and 2 are the supported bulk paths
         // and both enumerate before confirming.
         if (!src) throw new ValidationError('Provide "src" (a path or pattern) or "srcs" (a list).');
-        const s = assertNoWildcard(assertRemotePath(src, 'src'), 'src');
+        const s = assertNotStoreCopy(assertNoWildcard(assertRemotePath(src, 'src'), 'src'), 'src');
         const gate = checkConfirm(rt, 'mega_mv', { src: s, dst: d }, confirm, `This will move/rename ${s} to ${d}.`);
         if (gate) return gate;
         return runToResult(rt, 'mv', [s, d], () => ok(`Moved ${s} -> ${d}.`, { src: s, dst: d }));
@@ -144,23 +149,59 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
       guardRun(async () => {
         const raw = [...(localPaths ?? []), ...(localPath ? [localPath] : [])];
         if (raw.length === 0) throw new ValidationError('Provide localPath or localPaths.');
+        assertPlanSize(raw.length, 'items');
         const lps = raw.map((p) => assertLocalPath(p));
         const rp = assertRemotePath(remotePath);
+        // A folder holding the session store is uploaded WITHOUT it (see planUpload).
+        // Planned again on the confirmed call, so the store is left out of what is
+        // actually uploaded, not only of what the preview showed.
+        const plan = planUpload(lps, rp, await rt.getBinDir());
         // The preview MUST name what leaves the machine: it is the only human
         // checkpoint here, and "upload 1 item(s)" gives nothing to refuse on.
         // Built as LINES so checkConfirm escapes each path on its own — a newline
         // inside one must not be able to forge an extra line here.
-        const warn = sessionStoreWarning(lps, { binDir: await rt.getBinDir() });
         const summary = [
           `This will upload ${lps.length} item(s) to ${rp}:`,
-          ...lps.slice(0, PREVIEW_MAX).map((p) => `  ${p}`),
-          ...(lps.length > PREVIEW_MAX ? [`  ...(${lps.length} total; showing first ${PREVIEW_MAX})`] : []),
-          ...warn.split('\n'),
+          ...lps.map((p) => `  ${p}`),
+          ...(plan.excluded.length > 0
+            ? [
+                '',
+                "Left out: the MEGAcmd session store, which holds this account's MASTER KEY:",
+                ...plan.excluded.map((p) => `  ${p}`),
+              ]
+            : []),
         ];
         const gate = checkConfirm(rt, 'mega_put', { localPaths: lps, remotePath: rp, background }, confirm, summary);
         if (gate) return gate;
-        const args = ['-c', ...(background ? ['-q'] : []), ...lps, rp];
-        return runToResult(rt, 'put', args, () => ok(`Uploaded ${lps.length} item(s) -> ${rp}.`, { localPaths: lps, remotePath: rp, background }));
+        const putOpts = ['-c', ...(background ? ['-q'] : [])];
+        // Only an untouched plan (everything in one put to rp) runs as a plain put;
+        // anything else runs step by step, so the store is never a source.
+        if (plan.excluded.length === 0 && plan.steps.length === 1 && plan.steps[0]!.dest === rp) {
+          return runToResult(rt, 'put', [...putOpts, ...lps, rp], () => ok(`Uploaded ${lps.length} item(s) -> ${rp}.`, { localPaths: lps, remotePath: rp, background }));
+        }
+        let failed = 0;
+        for (const step of plan.steps) {
+          // Create each rebuilt folder first, so every put lands INTO an existing
+          // folder - the same shape a whole-folder put would have produced.
+          if (step.dest !== rp) {
+            const mk = await rt.run('mkdir', ['-p', step.dest]);
+            if (mk.code !== 0) {
+              failed += Math.max(step.sources.length, 1);
+              continue;
+            }
+          }
+          // No per-item retry on failure (unlike runBulk): re-running a put could
+          // upload again the items of the chunk that did succeed.
+          for (let i = 0; i < step.sources.length; i += PUT_CHUNK) {
+            const chunk = step.sources.slice(i, i + PUT_CHUNK);
+            const r = await rt.run('put', [...putOpts, ...chunk, step.dest]);
+            if (r.code !== 0) failed += chunk.length;
+          }
+        }
+        return (failed ? err : ok)(
+          `Uploaded ${lps.length} item(s) -> ${rp}, leaving out the MEGAcmd session store (${plan.excluded.join(', ')})${failed ? `; ${failed} item(s) failed` : ''}.`,
+          { localPaths: lps, remotePath: rp, background, excluded: plan.excluded, failed },
+        );
       }),
   );
 
@@ -210,6 +251,7 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
             confirm,
             rp,
             (n, t) => `This will download ${n} node(s) matching the pattern into ${ld}:\n${t}`,
+            (p) => assertDownloadTarget(ld, posix.basename(p)),
           );
           if (!g.proceed) return g.result;
           if (g.handles.length === 0) return ok('No matching nodes to download.', { downloaded: 0, localDir: ld });
@@ -224,6 +266,10 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
             ? assertNoWildcard(assertRemotePath(remotePath), 'remotePath')
             : '';
         if (!source) throw new ValidationError('Provide remotePath or link.');
+        // localDir alone is not where the data lands: `<localDir>/<node name>` is.
+        // A link's node name is unknown until it is fetched, so that case checks
+        // everything directly in localDir instead.
+        assertDownloadTarget(ld, isLink ? null : posix.basename(source));
         // The password is a secret: bind only its presence into the confirm token.
         const gate = checkConfirm(
           rt,
@@ -256,7 +302,7 @@ export function registerMutate(server: McpServer, rt: Runtime): void {
     },
     async ({ remotePath, localPath, action, confirm }) =>
       guardRun(async () => {
-        const rp = assertRemotePath(remotePath);
+        const rp = assertNoWildcard(assertRemotePath(remotePath), 'remotePath');
         const lp = assertLocalPath(localPath);
         const summary =
           action === 'set' ? `This will set the thumbnail of ${rp} from ${lp}.` : `This will write the thumbnail of ${rp} to ${lp}.`;

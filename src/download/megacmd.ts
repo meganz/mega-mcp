@@ -11,6 +11,7 @@ import { join, basename, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import type { Config } from '../types.js';
 import { redact } from '../errors.js';
+import { systemTool } from '../sysbin.js';
 
 const pExecFile = promisify(execFile);
 const MAX_DOWNLOAD_BYTES = 150 * 1024 * 1024;
@@ -114,7 +115,7 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
   const dmg = join(tmp, 'MEGAcmdSetup.dmg');
 
   try {
-    await pExecFile('hdiutil', ['detach', mountPoint, '-force']).catch(() => {});
+    await pExecFile(systemTool('hdiutil'), ['detach', mountPoint, '-force']).catch(() => {});
     await rm(tmp, { recursive: true, force: true });
     await mkdir(mountPoint, { recursive: true });
 
@@ -130,7 +131,7 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
     }
 
     onProgress('mounting');
-    await pExecFile('hdiutil', ['attach', '-nobrowse', '-noautoopen', '-mountpoint', mountPoint, dmg]);
+    await pExecFile(systemTool('hdiutil'), ['attach', '-nobrowse', '-noautoopen', '-mountpoint', mountPoint, dmg]);
     const appSrc = join(mountPoint, 'MEGAcmd.app');
 
     let binDir: string;
@@ -144,7 +145,7 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
         if (!appDest) throw new Error('no standard install location');
         // Preferred: install to the standard location (/Applications), where the
         // macOS client's auto-spawn finds the server natively.
-        await pExecFile('ditto', [appSrc, appDest]);
+        await pExecFile(systemTool('ditto'), [appSrc, appDest]);
         binDir = join(appDest, 'Contents', 'MacOS');
         location = 'applications';
       } catch {
@@ -155,7 +156,7 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
         const staging = join(tmp, 'extract');
         await rm(staging, { recursive: true, force: true });
         await mkdir(staging, { recursive: true });
-        await pExecFile('ditto', [appSrc, join(staging, 'MEGAcmd.app')]);
+        await pExecFile(systemTool('ditto'), [appSrc, join(staging, 'MEGAcmd.app')]);
         await swapIntoPlace(staging, versionDir);
         await promoteToCache(config.cacheDir, versionName, {
           version,
@@ -169,11 +170,11 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
         location = 'cache';
       }
     } finally {
-      await pExecFile('hdiutil', ['detach', mountPoint, '-force']).catch(() => {});
+      await pExecFile(systemTool('hdiutil'), ['detach', mountPoint, '-force']).catch(() => {});
     }
 
     // Strip quarantine AFTER signature verification so execution isn't blocked.
-    await pExecFile('xattr', ['-dr', 'com.apple.quarantine', resolve(binDir, '..', '..')]).catch(() => {});
+    await pExecFile(systemTool('xattr'), ['-dr', 'com.apple.quarantine', resolve(binDir, '..', '..')]).catch(() => {});
     await ensureMacLoginHelper(binDir).catch(() => {});
     await rm(dmg, { force: true }).catch(() => {});
 
@@ -215,9 +216,15 @@ function shQuote(v: string): string {
   return `'${v.replaceAll("'", `'\\''`)}'`;
 }
 
+/** Where the macOS login helper lives. A protected root (see configTrustRoots):
+ *  the user is told to double-click the script in it. */
+export function macLoginHelperDir(): string {
+  return join(homedir(), 'Library', 'Application Support', 'mega-cloud-mcp');
+}
+
 export async function ensureMacLoginHelper(binDir: string): Promise<string | null> {
   if (process.platform !== 'darwin' || !binDir) return null;
-  const dir = join(homedir(), 'Library', 'Application Support', 'mega-cloud-mcp');
+  const dir = macLoginHelperDir();
   const helperPath = join(dir, 'Login to MEGA.command');
   const script = `#!/bin/bash
 # Log in to MEGA. Your password is entered at a hidden prompt and never leaves this machine.
@@ -316,12 +323,12 @@ async function verifySignatureMac(appPath: string, teamId?: string): Promise<voi
     // codesign --verify validates the seal; spctl -t exec assesses the launch
     // (execution) Gatekeeper policy for an application bundle. Both throw on
     // non-zero exit; tag the failure so it classifies as signature_failed.
-    await pExecFile('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath]);
-    await pExecFile('spctl', ['-a', '-vv', '-t', 'exec', appPath]);
+    await pExecFile(systemTool('codesign'), ['--verify', '--deep', '--strict', '--verbose=2', appPath]);
+    await pExecFile(systemTool('spctl'), ['-a', '-vv', '-t', 'exec', appPath]);
   } catch (e) {
     throw new Error(`signature_failed: ${e instanceof Error ? e.message : String(e)}`);
   }
-  const { stderr } = await pExecFile('codesign', ['-dv', '--verbose=4', appPath]).catch((e: { stderr?: string }) => ({ stderr: e.stderr ?? '' }));
+  const { stderr } = await pExecFile(systemTool('codesign'), ['-dv', '--verbose=4', appPath]).catch((e: { stderr?: string }) => ({ stderr: e.stderr ?? '' }));
   if (!/Authority=Developer ID Application: Mega Limited/.test(stderr)) {
     throw new Error('signature_failed: unexpected signing authority');
   }
@@ -497,7 +504,7 @@ function launchViaExplorer(target: string): void {
   } catch {
     /* fall back to the given path */
   }
-  const child = spawn('explorer.exe', [real], { detached: true, stdio: 'ignore' });
+  const child = spawn(systemTool('explorer'), [real], { detached: true, stdio: 'ignore' });
   child.unref();
 }
 
@@ -528,7 +535,7 @@ async function verifyAuthenticodeWin(exe: string, thumbprint?: string): Promise<
     `if ($env:MEGA_VERIFY_THUMBPRINT -and ($c.Thumbprint -ne $env:MEGA_VERIFY_THUMBPRINT)) { exit 5 }; ` +
     `exit 0`;
   try {
-    await pExecFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], {
+    await pExecFile(systemTool('powershell'), ['-NoProfile', '-NonInteractive', '-Command', ps], {
       windowsHide: true,
       env: { ...process.env, MEGA_VERIFY_PATH: exe, ...(thumbprint ? { MEGA_VERIFY_THUMBPRINT: thumbprint } : {}) },
     });

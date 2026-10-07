@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { homedir, tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { join, resolve, dirname, basename } from 'node:path';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { registerAll } from '../src/tools/index.js';
 import { registerDangerous } from '../src/tools/dangerous.js';
@@ -9,6 +9,7 @@ import { registerManage } from '../src/tools/manage.js';
 import { registerConfig } from '../src/tools/config.js';
 import { registerSync } from '../src/tools/sync.js';
 import { registerMutate } from '../src/tools/mutate.js';
+import { registerCat } from '../src/tools/cat.js';
 import { createConfirmStore } from '../src/confirm.js';
 import { createRuntime } from '../src/runtime.js';
 import { publishMegacmdBinDir } from '../src/paths.js';
@@ -23,7 +24,7 @@ function fakeRt(config: Partial<Config> = {}, run?: Runtime['run'], binDir: stri
     confirm: createConfirmStore(),
     run: run ?? (async () => ({ code: 0, stdout: '', stderr: '' }) as RunResult),
     getResolved: async () => null,
-    // Defaults to null like the real 'path' source. The store warning needs a REAL
+    // Defaults to null like the real 'path' source. The store check needs a REAL
     // value on Windows (the store is executable-relative), so tests that assert on
     // it must pass one — see 'names the executable-relative store' below.
     getBinDir: async () => binDir,
@@ -43,7 +44,7 @@ function capture(register: (server: any, rt: Runtime) => void, rt: Runtime): Map
 
 /**
  * Run `fn` with $HOME pointed at a scratch dir that really does contain a
- * ~/.megaCmd. The store warning only names stores that EXIST, so asserting against
+ * ~/.megaCmd. The store check only counts stores that EXIST, so asserting against
  * the developer's own home would pass or fail on whether they happen to run
  * MEGAcmd — and on Windows the real store sits beside the executable, so
  * ~/.megaCmd is normally absent there. os.homedir() reads $HOME / %USERPROFILE%
@@ -88,17 +89,36 @@ describe('session-store exfiltration is refused by the tools themselves', () => 
     expect(refused(await put({ localPaths: ['/tmp/ok.txt', `${store}/session`], remotePath: '/x' }))).toMatch(/configuration directory/i);
   });
 
-  // A whole-home backup is a legitimate request, so it proceeds — but the preview
-  // must say the session store is going along (see paths.ts sessionStoreWithin).
-  it('mega_put ALLOWS a bulk backup containing the store, but warns in the preview', async () => {
+  // MCP-2. A whole-home backup is a legitimate request, so it proceeds — but
+  // WITHOUT the store: warning and uploading it left a cloud copy that mega_cat
+  // could read straight back into the conversation.
+  it('mega_put uploads a folder containing the store WITHOUT it', async () => {
     await withStoreHome(async (home) => {
-      const tools = capture(registerMutate, fakeRt());
-      const res = await tools.get('mega_put')!({ localPath: home, remotePath: '/Backup' });
-      expect(res.isError).toBeFalsy();
-      const summary = (res.structuredContent as { summary: string }).summary;
+      writeFileSync(join(home, '.megaCmd', 'session'), 'fixture');
+      writeFileSync(join(home, 'notes.txt'), 'n');
+      const argv: string[][] = [];
+      const rt = fakeRt({}, async (cmd, args) => (argv.push([cmd, ...args]), { code: 0, stdout: '', stderr: '' }) as RunResult);
+      const put = capture(registerMutate, rt).get('mega_put')!;
+
+      const preview = await put({ localPath: home, remotePath: '/Backup' });
+      expect(preview.isError).toBeFalsy();
+      const { summary, confirmToken } = preview.structuredContent as { summary: string; confirmToken: string };
+      expect(summary).toMatch(/Left out: the MEGAcmd session store/);
       expect(summary).toMatch(/MASTER KEY/);
       expect(summary).toContain('.megaCmd');
-      expect(summary).toMatch(/mega_sync_ignore/);
+      expect(argv).toEqual([]);
+
+      const done = await put({ localPath: home, remotePath: '/Backup', confirm: confirmToken });
+      expect(done.isError).toBeFalsy();
+      const dest = `/Backup/${home.split(/[\\/]/).pop()}`;
+      expect(argv[0]).toEqual(['mkdir', '-p', dest]);
+      const puts = argv.filter((a) => a[0] === 'put');
+      expect(puts).toHaveLength(1);
+      expect(puts[0]!.at(-1)).toBe(dest);
+      expect(puts[0]!.some((a) => a.endsWith('notes.txt'))).toBe(true);
+      // The store never reaches MEGAcmd's argv, in any spelling.
+      for (const a of argv.flat()) expect(a.toLowerCase()).not.toContain('.megacmd');
+      expect((done.structuredContent as { excluded: string[] }).excluded).toHaveLength(1);
     });
   });
 
@@ -123,20 +143,26 @@ describe('session-store exfiltration is refused by the tools themselves', () => 
     }
   });
 
-  it('mega_sync_add warns that a two-way sync of $HOME can also WRITE into the store', async () => {
+  // A continuous sync/backup cannot leave the store out, so a folder containing it
+  // is refused outright — before any preview, and without running anything.
+  it('mega_sync_add / mega_backup_add refuse a folder that contains the store', async () => {
     await withStoreHome(async (home) => {
-      const tools = capture(registerSync, fakeRt());
-      const res = await tools.get('mega_sync_add')!({ localPath: home, remotePath: '/x' });
-      expect(res.isError).toBeFalsy();
-      const summary = (res.structuredContent as { summary: string }).summary;
-      expect(summary).toMatch(/MASTER KEY/);
-      expect(summary).toMatch(/WRITE into the live store/i);
+      const argv: string[][] = [];
+      const rt = fakeRt({}, async (cmd, args) => (argv.push([cmd, ...args]), { code: 0, stdout: '', stderr: '' }) as RunResult);
+      const tools = capture(registerSync, rt);
+      for (const name of ['mega_sync_add', 'mega_backup_add']) {
+        const extra = name === 'mega_backup_add' ? { period: '0 0 * * *', numBackups: 3 } : {};
+        const text = refused(await tools.get(name)!({ localPath: home, remotePath: '/x', ...extra }));
+        expect(text).toMatch(/MASTER KEY/);
+        expect(text).toMatch(/mega_put/);
+      }
+      expect(argv).toEqual([]);
     });
   });
 
   /**
-   * On Windows the store lives beside the executable, so the warning can only find
-   * it via the resolved bin dir. That wiring (rt.getBinDir() -> sessionStoreWarning)
+   * On Windows the store lives beside the executable, so the upload can only find
+   * it via the resolved bin dir. That wiring (rt.getBinDir() -> planUpload)
    * had no end-to-end coverage: deleting the binDir argument left the suite green.
    */
   it.runIf(process.platform === 'win32')('names the executable-relative store, which is only reachable via binDir', async () => {
@@ -148,7 +174,8 @@ describe('session-store exfiltration is refused by the tools themselves', () => 
 
       const withBin = capture(registerMutate, fakeRt({}, undefined, binDir));
       const found = await withBin.get('mega_put')!({ localPath: base, remotePath: '/Backup' });
-      expect((found.structuredContent as { summary: string }).summary).toContain(binStore);
+      // Spelled via realpath, which may expand an 8.3 tmp dir: match the name.
+      expect((found.structuredContent as { summary: string }).summary).toMatch(/Left out:[\s\S]*MEGAcmd[\\/]\.megaCmd/);
 
       // Same upload, binDir unknown (the 'path' source before this was threaded
       // through): the store is invisible to the ancestor check.
@@ -169,6 +196,180 @@ describe('session-store exfiltration is refused by the tools themselves', () => 
     expect((put.structuredContent as { summary: string }).summary).not.toMatch(/MASTER KEY/);
     expect((await mutate.get('mega_get')!({ remotePath: '/f', localDir: homedir() })).isError).toBeFalsy();
     expect((await sync.get('mega_sync_add')!({ localPath: doc, remotePath: '/x' })).isError).toBeFalsy();
+  });
+});
+
+/**
+ * MCP-2: a copy of the store already in the cloud (uploaded before the fix, or by
+ * another app) is an ordinary folder named .megaCmd. Every tool that could bring
+ * its contents into the conversation or hand them on must refuse it — and must
+ * refuse BEFORE running anything.
+ */
+describe('cloud copies of the session store are refused by the tools themselves', () => {
+  function recordingRt(findOut = '') {
+    const argv: string[][] = [];
+    const rt = fakeRt({ exposeFileContents: true }, async (cmd, args) => {
+      argv.push([cmd, ...args]);
+      return { code: 0, stdout: cmd === 'find' ? findOut : '', stderr: '' } as RunResult;
+    });
+    return { rt, argv };
+  }
+  const refusedStore = (res: CallToolResult) => {
+    expect(res.isError).toBe(true);
+    expect((res.content?.[0] as any).text).toMatch(/session store/);
+  };
+  const copy = '/Backup/home/.megaCmd/session';
+
+  it('refuses the copy, and wildcards that reach it, on read / copy / move / publish / share', async () => {
+    const cases: [string, (s: any, r: Runtime) => void, any][] = [
+      ['mega_cat', registerCat, { remotePath: copy }],
+      ['mega_cat', registerCat, { remotePath: '/Backup/home/*/session' }],
+      ['mega_cat', registerCat, { remotePath: '/Backup/home/.mega?md/session' }],
+      ['mega_cp', registerMutate, { src: copy, dst: '/notes.txt' }],
+      ['mega_cp', registerMutate, { src: '/Backup/home/.MEGACMD', dst: '/x' }],
+      ['mega_mv', registerMutate, { src: '/Backup/home/.megaCmd', dst: '/x' }],
+      ['mega_mv', registerMutate, { srcs: ['/ok.txt', copy], dst: '/x' }],
+      ['mega_export', registerDangerous, { remotePath: copy, action: 'create' }],
+      ['mega_share', registerDangerous, { remotePath: '/Backup/home/.megaCmd', action: 'add', withEmail: 'a@b.c' }],
+    ];
+    for (const [tool, register, args] of cases) {
+      const { rt, argv } = recordingRt();
+      const res = await capture(register, rt).get(tool)!(args);
+      refusedStore(res);
+      expect(argv, `${tool} ${JSON.stringify(args)}`).toEqual([]);
+    }
+  });
+
+  // PCRE patterns are resolved by `find` at preview time; a match inside a copy
+  // refuses the whole operation, so nothing gets a token or runs.
+  it('refuses a PCRE operation whose matches include the copy', async () => {
+    const findOut = `/Backup/ok.txt <H:aaaa>\n${copy} <H:bbbb>\n`;
+    const cases: [string, any][] = [
+      ['mega_mv', { src: '.*', usePcre: true, dst: '/x' }],
+      ['mega_export', { remotePath: '.*', usePcre: true, action: 'create' }],
+      ['mega_share', { remotePath: '.*', usePcre: true, action: 'add', withEmail: 'a@b.c' }],
+    ];
+    for (const [tool, args] of cases) {
+      const { rt, argv } = recordingRt(findOut);
+      const register = tool === 'mega_mv' ? registerMutate : registerDangerous;
+      const res = await capture(register, rt).get(tool)!(args);
+      refusedStore(res);
+      expect(argv.map((a) => a[0])).toEqual(['find']);
+    }
+  });
+
+  it('still reads, copies and lists ordinary files and wildcards', async () => {
+    const { rt, argv } = recordingRt();
+    const cat = capture(registerCat, rt).get('mega_cat')!;
+    expect((await cat({ remotePath: '/Docs/notes.txt' })).isError).toBeFalsy();
+    expect((await cat({ remotePath: '/Docs/*.txt' })).isError).toBeFalsy();
+    const cp = capture(registerMutate, rt).get('mega_cp')!;
+    const preview = await cp({ src: '/Docs/megaCmd-notes.txt', dst: '/x' });
+    expect(preview.isError).toBeFalsy();
+    const done = await cp({ src: '/Docs/megaCmd-notes.txt', dst: '/x', confirm: (preview.structuredContent as any).confirmToken });
+    expect(done.isError).toBeFalsy();
+    expect(argv.map((a) => a[0])).toEqual(['cat', 'cat', 'cp']);
+  });
+});
+
+/**
+ * The remembered file-reading consent is a file in the host's plugin data dir
+ * ($PLUGIN_DATA for Codex, $CLAUDE_PLUGIN_DATA for Claude), trusted at startup.
+ * No transfer may write it: not into the dir, not as a folder named like the dir
+ * downloaded into its parent, not via a link whose name is unknown up front.
+ * Exercised through a REAL runtime, since createRuntime is what arms the guard.
+ */
+describe('the remembered file-reading consent cannot be written by a transfer', () => {
+  async function withDataDir(envVar: string, fn: (d: { base: string; data: string; tools: Map<string, ToolFn>; sync: Map<string, ToolFn> }) => Promise<void>) {
+    const base = mkdtempSync(join(tmpdir(), 'mega-data-'));
+    const data = join(base, 'plugins', 'data', 'mega-mcp');
+    mkdirSync(data, { recursive: true });
+    const saved = { PLUGIN_DATA: process.env.PLUGIN_DATA, CLAUDE_PLUGIN_DATA: process.env.CLAUDE_PLUGIN_DATA };
+    try {
+      delete process.env.PLUGIN_DATA;
+      delete process.env.CLAUDE_PLUGIN_DATA;
+      process.env[envVar] = data;
+      const rt = createRuntime({
+        cacheDir: join(base, 'cache'),
+        systemAppBinDirs: [],
+        download: { sha256Allow: [] },
+        maxListLines: 1000,
+        exposeContacts: false,
+        exposeAccountDetails: false,
+        exposeFileContents: false,
+      } as Config);
+      await fn({ base, data, tools: capture(registerMutate, rt), sync: capture(registerSync, rt) });
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      publishMegacmdBinDir(null);
+      rmSync(base, { recursive: true, force: true });
+    }
+  }
+  const isRefused = async (p: Promise<CallToolResult>) => {
+    const res = await p;
+    expect(res.isError, JSON.stringify(res.content)).toBe(true);
+  };
+
+  for (const envVar of ['PLUGIN_DATA', 'CLAUDE_PLUGIN_DATA']) {
+    it(`refuses every transfer that could write into $${envVar}`, async () => {
+      await withDataDir(envVar, async ({ data, tools, sync }) => {
+        const get = tools.get('mega_get')!;
+        await isRefused(get({ remotePath: '/x/file-reading.json', localDir: data }));
+        // A folder named like the data dir, merged into its parent.
+        await isRefused(get({ remotePath: `/x/${basename(data)}`, localDir: dirname(data), merge: true }));
+        // A link: its node name is unknown before the download.
+        await isRefused(get({ link: 'https://mega.nz/file/abc#key', localDir: dirname(data) }));
+        await isRefused(tools.get('mega_thumbnail')!({ remotePath: '/f', localPath: join(data, 'file-reading.json') }));
+        await isRefused(sync.get('mega_sync_add')!({ localPath: dirname(data), remotePath: '/x' }));
+      });
+    });
+  }
+
+  it('still allows ordinary downloads and syncs next to the data dir', async () => {
+    await withDataDir('PLUGIN_DATA', async ({ base, data, tools, sync }) => {
+      const get = tools.get('mega_get')!;
+      for (const args of [
+        { remotePath: '/x/file-reading.json', localDir: join(base, 'dl') },
+        { remotePath: '/x/Docs', localDir: dirname(data) },
+        { link: 'https://mega.nz/file/abc#key', localDir: join(base, 'dl') },
+      ]) {
+        const res = await get(args);
+        expect(res.isError, JSON.stringify(res.content)).toBeFalsy();
+      }
+      expect((await sync.get('mega_sync_add')!({ localPath: join(base, 'dl'), remotePath: '/x' })).isError).toBeFalsy();
+    });
+  });
+
+  // The macOS login helper is a script the user is told to double-click; armed
+  // from config alone, like every other protected root.
+  it.runIf(process.platform === 'darwin')('refuses transfers into the macOS login helper dir', async () => {
+    await withDataDir('PLUGIN_DATA', async ({ tools }) => {
+      const helperDir = join(homedir(), 'Library', 'Application Support', 'mega-cloud-mcp');
+      await isRefused(tools.get('mega_get')!({ remotePath: '/x/Login to MEGA.command', localDir: helperDir }));
+      await isRefused(tools.get('mega_get')!({ remotePath: '/x/mega-cloud-mcp', localDir: dirname(helperDir), merge: true }));
+    });
+  });
+
+  it('checks every PCRE match against the destination before issuing a token', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'mega-data-pcre-'));
+    const data = join(base, 'plugins', 'data', 'mega-mcp');
+    try {
+      publishMegacmdBinDir(null, [data]);
+      const argv: string[][] = [];
+      const rt = fakeRt({}, async (cmd, args) => {
+        argv.push([cmd, ...args]);
+        return { code: 0, stdout: cmd === 'find' ? `/x/ok.txt <H:aaaa>\n/x/${basename(data)} <H:bbbb>\n` : '', stderr: '' } as RunResult;
+      });
+      const res = await capture(registerMutate, rt).get('mega_get')!({ remotePath: '.*', usePcre: true, localDir: dirname(data), merge: true });
+      expect(res.isError).toBe(true);
+      expect(argv.map((a) => a[0])).toEqual(['find']);
+    } finally {
+      publishMegacmdBinDir(null);
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 });
 
@@ -204,6 +405,13 @@ describe('security-sweep regressions, at the tool boundary', () => {
       ['mega_share', registerDangerous, { remotePath: '/Ex*', action: 'add', withEmail: 'a@b.c' }],
       ['mega_mv', registerMutate, { src: '/Ex*', dst: '/d' }],
       ['mega_get', registerMutate, { remotePath: '/Ex*', localDir: join(tmpdir(), 'dl') }],
+      // Previously missed: unpublishing, unsharing, list moves, copies, thumbnails, attributes.
+      ['mega_export', registerDangerous, { remotePath: '/Ex*', action: 'delete' }],
+      ['mega_share', registerDangerous, { remotePath: '/Ex*', action: 'remove', withEmail: 'a@b.c' }],
+      ['mega_mv', registerMutate, { srcs: ['/ok', '/Ex*'], dst: '/d' }],
+      ['mega_cp', registerMutate, { src: '/Ex*', dst: '/d' }],
+      ['mega_thumbnail', registerMutate, { remotePath: '/Ex*', localPath: join(tmpdir(), 't.jpg') }],
+      ['mega_attr_set', registerManage, { remotePath: '/Ex*', attribute: 'a', action: 'delete' }],
     ];
     for (const [tool, register, args] of cases) {
       const { rt, argv } = recordingRt();
@@ -211,12 +419,60 @@ describe('security-sweep regressions, at the tool boundary', () => {
     }
   });
 
+  // A copy can disclose as much as a share: into a shared folder, or one with a
+  // public link. So it is confirm-gated like them, and runs only on the token.
+  it('confirm-gates mega_cp, naming both ends', async () => {
+    const { rt, argv } = recordingRt();
+    const cp = capture(registerMutate, rt).get('mega_cp')!;
+    const preview = await cp({ src: '/Private/report.pdf', dst: '/Shared' });
+    expect(preview.structuredContent).toMatchObject({ requiresConfirmation: true });
+    expect((preview.structuredContent as any).summary).toBe('This will copy /Private/report.pdf to /Shared.');
+    expect(argv).toEqual([]);
+    // A token for one copy cannot be spent on another.
+    const token = (preview.structuredContent as any).confirmToken;
+    expect((await cp({ src: '/Private/other.pdf', dst: '/Shared', confirm: token })).isError).toBe(true);
+    expect(argv).toEqual([]);
+  });
+
+  // The value is part of what is approved; the token always bound it, but the
+  // preview did not show it.
+  it('shows the value in the attribute-setting previews', async () => {
+    const { rt } = recordingRt();
+    const tools = capture(registerManage, rt);
+    const node = await tools.get('mega_attr_set')!({ remotePath: '/f', attribute: 'note', action: 'set', value: 'hello' });
+    expect((node.structuredContent as any).summary).toContain('"hello"');
+    const prof = await tools.get('mega_userattr_set')!({ attribute: 'firstname', value: 'Ann' });
+    expect((prof.structuredContent as any).summary).toContain('"Ann"');
+  });
+
+  // Every target is named in the preview, so a plan the preview cannot list in full
+  // is refused instead of truncated.
+  it('names every target and refuses plans over the cap', async () => {
+    const many = Array.from({ length: 201 }, (_, i) => `/f${i}`);
+    const { rt, argv } = recordingRt();
+    const mutate = capture(registerMutate, rt);
+    blocked(await mutate.get('mega_mv')!({ srcs: many, dst: '/d' }), argv, /at most 200/);
+    blocked(await mutate.get('mega_put')!({ localPaths: many, remotePath: '/d' }), argv, /at most 200/);
+    const ok200 = await mutate.get('mega_mv')!({ srcs: many.slice(0, 200), dst: '/d' });
+    const summary = (ok200.structuredContent as any).summary as string;
+    expect(summary).toContain('/f199');
+    expect(summary).not.toMatch(/showing first/);
+
+    const findOut = many.map((p, i) => `${p} <H:h${i}>`).join('\n');
+    const pcre = recordingRt();
+    const pcreRt = fakeRt({}, async (cmd, args) => (pcre.argv.push([cmd, ...args]), { code: 0, stdout: cmd === 'find' ? findOut : '', stderr: '' }) as RunResult);
+    const res = await capture(registerDangerous, pcreRt).get('mega_rm')!({ remotePath: '/f.*', usePcre: true });
+    expect(res.isError).toBe(true);
+    expect((res.content?.[0] as any).text).toMatch(/at most 200/);
+    expect(pcre.argv.map((a) => a[0])).toEqual(['find']);
+  });
+
   /**
    * The guard is armed by createRuntime, NOT by the tool call — so it has to be
    * exercised through a REAL runtime. Pre-arming it with publishMegacmdBinDir() (as
    * the test below does, to isolate the guard's logic) hides whether production ever
    * arms it at all: it did not. trustRoots was published only from getBinDir(), and
-   * getBinDir() is called only by the store-warning path — mega_put / sync_add /
+   * getBinDir() is called only by the store-check path — mega_put / sync_add /
    * backup_add. mega_get and mega_thumbnail, the two write destinations this guard
    * exists to stop, never called it, so assertNotTrustRoot no-opped on an empty root
    * list for the whole process. Deleting the publish in createRuntime must fail here.
@@ -582,6 +838,17 @@ describe('mega_share list contact-PII gate (#2)', () => {
     expect(res.isError).toBeFalsy();
     expect(res.structuredContent).toMatchObject({ requiresConfirmation: true });
     expect((res.content?.[0] as any).text).toMatch(/email/i);
+  });
+
+  // usePcre changes which folders are listed, so a token for one literal path must
+  // not be spendable as a regex over every folder.
+  it('binds usePcre into the listing token', async () => {
+    const tools = capture(registerDangerous, fakeRt({ exposeContacts: false }));
+    const first = await tools.get('mega_share')!({ action: 'list', remotePath: '/Team' });
+    const token = (first.structuredContent as any).confirmToken;
+    const replay = await tools.get('mega_share')!({ action: 'list', remotePath: '/Team', usePcre: true, confirm: token });
+    expect(replay.isError).toBe(true);
+    expect((replay.content?.[0] as any).text).toMatch(/invalid or expired/);
   });
 
   it('lists freely when exposeContacts is on (the persistent "always allow")', async () => {

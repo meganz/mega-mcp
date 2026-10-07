@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { dirname, join, resolve, sep, win32 as winPath, posix as posixPath } from 'node:path';
 import type { Config, Resolved } from './types.js';
+import { systemTool } from './sysbin.js';
 
 /** Layout of a cached MEGAcmd, recorded by the downloader in meta.json. */
 export interface CacheMeta {
@@ -80,29 +81,19 @@ async function isExecutable(p: string): Promise<boolean> {
   }
 }
 
-async function existsOnPath(name: string): Promise<boolean> {
-  const probe = isWin ? 'where' : 'which';
-  try {
-    await pExecFile(probe, [name], { windowsHide: true });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
- * Resolve the REAL install dir of the on-PATH client, for the 'path' source
- * (whose binDir is null because we invoke bare `mega-*` names via PATH). We
+ * Resolve the REAL install dir of the on-PATH client, for the 'path' source. We
  * `which`/`where` the whoami client, follow symlinks (realpath), and take its
- * directory — giving signature verification a concrete target (the .app bundle
- * on macOS, or the dir holding MEGAcmdServer.exe on Windows). Returns null if it
- * can't be resolved, in which case the caller skips verification rather than
- * blocking a working PATH install.
+ * directory. Every client is then launched by ABSOLUTE path from this one dir,
+ * which is also what signature verification checks (the .app bundle on macOS, or
+ * the dir holding MEGAcmdServer.exe on Windows). Invoking bare `mega-*` names
+ * instead would search PATH again per command, so an earlier PATH directory
+ * holding, say, only `mega-ls` would run unverified while the later, genuine
+ * install passed the check. Returns null if it can't be resolved.
  */
 export async function resolvePathBinDir(): Promise<string | null> {
-  const probe = isWin ? 'where' : 'which';
   try {
-    const { stdout } = await pExecFile(probe, [clientName('whoami')], { windowsHide: true });
+    const { stdout } = await pExecFile(systemTool(isWin ? 'where' : 'which'), [clientName('whoami')], { windowsHide: true });
     const first = stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0];
     if (!first) return null;
     return dirname(await realpath(first));
@@ -213,8 +204,9 @@ export async function resolveBinaries(config: Config): Promise<Resolved | null> 
     return makeResolved('cache', cache.binDir, cache.libDir);
   }
 
-  if (await existsOnPath(clientName('whoami'))) {
-    return makeResolved('path', null);
+  const pathDir = await resolvePathBinDir();
+  if (pathDir && (await isExecutable(join(pathDir, clientName('whoami'))))) {
+    return makeResolved('path', pathDir);
   }
 
   return null;

@@ -3,7 +3,7 @@ import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
 import { classifyExit, ExitCode } from '../errors.js';
-import { assertRemotePath } from '../paths.js';
+import { assertRemotePath, assertNotStoreCopy } from '../paths.js';
 import { guardRun } from './helpers.js';
 
 const DEFAULT_MAX = 1_048_576; // 1 MB
@@ -82,7 +82,7 @@ export function registerCat(server: McpServer, rt: Runtime): RegisteredTool {
     },
     async ({ remotePath, maxBytes }) =>
       guardRun(async () => {
-        const rp = assertRemotePath(remotePath);
+        const rp = assertNotStoreCopy(assertRemotePath(remotePath));
         const cap = Math.min(maxBytes ?? DEFAULT_MAX, HARD_MAX);
         const r = await rt.run('cat', [rp], { maxBuffer: cap });
         if (r.maxBufferExceeded) {

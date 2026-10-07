@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok } from '../mcpResult.js';
-import { assertRemotePath, assertNoFlag, assertFlagValue, assertSecret, ValidationError } from '../paths.js';
+import { assertRemotePath, assertNoFlag, assertFlagValue, assertSecret, assertNoWildcard, ValidationError } from '../paths.js';
 import { guardRun, runToResult, checkConfirm } from './helpers.js';
 
 const TRANSFER_FLAG: Record<string, string> = { pause: '-p', resume: '-r', cancel: '-c' };
@@ -33,7 +33,7 @@ export function registerManage(server: McpServer, rt: Runtime): void {
     },
     async ({ remotePath, attribute, action, value, confirm }) =>
       guardRun(async () => {
-        const rp = assertRemotePath(remotePath);
+        const rp = assertNoWildcard(assertRemotePath(remotePath), 'remotePath');
         const attr = assertNoFlag(attribute, 'attribute');
         if (action === 'set' && (value === undefined || value.trim() === '')) {
           throw new ValidationError('value is required for action="set".');
@@ -42,7 +42,7 @@ export function registerManage(server: McpServer, rt: Runtime): void {
         const val = action === 'set' ? assertNoFlag(value as string, 'value') : null;
         const summary =
           action === 'set'
-            ? `This will set attribute "${attr}" on ${rp}.`
+            ? `This will set attribute "${attr}" to "${val as string}" on ${rp}.`
             : `This will delete attribute "${attr}" from ${rp}.`;
         const gate = checkConfirm(rt, 'mega_attr_set', { remotePath: rp, attribute: attr, action, value: val }, confirm, summary);
         if (gate) return gate;
@@ -68,7 +68,7 @@ export function registerManage(server: McpServer, rt: Runtime): void {
       guardRun(async () => {
         const attr = assertNoFlag(attribute, 'attribute');
         const val = assertNoFlag(value, 'value');
-        const summary = `This will set your profile attribute "${attr}".`;
+        const summary = `This will set your profile attribute "${attr}" to "${val}".`;
         const gate = checkConfirm(rt, 'mega_userattr_set', { attribute: attr, value: val }, confirm, summary);
         if (gate) return gate;
         return runToResult(rt, 'userattr', ['-s', attr, val], () => ok(`Set profile attribute "${attr}".`, { attribute: attr }));

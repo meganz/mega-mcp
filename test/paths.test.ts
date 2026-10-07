@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isAbsolute, resolve, join, sep } from 'node:path';
+import { isAbsolute, resolve, join, sep, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { realpathSync } from 'node:fs';
 import { previewSafe } from '../src/tools/helpers.js';
@@ -14,7 +14,11 @@ import {
   assertSecret,
   publishMegacmdBinDir,
   sessionStoresWithin,
-  sessionStoreWarning,
+  assertNoStoreWithin,
+  assertNotStoreCopy,
+  assertDownloadTarget,
+  assertNoProtectedWithin,
+  planUpload,
   ValidationError,
 } from '../src/paths.js';
 
@@ -301,7 +305,7 @@ describe('assertLocalPath — Win32 spellings the OS folds away', () => {
  * on whether they happen to run MEGAcmd — and on Windows the real store is beside
  * the executable, so ~/.megaCmd is normally absent.
  */
-describe('sessionStoresWithin / sessionStoreWarning (bulk backup)', () => {
+describe('sessionStoresWithin / assertNoStoreWithin (bulk upload, sync, backup)', () => {
   /**
    * Point homedir() at `dir` for the duration of `fn`. os.homedir() reads $HOME /
    * %USERPROFILE% first, and sessionStoreRoots() recomputes per call.
@@ -362,6 +366,7 @@ describe('sessionStoresWithin / sessionStoreWarning (bulk backup)', () => {
     return real(a) === real(b);
   };
   const reports = (list: string[], want: string) => list.some((p) => sameStore(p, want));
+  const names = (paths: string[]) => paths.map((p) => p.split(/[\\/]/).pop());
 
   it('detects the store inside an ancestor tree', async () => {
     await withFixture(({ home, homeStore }) => {
@@ -414,7 +419,7 @@ describe('sessionStoresWithin / sessionStoreWarning (bulk backup)', () => {
       expect(reports(found, homeStore)).toBe(true);
       if (isWin) {
         expect(reports(found, binStore)).toBe(true);
-        expect(sessionStoreWarning([base], { binDir })).toContain(binStore);
+        expect(() => assertNoStoreWithin(base, 'back up', binDir)).toThrow(binStore);
       } else {
         // posix: the store is under $HOME wherever the binary lives, so binDir must
         // NOT invent a root next to the executable.
@@ -427,9 +432,9 @@ describe('sessionStoresWithin / sessionStoreWarning (bulk backup)', () => {
     await withFixture(async ({ home, homeStore }) => {
       const { rmSync } = await import('node:fs');
       rmSync(homeStore, { recursive: true, force: true });
-      // Nothing to carry away -> nothing to warn about.
+      // Nothing to carry away -> nothing to refuse.
       expect(sessionStoresWithin(home)).toEqual([]);
-      expect(sessionStoreWarning([home])).toBe('');
+      expect(() => assertNoStoreWithin(home, 'sync')).not.toThrow();
     });
   });
 
@@ -446,10 +451,10 @@ describe('sessionStoresWithin / sessionStoreWarning (bulk backup)', () => {
   // on Windows it passed only because C:\Applications happens not to exist.
   it.runIf(!isWin)('ignores a passed-in MEGAcmd bin dir on posix (store is under $HOME there)', async () => {
     await withFixture(({ home, binDir, binStore }) => {
-      // binStore really exists next to the binary; posix must still not warn about
-      // it, or every /Applications backup would warn for a store MEGAcmd never made.
+      // binStore really exists next to the binary; posix must still not count it,
+      // or every /Applications backup would be refused for a store MEGAcmd never made.
       expect(reports(sessionStoresWithin(join(home, '..'), binDir), binStore)).toBe(false);
-      expect(sessionStoreWarning([binDir], { binDir })).toBe('');
+      expect(() => assertNoStoreWithin(binDir, 'back up', binDir)).not.toThrow();
     });
   });
 
@@ -459,19 +464,222 @@ describe('sessionStoresWithin / sessionStoreWarning (bulk backup)', () => {
       // check cannot see it — that is precisely why the tools thread it through.
       expect(reports(sessionStoresWithin(binDir, binDir), binStore)).toBe(true);
       expect(sessionStoresWithin(binDir)).toEqual([]);
-      expect(sessionStoreWarning([binDir], { binDir })).toContain(binStore);
+      expect(() => assertNoStoreWithin(binDir, 'back up', binDir)).toThrow(binStore);
     });
   });
 
-  it('warns with the master-key consequence and an actionable alternative', async () => {
+  // MEGACMD_WORKING_FOLDER_SUFFIX renames the store; the ancestor checks used to
+  // know only the plain name, so a home holding just the suffixed store passed.
+  it('finds a suffixed store when MEGACMD_WORKING_FOLDER_SUFFIX is set', async () => {
+    await withFixture(async ({ home, homeStore }) => {
+      const { renameSync } = await import('node:fs');
+      const suffixed = `${homeStore}_work`;
+      renameSync(homeStore, suffixed);
+      const saved = process.env.MEGACMD_WORKING_FOLDER_SUFFIX;
+      try {
+        delete process.env.MEGACMD_WORKING_FOLDER_SUFFIX;
+        expect(reports(sessionStoresWithin(home), suffixed)).toBe(false);
+        process.env.MEGACMD_WORKING_FOLDER_SUFFIX = 'work';
+        expect(reports(sessionStoresWithin(home), suffixed)).toBe(true);
+        expect(() => assertNoStoreWithin(home, 'sync')).toThrow(/\.megaCmd_work/);
+        expect(names(planUpload([home], '/B').excluded)).toContain('.megaCmd_work');
+      } finally {
+        if (saved === undefined) delete process.env.MEGACMD_WORKING_FOLDER_SUFFIX;
+        else process.env.MEGACMD_WORKING_FOLDER_SUFFIX = saved;
+      }
+    });
+  });
+
+  it('refuses a sync/backup containing the store, naming it and pointing at mega_put', async () => {
     await withFixture(({ home }) => {
-      const w = sessionStoreWarning([home]);
-      expect(w).toMatch(/MASTER KEY/);
-      expect(w).toMatch(/cannot be rotated/i);
-      expect(w).toMatch(/mega_sync_ignore/);
-      expect(w).toContain('.megaCmd');
-      expect(sessionStoreWarning([home], { twoWay: true })).toMatch(/two-way sync can also WRITE/i);
-      expect(sessionStoreWarning([join(home, 'Documents')])).toBe('');
+      expect(() => assertNoStoreWithin(home, 'sync')).toThrow(ValidationError);
+      expect(() => assertNoStoreWithin(home, 'sync')).toThrow(/MASTER KEY/);
+      expect(() => assertNoStoreWithin(home, 'sync')).toThrow(/\.megaCmd/);
+      expect(() => assertNoStoreWithin(home, 'back up')).toThrow(/mega_put/);
+      expect(() => assertNoStoreWithin(join(home, 'Documents'), 'sync')).not.toThrow();
+    });
+  });
+});
+
+/**
+ * MCP-2: a folder holding the session store is uploaded WITHOUT it. MEGAcmd `put`
+ * has no exclude option, so planUpload rebuilds the tree down to the store and
+ * uploads every sibling whole; these pin that the store never becomes a source.
+ */
+describe('planUpload leaves the session store behind', () => {
+  async function withTree<T>(fn: (t: { base: string; home: string; other: string; store: string }) => T | Promise<T>): Promise<T> {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const base = mkdtempSync(join(tmpdir(), 'mega-plan-'));
+    const home = join(base, 'home');
+    const other = join(base, 'other');
+    const store = join(home, '.megaCmd');
+    mkdirSync(store, { recursive: true });
+    mkdirSync(join(home, 'Docs'), { recursive: true });
+    mkdirSync(other, { recursive: true });
+    writeFileSync(join(store, 'session'), 'fixture');
+    writeFileSync(join(home, 'a.txt'), 'a');
+    writeFileSync(join(home, 'Docs', 'b.txt'), 'b');
+    writeFileSync(join(other, 'c.txt'), 'c');
+    const keys = ['HOME', 'USERPROFILE'] as const;
+    const saved = keys.map((k) => [k, process.env[k]] as const);
+    try {
+      for (const k of keys) process.env[k] = home;
+      return await fn({ base, home, other, store });
+    } finally {
+      for (const [k, v] of saved) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      rmSync(base, { recursive: true, force: true });
+    }
+  }
+  const names = (paths: string[]) => paths.map((p) => p.split(/[\\/]/).pop());
+  const noStoreSource = (plan: ReturnType<typeof planUpload>) => {
+    for (const step of plan.steps) for (const src of step.sources) expect(src.toLowerCase()).not.toContain('.megacmd');
+  };
+
+  it('uploads a folder without a store whole, in one step, unchanged', async () => {
+    await withTree(({ other }) => {
+      expect(planUpload([other], '/B')).toEqual({ steps: [{ dest: '/B', sources: [other] }], excluded: [] });
+    });
+  });
+
+  it('uploads the home folder without its .megaCmd', async () => {
+    await withTree(({ home }) => {
+      const plan = planUpload([home], '/Backup');
+      expect(plan.steps).toHaveLength(1);
+      expect(plan.steps[0]!.dest).toBe('/Backup/home');
+      expect(names(plan.steps[0]!.sources)).toEqual(['Docs', 'a.txt']);
+      expect(names(plan.excluded)).toEqual(['.megaCmd']);
+      noStoreSource(plan);
+    });
+  });
+
+  it('rebuilds the path down to a deeper store, uploading the siblings whole', async () => {
+    await withTree(({ base }) => {
+      const plan = planUpload([base], '/B');
+      const top = `/B/${base.split(/[\\/]/).pop()}`;
+      expect(plan.steps.map((s) => s.dest)).toEqual([top, `${top}/home`]);
+      expect(names(plan.steps[0]!.sources)).toEqual(['other']);
+      expect(names(plan.steps[1]!.sources)).toEqual(['Docs', 'a.txt']);
+      noStoreSource(plan);
+    });
+  });
+
+  it('keeps unaffected items in one step next to the rebuilt folder', async () => {
+    await withTree(({ home, other }) => {
+      const file = join(other, 'c.txt');
+      const plan = planUpload([file, home], '/');
+      expect(plan.steps[0]).toEqual({ dest: '/', sources: [file] });
+      expect(plan.steps[1]!.dest).toBe('/home');
+    });
+  });
+
+  it('leaves out a .megaCmd_<suffix> sibling, whatever its case', async () => {
+    await withTree(async ({ home }) => {
+      const { mkdirSync } = await import('node:fs');
+      mkdirSync(join(home, '.MEGACMD_work'));
+      const plan = planUpload([home], '/B');
+      expect(names(plan.excluded).sort()).toEqual(['.MEGACMD_work', '.megaCmd']);
+      noStoreSource(plan);
+    });
+  });
+
+  // Symlinks need privileges on Windows; the posix run covers the logic.
+  it.runIf(!isWin)('leaves out symlinks into the store, or above it, without looping', async () => {
+    await withTree(async ({ base, home }) => {
+      const { symlinkSync } = await import('node:fs');
+      symlinkSync(join(home, '.megaCmd'), join(home, 'store-link'));
+      symlinkSync(base, join(home, 'up'));
+      const plan = planUpload([home], '/B');
+      expect(names(plan.excluded).sort()).toEqual(['.megaCmd', 'store-link', 'up']);
+      expect(names(plan.steps[0]!.sources)).toEqual(['Docs', 'a.txt']);
+    });
+  });
+});
+
+/**
+ * MCP-2: a copy of the store that is already in the cloud is just a folder named
+ * `.megaCmd`, which the local guard cannot see. The cloud-path guard refuses that
+ * name, and any wildcard MEGAcmd could expand to it.
+ */
+describe('assertNotStoreCopy (cloud copies of the session store)', () => {
+  it('refuses a path through a .megaCmd folder, in any case or suffix variant', () => {
+    for (const p of ['/Backup/home/.megaCmd/session', '/b/.megaCmd', '/b/.MEGACMD/x', '/b/.megaCmd_work/session', '/b/.megaCmd_*/session']) {
+      expect(() => assertNotStoreCopy(p)).toThrow(/session store/);
+    }
+  });
+
+  it('refuses a wildcard that could expand to the store', () => {
+    for (const p of ['/b/*/session', '/b/.mega*/session', '/b/?megaCmd/session', '/b/*md/session', '/b/.megaCmd?*/session', '/b/*_*/x', '/b/.megacmd?x/s', '/b/*']) {
+      expect(() => assertNotStoreCopy(p), p).toThrow(/wildcard/);
+    }
+  });
+
+  it('allows ordinary names and wildcards that cannot reach the store', () => {
+    for (const p of ['/b/megaCmd/x', '/b/.megaCmdbackup/x', '/b/my.megaCmd', '/b/*.txt', '/docs/report?.pdf', '/b/mega*', '/Photos/2024/*.jpg', '/']) {
+      expect(assertNotStoreCopy(p)).toBe(p);
+    }
+  });
+});
+
+/**
+ * assertLocalPath only looks UP from a path; a download writes `<dir>/<name>` and
+ * everything below it. So the target must not be inside a protected directory,
+ * nor ABOVE one.
+ */
+describe('assertDownloadTarget / assertNoProtectedWithin', () => {
+  async function withRoot(fn: (f: { parent: string; root: string }) => void | Promise<void>) {
+    const { mkdtempSync, mkdirSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const parent = mkdtempSync(join(tmpdir(), 'mega-target-'));
+    const root = join(parent, 'data');
+    mkdirSync(root);
+    try {
+      publishMegacmdBinDir(null, [root]);
+      await fn({ parent, root });
+    } finally {
+      publishMegacmdBinDir(null);
+      rmSync(parent, { recursive: true, force: true });
+    }
+  }
+
+  it('refuses a target inside, at, or above a protected directory', async () => {
+    await withRoot(({ parent, root }) => {
+      expect(() => assertDownloadTarget(root, 'file-reading.json')).toThrow(ValidationError);
+      // At it: refused by the trust-root rule itself.
+      expect(() => assertDownloadTarget(parent, 'data')).toThrow(ValidationError);
+      expect(() => assertDownloadTarget(parent, 'DATA')).toThrow(ValidationError);
+      expect(() => assertDownloadTarget(join(parent, '..'), basename(parent))).toThrow(/could write into/);
+    });
+  });
+
+  it('treats an unknown name (a link) as anything directly in the folder', async () => {
+    await withRoot(({ parent }) => {
+      expect(() => assertDownloadTarget(parent, null)).toThrow(/subfolder/);
+      expect(() => assertDownloadTarget(join(parent, 'dl'), null)).not.toThrow();
+    });
+  });
+
+  it('allows a sibling target, including one sharing the prefix', async () => {
+    await withRoot(({ parent }) => {
+      expect(() => assertDownloadTarget(parent, 'Docs')).not.toThrow();
+      expect(() => assertDownloadTarget(parent, 'data-notes')).not.toThrow();
+    });
+  });
+
+  it('covers the session store the same way', () => {
+    const home = homedir();
+    expect(() => assertDownloadTarget(home, '.megaCmd')).toThrow(ValidationError);
+    expect(() => assertDownloadTarget(join(home, '..'), basename(home))).toThrow(/could write into/);
+    expect(() => assertDownloadTarget(home, 'Documents')).not.toThrow();
+  });
+
+  it('refuses a two-way sync root that contains a protected directory', async () => {
+    await withRoot(({ parent }) => {
+      expect(() => assertNoProtectedWithin(parent, 'sync')).toThrow(/written into it/);
+      expect(() => assertNoProtectedWithin(join(parent, 'other'), 'sync')).not.toThrow();
     });
   });
 });
