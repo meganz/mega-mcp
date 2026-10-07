@@ -1,6 +1,6 @@
 {
   "name": "mega-cloud-mcp",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "MCP server that lets an AI assistant operate a MEGA cloud account via the MEGAcmd CLI.",
   "license": "MIT",
   "author": "Mega Limited <jsh@mega.co.nz>",
@@ -41,6 +41,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "itest": "vitest run --config vitest.itest.config.ts",
     "stage": "node scripts/stage.mjs",
     "pack": "npm run build && npm run build:plugin && npm run stage && mcpb validate build/manifest.json && mcpb pack build mega-cloud-mcp.mcpb"
   },

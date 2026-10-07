@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { stateDir, readRemembered, writeRemembered } from '../src/fileReading.js';
+import { stateDir, readRemembered, writeRemembered, readGeneration } from '../src/fileReading.js';
+import { registerPluginFileTools } from '../src/tools/index.js';
 import { registerFileReading } from '../src/tools/fileReading.js';
 import { createConfirmStore } from '../src/confirm.js';
 import type { Runtime } from '../src/runtime.js';
@@ -45,17 +46,36 @@ describe('file-reading preference store', () => {
     }
   });
 
-  it('round-trips the remembered answer and clears it', () => {
+  it('round-trips the remembered answer, and records turning it off as a timestamp', () => {
     const dir = tmp();
-    const cfg = configWith(dir);
-    const env = {} as NodeJS.ProcessEnv;
+    const cfg = configWith(join(dir, 'cache'));
+    const env = { PLUGIN_DATA: dir } as NodeJS.ProcessEnv;
     try {
       expect(readRemembered(cfg, env)).toBe(false);
       expect(writeRemembered(cfg, true, env)).toBe(true);
       expect(readRemembered(cfg, env)).toBe(true);
       expect(writeRemembered(cfg, false, env)).toBe(true);
       expect(readRemembered(cfg, env)).toBe(false);
-      expect(existsSync(join(dir, 'file-reading.json'))).toBe(false);
+      // Kept, not deleted: other running processes read the turn-off from it.
+      expect(readGeneration(cfg, env)).toBe(1);
+      writeRemembered(cfg, true, env);
+      expect(readGeneration(cfg, env), 'a remembered yes keeps the generation').toBe(1);
+      writeRemembered(cfg, false, env);
+      expect(readGeneration(cfg, env)).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // cacheDir is shared by every client that starts this server without a data
+  // dir, so a "yes" kept there would switch reading on for other AI providers.
+  it('never keeps a "don\'t ask again" outside a host-injected data dir', () => {
+    const dir = tmp();
+    const cfg = configWith(dir);
+    try {
+      expect(writeRemembered(cfg, true, {} as NodeJS.ProcessEnv)).toBe(false);
+      writeFileSync(join(dir, 'file-reading.json'), '{"enabled":true}');
+      expect(readRemembered(cfg, {} as NodeJS.ProcessEnv)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -151,7 +171,8 @@ describe('mega_file_reading', () => {
       const done = await call({ confirm: token });
       expect(cat.enabled).toBe(true);
       expect(done.structuredContent).toMatchObject({ enabled: true, remembered: false });
-      expect(existsSync(join(dir, 'file-reading.json')), 'no remember -> nothing persisted').toBe(false);
+      // The state file may now exist (it anchors the grant), but holds no "yes".
+      expect(readRemembered(configWith(dir), { PLUGIN_DATA: dir } as NodeJS.ProcessEnv), 'no remember -> nothing remembered').toBe(false);
       // "Until restart", never "this conversation": a host may keep one server
       // process alive across conversations, and the text must not understate it.
       expect(textOf(done)).toContain('until the app is restarted');
@@ -163,12 +184,16 @@ describe('mega_file_reading', () => {
 
   it('persists only when the user asked not to be asked again', async () => {
     const dir = tmp();
+    const saved = process.env.PLUGIN_DATA;
     try {
-      const { call } = harness(dir);
+      process.env.PLUGIN_DATA = dir;
+      const { call } = harness(join(dir, 'cache'));
       const preview = await call({ remember: true });
       await call({ remember: true, confirm: (preview.structuredContent as { confirmToken: string }).confirmToken });
-      expect(readRemembered(configWith(dir), {} as NodeJS.ProcessEnv)).toBe(true);
+      expect(readRemembered(configWith(join(dir, 'cache')), { PLUGIN_DATA: dir } as NodeJS.ProcessEnv)).toBe(true);
     } finally {
+      if (saved === undefined) delete process.env.PLUGIN_DATA;
+      else process.env.PLUGIN_DATA = saved;
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -236,6 +261,97 @@ describe('mega_file_reading', () => {
       expect(r.structuredContent).toMatchObject({ sessionOnly: true });
       expect(textOf(r)).toContain('for this session');
       expect(textOf(r)).toContain('MEGA_MCP_EXPOSE_FILES');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * Turning file reading off has to reach every running server process that shares
+ * the state dir (other conversations, other threads), not only the one asked.
+ * Exercised through the plugin registrar, which the build flag hides elsewhere.
+ */
+describe('file-reading consent across server processes', () => {
+  function serverProcess(cacheDir: string, config: Partial<Config> = {}) {
+    const tools = new Map<string, { cb: (a: Record<string, unknown>) => Promise<CallToolResult>; handle: { enabled: boolean } }>();
+    const server = {
+      registerTool: (name: string, _d: unknown, cb: (a: Record<string, unknown>) => Promise<CallToolResult>) => {
+        const handle = { enabled: true, enable() { this.enabled = true; }, disable() { this.enabled = false; } };
+        tools.set(name, { cb, handle });
+        return handle;
+      },
+    };
+    let ran = 0;
+    const rt = {
+      config: { cacheDir, exposeFileContents: false, ...config } as Config,
+      confirm: createConfirmStore(),
+      run: async () => (ran++, { code: 0, stdout: 'text', stderr: '' }),
+    } as unknown as Runtime;
+    registerPluginFileTools(server as never, rt);
+    const reading = (args: Record<string, unknown>) => tools.get('mega_file_reading')!.cb({ action: 'enable', remember: false, ...args });
+    return { tools, reading, ran: () => ran };
+  }
+
+  it('a "turn it off" in one process stops reading in another', async () => {
+    const dir = tmp();
+    const saved = process.env.PLUGIN_DATA;
+    try {
+      process.env.PLUGIN_DATA = dir;
+      const a = serverProcess(join(dir, 'cache'));
+      const b = serverProcess(join(dir, 'cache'));
+      const preview = await b.reading({});
+      await b.reading({ confirm: (preview.structuredContent as { confirmToken: string }).confirmToken });
+      expect(b.tools.get('mega_cat')!.handle.enabled).toBe(true);
+
+      await a.reading({ action: 'disable' });
+      const res = await b.tools.get('mega_cat')!.cb({ remotePath: '/notes.txt' });
+      expect(res.isError).toBe(true);
+      expect(textOf(res)).toMatch(/turned off/);
+      expect(b.tools.get('mega_cat')!.handle.enabled).toBe(false);
+      expect(b.ran()).toBe(0);
+
+      // Asking again afterwards works.
+      const again = await b.reading({});
+      await b.reading({ confirm: (again.structuredContent as { confirmToken: string }).confirmToken });
+      expect((await b.tools.get('mega_cat')!.cb({ remotePath: '/notes.txt' })).isError).toBeFalsy();
+    } finally {
+      if (saved === undefined) delete process.env.PLUGIN_DATA;
+      else process.env.PLUGIN_DATA = saved;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // The grant is tied to the turn-off generation, never to clocks, and a state file
+  // that disappears (deleted by hand, or by a v1.0.4 process turning reading off)
+  // ends it instead of resetting it to "never turned off".
+  it('a deleted or damaged state file ends existing grants', async () => {
+    for (const damage of ['delete', 'garbage'] as const) {
+      const dir = tmp();
+      const saved = process.env.PLUGIN_DATA;
+      try {
+        process.env.PLUGIN_DATA = dir;
+        const b = serverProcess(join(dir, 'cache'));
+        const preview = await b.reading({});
+        await b.reading({ confirm: (preview.structuredContent as { confirmToken: string }).confirmToken });
+        expect((await b.tools.get('mega_cat')!.cb({ remotePath: '/notes.txt' })).isError).toBeFalsy();
+        if (damage === 'delete') rmSync(join(dir, 'file-reading.json'));
+        else writeFileSync(join(dir, 'file-reading.json'), '{"gen":');
+        const res = await b.tools.get('mega_cat')!.cb({ remotePath: '/notes.txt' });
+        expect(res.isError, damage).toBe(true);
+      } finally {
+        if (saved === undefined) delete process.env.PLUGIN_DATA;
+        else process.env.PLUGIN_DATA = saved;
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('an explicit MEGA_MCP_EXPOSE_FILES=false offers neither reading nor the prompt', () => {
+    const dir = tmp();
+    try {
+      const p = serverProcess(dir, { fileContentsForcedOff: true });
+      expect([...p.tools.keys()]).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

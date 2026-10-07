@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { homedir } from 'node:os';
 import { StringDecoder } from 'node:string_decoder';
 import type { Resolved, RunOpts, RunResult } from './types.js';
 
@@ -31,15 +32,28 @@ const KILL_ESCALATE_MS = 2_000;
  */
 export function childEnv(resolved: Resolved): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  if (resolved.binDir) {
-    env.PATH = `${resolved.binDir}${process.platform === 'win32' ? ';' : ':'}${env.PATH ?? ''}`;
+  // Variables that let the environment run code inside the children. The macOS
+  // mega-* clients are bash scripts that call the verified mega-exec through
+  // PATH, so BASH_ENV or an exported `mega-exec` function would replace it.
+  for (const key of Object.keys(env)) {
+    if (UNSAFE_ENV.has(key) || key.startsWith('BASH_FUNC_') || key.startsWith('DYLD_')) delete env[key];
   }
+  if (resolved.binDir) env.PATH = prepend(resolved.binDir, env.PATH, process.platform === 'win32' ? ';' : ':');
   // Bundled shared libs (Linux /opt/megacmd/lib) referenced by absolute RUNPATH
   // won't exist at our cache prefix, so point the loader at the extracted libs.
-  if (resolved.libDir) {
-    env.LD_LIBRARY_PATH = `${resolved.libDir}:${env.LD_LIBRARY_PATH ?? ''}`;
-  }
+  if (resolved.libDir) env.LD_LIBRARY_PATH = prepend(resolved.libDir, env.LD_LIBRARY_PATH, ':');
   return env;
+}
+
+const UNSAFE_ENV = new Set(['BASH_ENV', 'ENV', 'SHELLOPTS', 'BASHOPTS', 'PS4', 'CDPATH', 'GLOBIGNORE', 'LD_PRELOAD', 'LD_AUDIT']);
+
+/**
+ * `dir` ahead of an existing search path. The separator is added only when there
+ * IS an existing value: a trailing empty entry means "the current directory" to
+ * both the shell and the Linux loader.
+ */
+function prepend(dir: string, existing: string | undefined, sep: string): string {
+  return existing ? `${dir}${sep}${existing}` : dir;
 }
 
 /**
@@ -71,6 +85,9 @@ export async function execClient(
     try {
       child = spawn(bin, argv, {
         windowsHide: true,
+        // A fixed, verified directory, never the host's: the working directory is
+        // on the Windows DLL search path and is wherever the host was started.
+        cwd: resolved.binDir ?? homedir(),
         env: childEnv(resolved),
         stdio: ['ignore', 'pipe', 'pipe'],
         // NO shell: true

@@ -13,7 +13,7 @@ import { registerSync } from './sync.js';
 import { registerCat } from './cat.js';
 import { registerFileReading } from './fileReading.js';
 import { isPluginBuild } from '../buildFlags.js';
-import { readRemembered } from '../fileReading.js';
+import { readRemembered, readGeneration } from '../fileReading.js';
 
 /**
  * Register all MCP tools. Each register* module declares its own tools' names,
@@ -58,7 +58,21 @@ function registerFileTools(server: McpServer, rt: Runtime): void {
     if (rt.config.exposeFileContents) registerCat(server, rt);
     return;
   }
-  const cat = registerCat(server, rt);
+  registerPluginFileTools(server, rt);
+}
+
+/** The plugin build's ask-first file reading (exported for tests: the build flag is
+ *  only set in the esbuild bundle). */
+export function registerPluginFileTools(server: McpServer, rt: Runtime): void {
+  // An explicit MEGA_MCP_EXPOSE_FILES=false is a hard off: no reading, and no tool
+  // that would ask to turn it on.
+  if (rt.config.fileContentsForcedOff) return;
+  // This process's own "yes": the turn-off generation it was given under. Any later
+  // turn-off sharing the state dir (or a lost state file) changes it and ends it.
+  const grant: { gen?: number | null } = {};
+  const allowed = () =>
+    rt.config.exposeFileContents || readRemembered(rt.config) || (grant.gen !== undefined && readGeneration(rt.config) === grant.gen);
+  const cat = registerCat(server, rt, allowed);
   if (!(rt.config.exposeFileContents || readRemembered(rt.config))) cat.disable();
-  registerFileReading(server, rt, cat);
+  registerFileReading(server, rt, cat, grant);
 }

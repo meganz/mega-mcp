@@ -9,6 +9,7 @@ import { guardRun } from './helpers.js';
 const DEFAULT_MAX = 1_048_576; // 1 MB
 const HARD_MAX = 10_485_760; // 10 MB
 const NUL = String.fromCharCode(0);
+const ESC = String.fromCharCode(0x1b);
 
 /** U+FFFD, what a UTF-8 decoder emits for a byte sequence that is not valid text. */
 const REPLACEMENT = '�';
@@ -34,6 +35,9 @@ const REPLACEMENT = '�';
  */
 export function looksBinary(s: string): boolean {
   if (s.includes(NUL)) return true;
+  // ESC anywhere disqualifies, not only in the sampled prefix: a terminal sequence
+  // placed after the first 8 KB would otherwise be returned in full.
+  if (s.includes(ESC)) return true;
   const sample = s.slice(0, 8192);
   if (sample.length === 0) return false;
   let nonText = 0;
@@ -61,8 +65,8 @@ export function looksBinary(s: string): boolean {
  * instructions embedded in a file cannot cause silent damage — the user still
  * sees a confirmation preview before anything is deleted/shared/uploaded.
  */
-export function registerCat(server: McpServer, rt: Runtime): RegisteredTool {
-  return server.registerTool(
+export function registerCat(server: McpServer, rt: Runtime, allowed?: () => boolean): RegisteredTool {
+  const tool: RegisteredTool = server.registerTool(
     'mega_cat',
     {
       title: 'MEGA: read file',
@@ -82,6 +86,12 @@ export function registerCat(server: McpServer, rt: Runtime): RegisteredTool {
     },
     async ({ remotePath, maxBytes }) =>
       guardRun(async () => {
+        // Consent is re-checked on every read: turning file reading off in another
+        // server process (or another conversation) must stop this one too.
+        if (allowed && !allowed()) {
+          tool.disable();
+          return err('Reading file contents was turned off. Ask the user, then call mega_file_reading to turn it on again.');
+        }
         const rp = assertNotStoreCopy(assertRemotePath(remotePath));
         const cap = Math.min(maxBytes ?? DEFAULT_MAX, HARD_MAX);
         const r = await rt.run('cat', [rp], { maxBuffer: cap });
@@ -99,7 +109,10 @@ export function registerCat(server: McpServer, rt: Runtime): RegisteredTool {
             bytes: r.stdout.length,
           });
         }
-        return ok(r.stdout.length ? r.stdout : '(empty file)', { remotePath: rp, bytes: r.stdout.length });
+        // Text only, no structuredContent: ok() mirrors the text into it, which
+        // would send every file twice (up to 2x the byte cap) for no benefit.
+        return { content: [{ type: 'text', text: r.stdout.length ? r.stdout : '(empty file)' }] };
       }),
   );
+  return tool;
 }

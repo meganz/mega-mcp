@@ -6,6 +6,7 @@ import { ensureServerRunning } from './server.js';
 import { verifyResolvedBinary, macLoginHelperDir } from './download/megacmd.js';
 import { detectAuth, ensureReady } from './auth.js';
 import { publishMegacmdBinDir } from './paths.js';
+import { assertSafeInvocation } from './invocation.js';
 import { stateDir } from './fileReading.js';
 import { createConfirmStore, type ConfirmStore } from './confirm.js';
 
@@ -63,16 +64,27 @@ function configTrustRoots(config: Config): string[] {
   ];
 }
 
-export function createRuntime(config: Config): Runtime {
+/** Seams for tests; production uses the real resolver and verifier. */
+export interface RuntimeDeps {
+  resolve?: typeof resolveBinaries;
+  verify?: typeof verifyResolvedBinary;
+}
+
+export function createRuntime(config: Config, deps: RuntimeDeps = {}): Runtime {
+  const resolveImpl = deps.resolve ?? resolveBinaries;
+  const verifyImpl = deps.verify ?? verifyResolvedBinary;
   // Arm the synchronous path guard before any tool can run. Publishing again from
   // getBinDir() only adds the resolved dir on top of these.
   publishMegacmdBinDir(null, configTrustRoots(config));
 
   let resolvedPromise: Promise<Resolved | null> | undefined;
   let serverReady: Promise<boolean> | undefined;
-  let integrityVerified: Promise<boolean> | undefined;
+  // Keyed by the Resolved object that run() executes from, so a verification can
+  // never vouch for binaries from a different resolution (setup invalidates and
+  // re-resolves while other calls may be in flight).
+  const verified = new WeakMap<Resolved, Promise<boolean>>();
   let binDirPromise: Promise<string | null> | undefined;
-  const getResolved = () => (resolvedPromise ??= resolveBinaries(config));
+  const getResolved = () => (resolvedPromise ??= resolveImpl(config));
   const getBinDir: Runtime['getBinDir'] = () =>
     (binDirPromise ??= (async () => {
       const r = await getResolved();
@@ -87,38 +99,41 @@ export function createRuntime(config: Config): Runtime {
     })());
 
   const run: Runtime['run'] = async (cmd, args, opts) => {
+    // Every call, whatever tool built it: see invocation.ts.
+    assertSafeInvocation(cmd, args, config.exposeContacts);
     const resolved = await getResolved();
     if (!resolved) {
       return { code: -1, stdout: '', stderr: '', spawnError: 'NO_MEGACMD' };
     }
-    // Integrity gate: verify the code signature of WHATEVER binary we
-    // are about to launch — once per process, for EVERY source, not just the
-    // ones we downloaded. A system/PATH/configured install lives where its
-    // binary may be writable/swappable after the fact; between resolution and
-    // exec it could be replaced, and we would otherwise run the swapped binary
-    // against the user's live MEGA session. Identity-based, so it survives
-    // MEGAcmd self-updates (signer stays "Mega Limited"; see verifyResolvedBinary).
-    integrityVerified ??= (async () => {
-      // The install dir codesign/Authenticode checks: the same dir every client
-      // is launched from (see resolvePathBinDir for why 'path' needs this too).
-      const binDir = await getBinDir();
-      const serverBin = binDir ? join(binDir, serverName()) : resolved.serverBin;
-      // The CLIENT is the binary this process actually launches, every call. On
-      // Windows it is a separate loose file from the server, so verifying only the
-      // server checked something we never execute.
-      const clientBin = resolved.clientInvocation('whoami', []).bin;
-      const meta = resolved.source === 'cache' ? await readActiveCacheMeta(config) : null;
-      return verifyResolvedBinary(
-        { binDir, serverBin, clientBin: binDir ? join(binDir, basename(clientBin)) : clientBin, source: resolved.source },
-        {
-          teamId: config.download.teamId,
-          serverSha256: meta?.serverSha256,
-          winThumbprint: config.download.winThumbprint,
-        },
-      );
-    })();
-    if (!(await integrityVerified)) {
-      integrityVerified = undefined; // never cache a transient failure
+    // Integrity gate: verify the code signature of WHATEVER binary we are about
+    // to launch, once per resolution, for EVERY source - not just the ones we
+    // downloaded. Identity-based, so it survives MEGAcmd self-updates (signer
+    // stays "Mega Limited"; see verifyResolvedBinary). Swaps made later by other
+    // software running as the same user are out of scope (see SECURITY.md): such
+    // software can read the session store directly.
+    const binDir = resolved.binDir ?? (resolved.source === 'path' ? await resolvePathBinDir() : null);
+    let ok = verified.get(resolved);
+    if (!ok) {
+      ok = (async () => {
+        const serverBin = binDir ? join(binDir, serverName()) : resolved.serverBin;
+        // The CLIENT is the binary this process actually launches, every call. On
+        // Windows it is a separate loose file from the server, so verifying only
+        // the server checked something we never execute.
+        const clientBin = resolved.clientInvocation('whoami', []).bin;
+        const meta = resolved.source === 'cache' ? await readActiveCacheMeta(config) : null;
+        return verifyImpl(
+          { binDir, serverBin, clientBin: binDir ? join(binDir, basename(clientBin)) : clientBin, source: resolved.source },
+          {
+            teamId: config.download.teamId,
+            serverSha256: meta?.serverSha256,
+            winThumbprint: config.download.winThumbprint,
+          },
+        );
+      })();
+      verified.set(resolved, ok);
+    }
+    if (!(await ok)) {
+      verified.delete(resolved); // never cache a transient failure
       return { code: -1, stdout: '', stderr: '', spawnError: 'INTEGRITY_FAILED' };
     }
 
@@ -150,7 +165,7 @@ export function createRuntime(config: Config): Runtime {
       resolvedPromise = undefined;
       binDirPromise = undefined;
       serverReady = undefined;
-      integrityVerified = undefined;
+      // Verifications are keyed by Resolved, so the next resolution starts fresh.
     },
     getAuthState: () => detectAuth(run),
     ensureReady: () => ensureReady(run),

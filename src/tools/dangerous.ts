@@ -4,9 +4,31 @@ import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
 import { assertRemotePath, assertOptionalRemotePath, assertNoFlag, assertFlagValue, assertSecret, assertNoWildcard, assertNotStoreCopy, ValidationError } from '../paths.js';
 import { parseExportLink } from '../parsers/exportLink.js';
-import { guardRun, runToResult, checkConfirm, pcreGate, runPerHandle } from './helpers.js';
+import { classifyExit } from '../errors.js';
+import { guardRun, runToResult, checkConfirm, pcreGate, runPerHandle, secretBinding, assertNoStoreCopyBelow } from './helpers.js';
 
 const SHARE_LEVEL: Record<string, string> = { read: '0', readwrite: '1', full: '2', owner: '3' };
+
+/** An 8-byte handle in base64url that is not the all-ones INVALID_HANDLE. */
+function isSessionHandle(id: string): boolean {
+  if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return false;
+  const bytes = Buffer.from(id, 'base64url');
+  return bytes.length === 8 && !bytes.every((b) => b === 0xff);
+}
+
+/** A MEGA password-protected link carries the `#P!` marker. */
+function isPasswordProtected(link: string | undefined): boolean {
+  return !!link && link.includes('#P!');
+}
+
+/** The link options that change what is published - each one is approved, so each one is shown. */
+function exportOptionLines(megaHosted: boolean, password: string | undefined, expire: string | undefined): string[] {
+  return [
+    ...(megaHosted ? ['The folder key will also be shared with MEGA (MEGA-hosted / S4).'] : []),
+    ...(password ? ['The link will be password-protected.'] : []),
+    ...(expire ? [`The link will expire after ${expire}.`] : []),
+  ];
+}
 
 export function registerDangerous(server: McpServer, rt: Runtime): void {
   // mega_logout — end the current MEGA session (server-side invalidation).
@@ -48,13 +70,16 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
     },
     async ({ sessionId, confirm }) =>
       guardRun(async () => {
-        const sid = sessionId?.trim();
-        if (sid !== undefined && (sid === '' || /\s/.test(sid))) {
+        const sid = sessionId === undefined ? undefined : assertNoFlag(sessionId, 'sessionId');
+        if (sid !== undefined && /\s/.test(sid)) {
           throw new ValidationError('sessionId must be a single non-empty token.');
         }
-        // We own every flag we pass; a sessionId must never be parseable as one.
-        if (sid !== undefined && sid.startsWith('-')) {
-          throw new ValidationError('sessionId must not start with "-".');
+        // Only a real session handle: 8 bytes, base64url, 11 characters. MEGAcmd
+        // reads the word "all" - and any id that decodes to the invalid handle
+        // (all bits set, e.g. "___________") - as EVERY other session; that request
+        // is the no-sessionId form, whose preview says so.
+        if (sid !== undefined && !isSessionHandle(sid)) {
+          throw new ValidationError('sessionId must be a session handle (11 characters, as listed by MEGA). To close all other sessions, omit sessionId.');
         }
         const summary = sid
           ? `This will close MEGA session ${sid} (the current session is kept).`
@@ -170,6 +195,19 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
           if (password !== undefined) assertSecret(password, 'password');
           const exp = expire === undefined ? undefined : assertFlagValue(expire, 'expire');
           const note = writable ? ' These are WRITABLE links — anyone with the URL can UPLOAD into the folder.' : '';
+          // MEGAcmd publishes the node FIRST and only then tries to add the password;
+          // on an account that cannot, it logs a warning and still succeeds with a
+          // plain link. A link the preview called password-protected that is not is
+          // withdrawn again, rather than left public.
+          const publish = async (node: string): Promise<'ok' | 'unprotected' | 'failed'> => {
+            const r = await rt.run('export', createArgs(node));
+            if (r.code !== 0) return 'failed';
+            if (password && !isPasswordProtected(parseExportLink(r.stdout))) {
+              await rt.run('export', ['-d', node]);
+              return 'unprotected';
+            }
+            return 'ok';
+          };
           const createArgs = (node: string) => [
             '-a',
             '-f',
@@ -184,32 +222,55 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
             const g = await pcreGate(
               rt,
               'mega_export:create',
-              { remotePath: rp, writable, megaHosted, hasPassword: password !== undefined && password !== '', expire: expire ?? null, usePcre: true },
+              { remotePath: rp, writable, megaHosted, password: secretBinding(password), expire: expire ?? null, usePcre: true },
               confirm,
               rp,
-              (n, t) => `This will create PUBLIC links for ${n} node(s) that anyone with the URL can access.${note}\n${t}`,
+              (n, t) => [`This will create PUBLIC links for ${n} node(s) that anyone with the URL can access.${note}`, ...exportOptionLines(megaHosted, password, exp), t].join('\n'),
               (p) => assertNotStoreCopy(p, 'A matched node'),
             );
             if (!g.proceed) return g.result;
             if (g.handles.length === 0) return ok('No matching nodes.', { created: 0 });
-            const { done, failed } = await runPerHandle(rt, 'export', g.handles, createArgs);
-            return ok(`Created ${done} public link(s)${failed ? `; ${failed} failed` : ''}.`, { created: done, failed });
+            let done = 0;
+            let failed = 0;
+            let unprotected = 0;
+            for (const h of g.handles) {
+              const outcome = await publish(h);
+              if (outcome === 'ok') done++;
+              else if (outcome === 'unprotected') unprotected++;
+              else failed++;
+            }
+            return (failed || unprotected ? err : ok)(
+              `Created ${done} public link(s)${failed ? `; ${failed} failed` : ''}${unprotected ? `; ${unprotected} withdrawn because MEGA would not password-protect them (that needs a Pro account)` : ''}.`,
+              { created: done, failed, unprotected },
+            );
           }
           // A wildcard here would publish a link per matched node while the preview
           // named one — the exfiltration equivalent of the mega_rm case.
           const rp = assertNotStoreCopy(assertNoWildcard(assertRemotePath(remotePath), 'remotePath'));
+          if (!confirm) await assertNoStoreCopyBelow(rt, rp);
           const gate = checkConfirm(
             rt,
             'mega_export:create',
-            { remotePath: rp, writable, megaHosted, hasPassword: password !== undefined && password !== '', expire: expire ?? null },
+            { remotePath: rp, writable, megaHosted, password: secretBinding(password), expire: expire ?? null },
             confirm,
-            `This will create a PUBLIC link for ${rp} that anyone with the URL can access.${writable ? ' This is a WRITABLE link — anyone with the URL can UPLOAD into the folder.' : ''}`,
+            [
+              `This will create a PUBLIC link for ${rp} that anyone with the URL can access.${writable ? ' This is a WRITABLE link — anyone with the URL can UPLOAD into the folder.' : ''}`,
+              ...exportOptionLines(megaHosted, password, exp),
+            ],
           );
           if (gate) return gate;
-          return runToResult(rt, 'export', createArgs(rp), (r) => {
-            const link = parseExportLink(r.stdout);
-            return ok(link ? `Public link created for ${rp}:\n${link}` : `Public link created for ${rp}.`, { remotePath: rp, link, writable });
-          });
+          await assertNoStoreCopyBelow(rt, rp);
+          const r = await rt.run('export', createArgs(rp));
+          if (r.code !== 0) return err(classifyExit(r), { ok: false, code: r.code });
+          const link = parseExportLink(r.stdout);
+          if (password && !isPasswordProtected(link)) {
+            await rt.run('export', ['-d', rp]);
+            return err(
+              `MEGA created the link for ${rp} WITHOUT a password (password-protected links need a Pro account), so it was removed again. Nothing is published.`,
+              { remotePath: rp, unprotected: true },
+            );
+          }
+          return ok(link ? `Public link created for ${rp}:\n${link}` : `Public link created for ${rp}.`, { remotePath: rp, link, writable });
         }
         // delete
         if (usePcre) {
@@ -263,7 +324,16 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
               // token for one literal path must not list every regex match.
               { remotePath: rp ?? null, pending: !!pending, usePcre: !!(usePcre && rp) },
               confirm,
-              'This will reveal the EMAIL ADDRESSES of the users this folder is shared with (third-party contact info). Turn on the "Expose contact tools" setting to allow this without confirming each time.',
+              [
+                // `share <path>` walks the whole tree below the path, so every shared
+                // folder inside it is listed too.
+                `This will reveal the EMAIL ADDRESSES of the users ${
+                  !rp || rp === '/'
+                    ? 'EVERY shared folder in the account is shared with'
+                    : `${usePcre ? 'every folder matching ' : ''}${rp} or any folder inside it is shared with`
+                }${pending ? ', including pending invitations' : ''} (third-party contact info).`,
+                'Turn on the "Expose contact tools" setting to allow this without confirming each time.',
+              ],
             );
             if (gate) return gate;
           }
@@ -291,8 +361,10 @@ export function registerDangerous(server: McpServer, rt: Runtime): void {
             return ok(`Shared ${done} node(s) with ${withEmail}${failed ? `; ${failed} failed` : ''}.`, { withEmail, shared: done, failed });
           }
           const rp = assertNotStoreCopy(assertNoWildcard(assertRemotePath(remotePath ?? '', 'remotePath'), 'remotePath'));
+          if (!confirm) await assertNoStoreCopyBelow(rt, rp);
           const gate = checkConfirm(rt, 'mega_share:add', { remotePath: rp, withEmail, level: level ?? 'read' }, confirm, `This will share ${rp} with ${withEmail} (${level ?? 'read'} access).`);
           if (gate) return gate;
+          await assertNoStoreCopyBelow(rt, rp);
           return runToResult(rt, 'share', addArgs(rp), () => ok(`Shared ${rp} with ${withEmail} (${level ?? 'read'}).`, { remotePath: rp, withEmail, level: level ?? 'read' }));
         }
         // remove

@@ -3,7 +3,7 @@ import { win32 as winPath } from 'node:path';
 
 /**
  * Absolute paths of the OS tools the connector runs itself — the signature
- * verifiers, the installer helpers and the PATH probe.
+ * verifiers and the installer helpers.
  *
  * Never by bare name: a bare name is looked up through the inherited PATH, and
  * the first match wins. A user-writable directory early on PATH could then supply
@@ -11,7 +11,6 @@ import { win32 as winPath } from 'node:path';
  * during setup, which defeats the very checks these tools exist to perform.
  */
 const POSIX: Record<string, string[]> = {
-  which: ['/usr/bin/which', '/bin/which'],
   hdiutil: ['/usr/bin/hdiutil'],
   ditto: ['/usr/bin/ditto'],
   xattr: ['/usr/bin/xattr'],
@@ -21,8 +20,8 @@ const POSIX: Record<string, string[]> = {
 
 /** Relative to %SystemRoot%. */
 const WINDOWS: Record<string, string> = {
-  where: 'System32\\where.exe',
   powershell: 'System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+  powershellModules: 'System32\\WindowsPowerShell\\v1.0\\Modules',
   explorer: 'explorer.exe',
 };
 

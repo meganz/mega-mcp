@@ -71,3 +71,14 @@ describe('exposeAccountDetails flag (account PII gate)', () => {
     for (const v of ['', '0', 'false', 'off']) expect(expose(v)).toBe(false);
   });
 });
+
+// The plugin bundles used to ship MEGA_MCP_EXPOSE_FILES="false", so an explicit
+// false meant nothing. It is now a hard off, distinct from unset ("ask first").
+describe('MEGA_MCP_EXPOSE_FILES tri-state', () => {
+  it('reads an explicit false as forced off, and unset as not configured', () => {
+    expect(loadConfig({ MEGA_MCP_EXPOSE_FILES: 'false' } as NodeJS.ProcessEnv).fileContentsForcedOff).toBe(true);
+    expect(loadConfig({ MEGA_MCP_EXPOSE_FILES: '0' } as NodeJS.ProcessEnv).fileContentsForcedOff).toBe(true);
+    expect(loadConfig({} as NodeJS.ProcessEnv).fileContentsForcedOff).toBe(false);
+    expect(loadConfig({ MEGA_MCP_EXPOSE_FILES: 'true' } as NodeJS.ProcessEnv)).toMatchObject({ exposeFileContents: true, fileContentsForcedOff: false });
+  });
+});

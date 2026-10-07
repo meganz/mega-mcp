@@ -3,7 +3,7 @@ import { realpathSync } from 'node:fs';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
-import { ensureMacLoginHelper } from '../download/megacmd.js';
+import { ensureMacLoginHelper, shQuote } from '../download/megacmd.js';
 
 /**
  * Resolve a directory to its real on-disk path. Under an MSIX-packaged Claude the
@@ -36,7 +36,9 @@ function loginInstructions(binDir: string | null, helperPath: string | null): st
     const launch =
       process.platform === 'win32'
         ? `"${join(realDir(binDir), 'MEGAcmdShell.exe')}"`
-        : `PATH="${binDir}:$PATH" MEGAcmdShell`;
+        : // Single-quoted like the .command helper: the user pastes this line, and
+          // inside double quotes a path's $(…) or backticks would run.
+          `PATH=${shQuote(binDir)}:"$PATH" MEGAcmdShell`;
     lines.push('', `- Or in a terminal:\n  ${launch}`);
   } else {
     lines.push('', '- Start the MEGAcmd interactive shell (MEGAcmdShell).');

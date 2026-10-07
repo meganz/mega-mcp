@@ -87,7 +87,13 @@ export function registerConfig(server: McpServer, rt: Runtime): void {
           default:
             throw new ValidationError('Unsupported setting.');
         }
-        const summary = `This will set ${setting} to "${v}".`;
+        // Every option that reaches argv is part of what is approved.
+        const scopeNote = [
+          ...(setting === 'speedlimit' && direction ? [`for ${direction}`] : []),
+          ...(setting === 'log' && scope ? [`for the ${scope.toUpperCase()} logger`] : []),
+          ...(setting === 'permissions' && target ? [`for new ${target}`] : []),
+        ];
+        const summary = `This will set ${setting}${scopeNote.length ? ` ${scopeNote.join(' ')}` : ''} to "${v}".`;
         const gate = checkConfirm(rt, `mega_config:${setting}`, { value: v, direction: direction ?? null, scope: scope ?? null, target: target ?? null }, confirm, summary);
         if (gate) return gate;
         return runToResult(rt, setting, args, () => ok(summary.replace(/^This will /, 'Done: '), { setting, value: v }));

@@ -6,13 +6,13 @@ import { systemTool } from '../src/sysbin.js';
 // shadow the real verifier. Every tool the connector runs itself is absolute.
 describe('systemTool', () => {
   it('returns absolute posix paths for every helper', () => {
-    for (const name of ['which', 'hdiutil', 'ditto', 'xattr', 'codesign', 'spctl']) {
+    for (const name of ['hdiutil', 'ditto', 'xattr', 'codesign', 'spctl']) {
       expect(isAbsolute(systemTool(name, 'darwin')), name).toBe(true);
     }
   });
 
   it('returns absolute Windows paths under SystemRoot', () => {
-    for (const name of ['where', 'powershell', 'explorer']) {
+    for (const name of ['powershell', 'powershellModules', 'explorer']) {
       expect(win32.isAbsolute(systemTool(name, 'win32')), name).toBe(true);
     }
     expect(systemTool('powershell', 'win32')).toMatch(/System32\\WindowsPowerShell\\v1\.0\\powershell\.exe$/);

@@ -14,6 +14,15 @@ import { redact } from '../errors.js';
 import { systemTool } from '../sysbin.js';
 
 const pExecFile = promisify(execFile);
+
+/**
+ * Every helper the installer and the integrity gate run is bounded. A hung
+ * verifier would otherwise block the shared integrity promise - and with it every
+ * tool call - and a stalled download would leave setup "installing" forever.
+ */
+const VERIFY_EXEC = { timeout: 120_000, killSignal: 'SIGKILL' as const };
+const INSTALL_EXEC = { timeout: 600_000, killSignal: 'SIGKILL' as const };
+const DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
 const MAX_DOWNLOAD_BYTES = 150 * 1024 * 1024;
 const ALLOWED_HOSTS = ['mega.nz', 'mega.io'];
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -115,7 +124,7 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
   const dmg = join(tmp, 'MEGAcmdSetup.dmg');
 
   try {
-    await pExecFile(systemTool('hdiutil'), ['detach', mountPoint, '-force']).catch(() => {});
+    await pExecFile(systemTool('hdiutil'), ['detach', mountPoint, '-force'], INSTALL_EXEC).catch(() => {});
     await rm(tmp, { recursive: true, force: true });
     await mkdir(mountPoint, { recursive: true });
 
@@ -131,7 +140,7 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
     }
 
     onProgress('mounting');
-    await pExecFile(systemTool('hdiutil'), ['attach', '-nobrowse', '-noautoopen', '-mountpoint', mountPoint, dmg]);
+    await pExecFile(systemTool('hdiutil'), ['attach', '-nobrowse', '-noautoopen', '-mountpoint', mountPoint, dmg], INSTALL_EXEC);
     const appSrc = join(mountPoint, 'MEGAcmd.app');
 
     let binDir: string;
@@ -145,7 +154,7 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
         if (!appDest) throw new Error('no standard install location');
         // Preferred: install to the standard location (/Applications), where the
         // macOS client's auto-spawn finds the server natively.
-        await pExecFile(systemTool('ditto'), [appSrc, appDest]);
+        await pExecFile(systemTool('ditto'), [appSrc, appDest], INSTALL_EXEC);
         binDir = join(appDest, 'Contents', 'MacOS');
         location = 'applications';
       } catch {
@@ -156,7 +165,7 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
         const staging = join(tmp, 'extract');
         await rm(staging, { recursive: true, force: true });
         await mkdir(staging, { recursive: true });
-        await pExecFile(systemTool('ditto'), [appSrc, join(staging, 'MEGAcmd.app')]);
+        await pExecFile(systemTool('ditto'), [appSrc, join(staging, 'MEGAcmd.app')], INSTALL_EXEC);
         await swapIntoPlace(staging, versionDir);
         await promoteToCache(config.cacheDir, versionName, {
           version,
@@ -170,11 +179,11 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
         location = 'cache';
       }
     } finally {
-      await pExecFile(systemTool('hdiutil'), ['detach', mountPoint, '-force']).catch(() => {});
+      await pExecFile(systemTool('hdiutil'), ['detach', mountPoint, '-force'], INSTALL_EXEC).catch(() => {});
     }
 
     // Strip quarantine AFTER signature verification so execution isn't blocked.
-    await pExecFile(systemTool('xattr'), ['-dr', 'com.apple.quarantine', resolve(binDir, '..', '..')]).catch(() => {});
+    await pExecFile(systemTool('xattr'), ['-dr', 'com.apple.quarantine', resolve(binDir, '..', '..')], INSTALL_EXEC).catch(() => {});
     await ensureMacLoginHelper(binDir).catch(() => {});
     await rm(dmg, { force: true }).catch(() => {});
 
@@ -212,7 +221,7 @@ async function acquireDarwin(config: Config, onProgress: (p: string) => void): P
  * a DOUBLE-quoted string, and bash still expands `$(...)`, backticks and `${...}`
  * inside those, so an install path carrying any of them would execute.
  */
-function shQuote(v: string): string {
+export function shQuote(v: string): string {
   return `'${v.replaceAll("'", `'\\''`)}'`;
 }
 
@@ -318,22 +327,39 @@ export async function verifyResolvedBinary(
   }
 }
 
-async function verifySignatureMac(appPath: string, teamId?: string): Promise<void> {
+/** MEGA's Apple Developer team. */
+const MEGA_TEAM_ID = 'T9RH74Y7L9';
+
+/**
+ * The code requirement a genuine MEGAcmd bundle satisfies: Apple-anchored, a
+ * Developer ID Application certificate (the two OID markers), issued to MEGA's
+ * team. Evaluated by codesign itself against the certificate chain.
+ *
+ * Not by reading `codesign -dv` text: that output also echoes the bundle's on-disk
+ * path (`Executable=`) and its signer-chosen identifier, so a substring check for
+ * "Authority=Developer ID Application: Mega Limited" or "TeamIdentifier=…" was
+ * satisfied by ANY notarized app installed under a directory with that name.
+ */
+function megaRequirement(teamId: string): string {
+  return (
+    `anchor apple generic and certificate leaf[subject.OU] = "${teamId}"` +
+    ' and certificate 1[field.1.2.840.113635.100.6.2.6] exists' +
+    ' and certificate leaf[field.1.2.840.113635.100.6.1.13] exists'
+  );
+}
+
+async function verifySignatureMac(appPath: string, teamId: string = MEGA_TEAM_ID): Promise<void> {
+  // The team id is spliced into a requirement expression, so it must be exactly
+  // the shape Apple issues - never anything that could extend the expression.
+  if (!/^[A-Z0-9]{10}$/.test(teamId)) throw new Error('signature_failed: invalid team identifier pin');
   try {
-    // codesign --verify validates the seal; spctl -t exec assesses the launch
-    // (execution) Gatekeeper policy for an application bundle. Both throw on
-    // non-zero exit; tag the failure so it classifies as signature_failed.
-    await pExecFile(systemTool('codesign'), ['--verify', '--deep', '--strict', '--verbose=2', appPath]);
-    await pExecFile(systemTool('spctl'), ['-a', '-vv', '-t', 'exec', appPath]);
+    // codesign --verify validates the seal AND the requirement; spctl -t exec
+    // assesses the launch (execution) Gatekeeper policy for an application bundle.
+    // Both throw on non-zero exit; tag the failure so it classifies as signature_failed.
+    await pExecFile(systemTool('codesign'), ['--verify', '--deep', '--strict', '-R', `=${megaRequirement(teamId)}`, appPath], VERIFY_EXEC);
+    await pExecFile(systemTool('spctl'), ['-a', '-vv', '-t', 'exec', appPath], VERIFY_EXEC);
   } catch (e) {
     throw new Error(`signature_failed: ${e instanceof Error ? e.message : String(e)}`);
-  }
-  const { stderr } = await pExecFile(systemTool('codesign'), ['-dv', '--verbose=4', appPath]).catch((e: { stderr?: string }) => ({ stderr: e.stderr ?? '' }));
-  if (!/Authority=Developer ID Application: Mega Limited/.test(stderr)) {
-    throw new Error('signature_failed: unexpected signing authority');
-  }
-  if (teamId && !stderr.includes(`TeamIdentifier=${teamId}`)) {
-    throw new Error(`signature_failed: unexpected team identifier (want ${teamId})`);
   }
 }
 
@@ -371,7 +397,7 @@ async function fetchToFile(url: string, dest: string): Promise<void> {
   }
 
   assertRemoteUrlAllowed(url);
-  const res = await fetch(url, { redirect: 'follow' });
+  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
   if (!res.ok || !res.body) throw new Error(`Download failed: HTTP ${res.status}.`);
   assertRemoteUrlAllowed(res.url); // re-validate the final URL after any redirects
 
@@ -526,7 +552,7 @@ async function verifyAuthenticodeWin(exe: string, thumbprint?: string): Promise<
   // claim than the Organization a CA actually vets.
   const ps =
     `$ErrorActionPreference='Stop'; ` +
-    `$s = Get-AuthenticodeSignature -LiteralPath $env:MEGA_VERIFY_PATH; ` +
+    `$s = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $env:MEGA_VERIFY_PATH; ` +
     `if ($s.Status -ne 'Valid') { exit 3 }; ` +
     `$c = $s.SignerCertificate; ` +
     `if (-not $c) { exit 4 }; ` +
@@ -537,7 +563,16 @@ async function verifyAuthenticodeWin(exe: string, thumbprint?: string): Promise<
   try {
     await pExecFile(systemTool('powershell'), ['-NoProfile', '-NonInteractive', '-Command', ps], {
       windowsHide: true,
-      env: { ...process.env, MEGA_VERIFY_PATH: exe, ...(thumbprint ? { MEGA_VERIFY_THUMBPRINT: thumbprint } : {}) },
+      ...VERIFY_EXEC,
+      env: {
+        ...process.env,
+        // Only the system module directory: a module of the same name in the
+        // user's Documents\WindowsPowerShell\Modules (first on the default path)
+        // must not be able to stand in for the signature check.
+        PSModulePath: systemTool('powershellModules'),
+        MEGA_VERIFY_PATH: exe,
+        ...(thumbprint ? { MEGA_VERIFY_THUMBPRINT: thumbprint } : {}),
+      },
     });
   } catch {
     throw new Error(`signature_failed: Authenticode verification failed for ${basename(exe)} (expected a valid, trusted "O=Mega Limited" signature)`);

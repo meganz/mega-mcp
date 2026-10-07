@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "mega-cloud-mcp",
   "display_name": "MEGA Cloud MCP",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Operate your MEGA cloud account (list, search, upload, download, share) via MEGAcmd.",
   "long_description": "Wraps the MEGAcmd CLI so an AI assistant can manage files in your end-to-end encrypted MEGA account. You log in out-of-band yourself in the MEGAcmd interactive shell (login <email>); no credentials ever pass through the AI. Destructive and data-moving actions require explicit confirmation.",
   "author": { "name": "Mega Limited", "email": "jsh@mega.co.nz", "url": "https://github.com/meganz" },
@@ -77,7 +77,7 @@
     { "name": "mega_user_remove", "description": "Remove a contact (confirm)." },
     { "name": "mega_user_verify", "description": "Verify or unverify a contact (confirm)." },
     { "name": "mega_showpcr", "description": "Show pending contact requests (opt-in; surfaces contact PII)." },
-    { "name": "mega_userattr", "description": "View your own profile attributes (opt-in)." },
+    { "name": "mega_userattr", "description": "View your own or a contact's profile attributes (opt-in)." },
     { "name": "mega_sessions", "description": "List active login sessions (opt-in; surfaces login PII)." },
     { "name": "mega_balance", "description": "Show balance and payment history (opt-in; surfaces financial PII)." },
     { "name": "mega_cat", "description": "Read a file's text contents, capped (opt-in; brings file content into context)." }

@@ -1302,21 +1302,21 @@ var require_errors = __commonJS({
     function extendErrors({ gen, keyword, schemaValue, data, errsCount, it }) {
       if (errsCount === void 0)
         throw new Error("ajv implementation error");
-      const err3 = gen.name("err");
+      const err2 = gen.name("err");
       gen.forRange("i", errsCount, names_1.default.errors, (i) => {
-        gen.const(err3, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
-        gen.if((0, codegen_1._)`${err3}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err3}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
-        gen.assign((0, codegen_1._)`${err3}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
+        gen.const(err2, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
+        gen.if((0, codegen_1._)`${err2}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err2}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
+        gen.assign((0, codegen_1._)`${err2}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
         if (it.opts.verbose) {
-          gen.assign((0, codegen_1._)`${err3}.schema`, schemaValue);
-          gen.assign((0, codegen_1._)`${err3}.data`, data);
+          gen.assign((0, codegen_1._)`${err2}.schema`, schemaValue);
+          gen.assign((0, codegen_1._)`${err2}.data`, data);
         }
       });
     }
     exports.extendErrors = extendErrors;
     function addError(gen, errObj) {
-      const err3 = gen.const("err", errObj);
-      gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err3}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err3})`);
+      const err2 = gen.const("err", errObj);
+      gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err2}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err2})`);
       gen.code((0, codegen_1._)`${names_1.default.errors}++`);
     }
     function returnErrors(it, errs) {
@@ -7942,8 +7942,8 @@ var ZodType = class {
         } : {
           issues: ctx.common.issues
         };
-      } catch (err3) {
-        if (err3?.message?.toLowerCase()?.includes("encountered")) {
+      } catch (err2) {
+        if (err2?.message?.toLowerCase()?.includes("encountered")) {
           this["~standard"].async = true;
         }
         ctx.common = {
@@ -21425,9 +21425,10 @@ var DEFAULT_MAX_LIST = 200;
 var MIN_MAX_LIST = 50;
 var MAX_MAX_LIST = 1e4;
 function loadConfig(env = process.env) {
-  const megacmdDir = clean(env.MEGA_MCP_MEGACMD_DIR);
+  const configuredDir = clean(env.MEGA_MCP_MEGACMD_DIR);
+  const megacmdDir = configuredDir ? resolve(configuredDir) : void 0;
   const here = dirname(fileURLToPath(import.meta.url));
-  const bundledDir = clean(env.MEGA_MCP_BUNDLED_DIR) ?? resolve(here, "..", "vendor", "megacmd");
+  const bundledDir = resolve(clean(env.MEGA_MCP_BUNDLED_DIR) ?? resolve(here, "..", "vendor", "megacmd"));
   return {
     megacmdDir,
     bundledDir,
@@ -21437,7 +21438,8 @@ function loadConfig(env = process.env) {
     maxListLines: parseMaxList(env.MEGA_MCP_MAX_LIST),
     exposeContacts: parseBool(env.MEGA_MCP_EXPOSE_CONTACTS),
     exposeAccountDetails: parseBool(env.MEGA_MCP_EXPOSE_ACCOUNT),
-    exposeFileContents: parseBool(env.MEGA_MCP_EXPOSE_FILES)
+    exposeFileContents: parseBool(env.MEGA_MCP_EXPOSE_FILES),
+    fileContentsForcedOff: parseFalse(env.MEGA_MCP_EXPOSE_FILES)
   };
 }
 function resolveCacheDir(env) {
@@ -21508,6 +21510,10 @@ function parseBool(v) {
   const t = clean(v)?.toLowerCase();
   return t === "1" || t === "true" || t === "yes" || t === "on";
 }
+function parseFalse(v) {
+  const t = clean(v)?.toLowerCase();
+  return t === "0" || t === "false" || t === "no" || t === "off";
+}
 function parseMaxList(v) {
   const n = Number(clean(v));
   if (!Number.isFinite(n)) return DEFAULT_MAX_LIST;
@@ -21519,46 +21525,14 @@ import { basename as basename3, join as join6 } from "node:path";
 
 // src/resolve.ts
 import { access, constants as constants2, readFile, realpath } from "node:fs/promises";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { dirname as dirname2, join as join2, resolve as resolve2, sep, win32 as winPath2, posix as posixPath } from "node:path";
-
-// src/sysbin.ts
-import { existsSync } from "node:fs";
-import { win32 as winPath } from "node:path";
-var POSIX = {
-  which: ["/usr/bin/which", "/bin/which"],
-  hdiutil: ["/usr/bin/hdiutil"],
-  ditto: ["/usr/bin/ditto"],
-  xattr: ["/usr/bin/xattr"],
-  codesign: ["/usr/bin/codesign"],
-  spctl: ["/usr/sbin/spctl"]
-};
-var WINDOWS = {
-  where: "System32\\where.exe",
-  powershell: "System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-  explorer: "explorer.exe"
-};
-function systemTool(name, platform = process.platform) {
-  if (platform === "win32") {
-    const rel = WINDOWS[name];
-    if (!rel) throw new Error(`Unknown system tool: ${name}`);
-    return winPath.join(process.env.SystemRoot || process.env.windir || "C:\\Windows", rel);
-  }
-  const candidates = POSIX[name];
-  if (!candidates) throw new Error(`Unknown system tool: ${name}`);
-  return candidates.find((p) => existsSync(p)) ?? candidates[0];
-}
-
-// src/resolve.ts
-var pExecFile = promisify(execFile);
+import { dirname as dirname2, join as join2, resolve as resolve2, sep, isAbsolute, win32 as winPath, posix as posixPath } from "node:path";
 var isWin = process.platform === "win32";
 function clientName(cmd) {
   return isWin ? `mega-${cmd}.bat` : `mega-${cmd}`;
 }
 var MEGA_CLIENT_EXE = "MEGAclient.exe";
 function buildClientInvocation(win, binDir, cmd, args) {
-  const joinFor = win ? winPath2.join : posixPath.join;
+  const joinFor = win ? winPath.join : posixPath.join;
   const name = win ? MEGA_CLIENT_EXE : `mega-${cmd}`;
   const argv = win ? [cmd, ...args] : args;
   return { bin: binDir ? joinFor(binDir, name) : name, argv };
@@ -21586,14 +21560,19 @@ async function isExecutable(p) {
   }
 }
 async function resolvePathBinDir() {
-  try {
-    const { stdout } = await pExecFile(systemTool(isWin ? "where" : "which"), [clientName("whoami")], { windowsHide: true });
-    const first = stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0];
-    if (!first) return null;
-    return dirname2(await realpath(first));
-  } catch {
-    return null;
+  const entries = (process.env.PATH ?? "").split(isWin ? ";" : ":");
+  for (const raw of entries) {
+    const dir = raw.trim().replace(/^"(.*)"$/, "$1");
+    if (!dir || !isAbsolute(dir)) continue;
+    const candidate = join2(dir, clientName("whoami"));
+    if (!await isExecutable(candidate)) continue;
+    try {
+      return dirname2(await realpath(candidate));
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 function makeResolved(source, binDir, libDir = null) {
   return {
@@ -21669,6 +21648,7 @@ async function resolveBinaries(config2) {
 
 // src/exec.ts
 import { spawn } from "node:child_process";
+import { homedir as homedir2 } from "node:os";
 import { StringDecoder } from "node:string_decoder";
 var DEFAULT_TIMEOUT_MS = 12e4;
 var DEFAULT_MAX_BUFFER = 16 * 1024 * 1024;
@@ -21676,13 +21656,16 @@ var STDIO_DRAIN_GRACE_MS = 250;
 var KILL_ESCALATE_MS = 2e3;
 function childEnv(resolved) {
   const env = { ...process.env };
-  if (resolved.binDir) {
-    env.PATH = `${resolved.binDir}${process.platform === "win32" ? ";" : ":"}${env.PATH ?? ""}`;
+  for (const key of Object.keys(env)) {
+    if (UNSAFE_ENV.has(key) || key.startsWith("BASH_FUNC_") || key.startsWith("DYLD_")) delete env[key];
   }
-  if (resolved.libDir) {
-    env.LD_LIBRARY_PATH = `${resolved.libDir}:${env.LD_LIBRARY_PATH ?? ""}`;
-  }
+  if (resolved.binDir) env.PATH = prepend(resolved.binDir, env.PATH, process.platform === "win32" ? ";" : ":");
+  if (resolved.libDir) env.LD_LIBRARY_PATH = prepend(resolved.libDir, env.LD_LIBRARY_PATH, ":");
   return env;
+}
+var UNSAFE_ENV = /* @__PURE__ */ new Set(["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "PS4", "CDPATH", "GLOBIGNORE", "LD_PRELOAD", "LD_AUDIT"]);
+function prepend(dir, existing, sep3) {
+  return existing ? `${dir}${sep3}${existing}` : dir;
 }
 async function execClient(resolved, cmd, args, opts = {}) {
   const { bin, argv } = resolved.clientInvocation(cmd, args);
@@ -21692,13 +21675,16 @@ async function execClient(resolved, cmd, args, opts = {}) {
     try {
       child = spawn(bin, argv, {
         windowsHide: true,
+        // A fixed, verified directory, never the host's: the working directory is
+        // on the Windows DLL search path and is wherever the host was started.
+        cwd: resolved.binDir ?? homedir2(),
         env: childEnv(resolved),
         stdio: ["ignore", "pipe", "pipe"]
         // NO shell: true
       });
     } catch (e) {
-      const err3 = e;
-      resolvePromise({ code: -1, stdout: "", stderr: "", spawnError: err3.code ?? "SPAWN_THROW" });
+      const err2 = e;
+      resolvePromise({ code: -1, stdout: "", stderr: "", spawnError: err2.code ?? "SPAWN_THROW" });
       return;
     }
     let out = "";
@@ -21763,6 +21749,7 @@ async function execClient(resolved, cmd, args, opts = {}) {
 }
 
 // src/server.ts
+import { homedir as homedir3 } from "node:os";
 import { spawn as spawn2 } from "node:child_process";
 var delay = (ms) => new Promise((r) => setTimeout(r, ms));
 var PROBE_TIMEOUT_MS = 1e4;
@@ -21779,6 +21766,7 @@ async function ensureServerRunning(resolved, tries = 6, baseDelayMs = 500) {
       detached: true,
       stdio: "ignore",
       env: childEnv(resolved),
+      cwd: resolved.binDir ?? homedir3(),
       windowsHide: true
     });
     child.unref();
@@ -21794,8 +21782,8 @@ async function ensureServerRunning(resolved, tries = 6, baseDelayMs = 500) {
 }
 
 // src/download/megacmd.ts
-import { execFile as execFile2, spawn as spawn3 } from "node:child_process";
-import { promisify as promisify2 } from "node:util";
+import { execFile, spawn as spawn3 } from "node:child_process";
+import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream, realpathSync } from "node:fs";
 import { mkdir, rm, copyFile, symlink, unlink, writeFile, access as access2, rename } from "node:fs/promises";
@@ -21804,7 +21792,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { join as join3, basename, resolve as resolve3 } from "node:path";
-import { homedir as homedir2 } from "node:os";
+import { homedir as homedir4 } from "node:os";
 
 // src/errors.ts
 var ExitCode = {
@@ -21871,8 +21859,37 @@ function classifyExit(result) {
   return detail ? `MEGAcmd error (${detail}).` : `MEGAcmd error (exit ${result.code}).`;
 }
 
+// src/sysbin.ts
+import { existsSync } from "node:fs";
+import { win32 as winPath2 } from "node:path";
+var POSIX = {
+  hdiutil: ["/usr/bin/hdiutil"],
+  ditto: ["/usr/bin/ditto"],
+  xattr: ["/usr/bin/xattr"],
+  codesign: ["/usr/bin/codesign"],
+  spctl: ["/usr/sbin/spctl"]
+};
+var WINDOWS = {
+  powershell: "System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+  powershellModules: "System32\\WindowsPowerShell\\v1.0\\Modules",
+  explorer: "explorer.exe"
+};
+function systemTool(name, platform = process.platform) {
+  if (platform === "win32") {
+    const rel = WINDOWS[name];
+    if (!rel) throw new Error(`Unknown system tool: ${name}`);
+    return winPath2.join(process.env.SystemRoot || process.env.windir || "C:\\Windows", rel);
+  }
+  const candidates = POSIX[name];
+  if (!candidates) throw new Error(`Unknown system tool: ${name}`);
+  return candidates.find((p) => existsSync(p)) ?? candidates[0];
+}
+
 // src/download/megacmd.ts
-var pExecFile2 = promisify2(execFile2);
+var pExecFile = promisify(execFile);
+var VERIFY_EXEC = { timeout: 12e4, killSignal: "SIGKILL" };
+var INSTALL_EXEC = { timeout: 6e5, killSignal: "SIGKILL" };
+var DOWNLOAD_TIMEOUT_MS = 15 * 6e4;
 var MAX_DOWNLOAD_BYTES = 150 * 1024 * 1024;
 var ALLOWED_HOSTS = ["mega.nz", "mega.io"];
 var delay2 = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -21932,7 +21949,7 @@ async function acquireDarwin(config2, onProgress) {
   const mountPoint = join3(tmp, "mnt");
   const dmg = join3(tmp, "MEGAcmdSetup.dmg");
   try {
-    await pExecFile2(systemTool("hdiutil"), ["detach", mountPoint, "-force"]).catch(() => {
+    await pExecFile(systemTool("hdiutil"), ["detach", mountPoint, "-force"], INSTALL_EXEC).catch(() => {
     });
     await rm(tmp, { recursive: true, force: true });
     await mkdir(mountPoint, { recursive: true });
@@ -21944,7 +21961,7 @@ async function acquireDarwin(config2, onProgress) {
       return { ok: false, reason: "hash_mismatch", detail: `Downloaded artifact hash ${hash.slice(0, 12)}\u2026 is not in the vetted allowlist.` };
     }
     onProgress("mounting");
-    await pExecFile2(systemTool("hdiutil"), ["attach", "-nobrowse", "-noautoopen", "-mountpoint", mountPoint, dmg]);
+    await pExecFile(systemTool("hdiutil"), ["attach", "-nobrowse", "-noautoopen", "-mountpoint", mountPoint, dmg], INSTALL_EXEC);
     const appSrc = join3(mountPoint, "MEGAcmd.app");
     let binDir;
     let location;
@@ -21954,7 +21971,7 @@ async function acquireDarwin(config2, onProgress) {
       onProgress("installing");
       try {
         if (!appDest) throw new Error("no standard install location");
-        await pExecFile2(systemTool("ditto"), [appSrc, appDest]);
+        await pExecFile(systemTool("ditto"), [appSrc, appDest], INSTALL_EXEC);
         binDir = join3(appDest, "Contents", "MacOS");
         location = "applications";
       } catch {
@@ -21963,7 +21980,7 @@ async function acquireDarwin(config2, onProgress) {
         const staging = join3(tmp, "extract");
         await rm(staging, { recursive: true, force: true });
         await mkdir(staging, { recursive: true });
-        await pExecFile2(systemTool("ditto"), [appSrc, join3(staging, "MEGAcmd.app")]);
+        await pExecFile(systemTool("ditto"), [appSrc, join3(staging, "MEGAcmd.app")], INSTALL_EXEC);
         await swapIntoPlace(staging, versionDir);
         await promoteToCache(config2.cacheDir, versionName, {
           version: version2,
@@ -21977,10 +21994,10 @@ async function acquireDarwin(config2, onProgress) {
         location = "cache";
       }
     } finally {
-      await pExecFile2(systemTool("hdiutil"), ["detach", mountPoint, "-force"]).catch(() => {
+      await pExecFile(systemTool("hdiutil"), ["detach", mountPoint, "-force"], INSTALL_EXEC).catch(() => {
       });
     }
-    await pExecFile2(systemTool("xattr"), ["-dr", "com.apple.quarantine", resolve3(binDir, "..", "..")]).catch(() => {
+    await pExecFile(systemTool("xattr"), ["-dr", "com.apple.quarantine", resolve3(binDir, "..", "..")], INSTALL_EXEC).catch(() => {
     });
     await ensureMacLoginHelper(binDir).catch(() => {
     });
@@ -22002,7 +22019,7 @@ function shQuote(v) {
   return `'${v.replaceAll("'", `'\\''`)}'`;
 }
 function macLoginHelperDir() {
-  return join3(homedir2(), "Library", "Application Support", "mega-cloud-mcp");
+  return join3(homedir4(), "Library", "Application Support", "mega-cloud-mcp");
 }
 async function ensureMacLoginHelper(binDir) {
   if (process.platform !== "darwin" || !binDir) return null;
@@ -22058,19 +22075,17 @@ async function verifyResolvedBinary(resolved, opts = {}) {
     return false;
   }
 }
-async function verifySignatureMac(appPath, teamId) {
+var MEGA_TEAM_ID = "T9RH74Y7L9";
+function megaRequirement(teamId) {
+  return `anchor apple generic and certificate leaf[subject.OU] = "${teamId}" and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists`;
+}
+async function verifySignatureMac(appPath, teamId = MEGA_TEAM_ID) {
+  if (!/^[A-Z0-9]{10}$/.test(teamId)) throw new Error("signature_failed: invalid team identifier pin");
   try {
-    await pExecFile2(systemTool("codesign"), ["--verify", "--deep", "--strict", "--verbose=2", appPath]);
-    await pExecFile2(systemTool("spctl"), ["-a", "-vv", "-t", "exec", appPath]);
+    await pExecFile(systemTool("codesign"), ["--verify", "--deep", "--strict", "-R", `=${megaRequirement(teamId)}`, appPath], VERIFY_EXEC);
+    await pExecFile(systemTool("spctl"), ["-a", "-vv", "-t", "exec", appPath], VERIFY_EXEC);
   } catch (e) {
     throw new Error(`signature_failed: ${e instanceof Error ? e.message : String(e)}`);
-  }
-  const { stderr } = await pExecFile2(systemTool("codesign"), ["-dv", "--verbose=4", appPath]).catch((e) => ({ stderr: e.stderr ?? "" }));
-  if (!/Authority=Developer ID Application: Mega Limited/.test(stderr)) {
-    throw new Error("signature_failed: unexpected signing authority");
-  }
-  if (teamId && !stderr.includes(`TeamIdentifier=${teamId}`)) {
-    throw new Error(`signature_failed: unexpected team identifier (want ${teamId})`);
   }
 }
 async function sha256File(path) {
@@ -22095,7 +22110,7 @@ async function fetchToFile(url, dest) {
     return;
   }
   assertRemoteUrlAllowed(url);
-  const res = await fetch(url, { redirect: "follow" });
+  const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
   if (!res.ok || !res.body) throw new Error(`Download failed: HTTP ${res.status}.`);
   assertRemoteUrlAllowed(res.url);
   const declared = Number(res.headers.get("content-length") ?? "0");
@@ -22176,11 +22191,20 @@ function launchViaExplorer(target) {
   child.unref();
 }
 async function verifyAuthenticodeWin(exe, thumbprint) {
-  const ps = `$ErrorActionPreference='Stop'; $s = Get-AuthenticodeSignature -LiteralPath $env:MEGA_VERIFY_PATH; if ($s.Status -ne 'Valid') { exit 3 }; $c = $s.SignerCertificate; if (-not $c) { exit 4 }; $rdns = $c.SubjectName.Format($true) -split "\`r?\`n" | ForEach-Object { $_.Trim() }; if (-not ($rdns -ccontains 'O=Mega Limited')) { exit 4 }; if ($env:MEGA_VERIFY_THUMBPRINT -and ($c.Thumbprint -ne $env:MEGA_VERIFY_THUMBPRINT)) { exit 5 }; exit 0`;
+  const ps = `$ErrorActionPreference='Stop'; $s = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $env:MEGA_VERIFY_PATH; if ($s.Status -ne 'Valid') { exit 3 }; $c = $s.SignerCertificate; if (-not $c) { exit 4 }; $rdns = $c.SubjectName.Format($true) -split "\`r?\`n" | ForEach-Object { $_.Trim() }; if (-not ($rdns -ccontains 'O=Mega Limited')) { exit 4 }; if ($env:MEGA_VERIFY_THUMBPRINT -and ($c.Thumbprint -ne $env:MEGA_VERIFY_THUMBPRINT)) { exit 5 }; exit 0`;
   try {
-    await pExecFile2(systemTool("powershell"), ["-NoProfile", "-NonInteractive", "-Command", ps], {
+    await pExecFile(systemTool("powershell"), ["-NoProfile", "-NonInteractive", "-Command", ps], {
       windowsHide: true,
-      env: { ...process.env, MEGA_VERIFY_PATH: exe, ...thumbprint ? { MEGA_VERIFY_THUMBPRINT: thumbprint } : {} }
+      ...VERIFY_EXEC,
+      env: {
+        ...process.env,
+        // Only the system module directory: a module of the same name in the
+        // user's Documents\WindowsPowerShell\Modules (first on the default path)
+        // must not be able to stand in for the signature check.
+        PSModulePath: systemTool("powershellModules"),
+        MEGA_VERIFY_PATH: exe,
+        ...thumbprint ? { MEGA_VERIFY_THUMBPRINT: thumbprint } : {}
+      }
     });
   } catch {
     throw new Error(`signature_failed: Authenticode verification failed for ${basename(exe)} (expected a valid, trusted "O=Mega Limited" signature)`);
@@ -22229,8 +22253,8 @@ async function ensureReady(run, tries = 3, baseDelayMs = 500) {
 
 // src/paths.ts
 import { resolve as resolve4, sep as sep2, dirname as dirname3, basename as basename2, join as join4 } from "node:path";
-import { homedir as homedir3 } from "node:os";
-import { realpathSync as realpathSync2, existsSync as existsSync2, readdirSync, lstatSync } from "node:fs";
+import { homedir as homedir5 } from "node:os";
+import { realpathSync as realpathSync2, existsSync as existsSync2, readdirSync, lstatSync, statSync } from "node:fs";
 var ValidationError = class extends Error {
   constructor(message) {
     super(message);
@@ -22256,6 +22280,33 @@ function isAtOrUnder(child, parent) {
   const p = fold(parent);
   return c === p || c.startsWith(p.endsWith(sep2) ? p : p + sep2);
 }
+function diskId(p) {
+  try {
+    const st = statSync(p, { bigint: true });
+    return `${st.dev}:${st.ino}`;
+  } catch {
+    return null;
+  }
+}
+function diskChain(p) {
+  const ids = /* @__PURE__ */ new Set();
+  let cur = resolve4(p);
+  for (; ; ) {
+    const id = diskId(cur);
+    if (id) ids.add(id);
+    const parent = dirname3(cur);
+    if (parent === cur) return ids;
+    cur = parent;
+  }
+}
+function onDiskAtOrUnder(child, parent, chain = diskChain(child)) {
+  const id = diskId(parent);
+  return id !== null && chain.has(id);
+}
+function sameOnDisk(a, b) {
+  const id = diskId(a);
+  return id !== null && id === diskId(b);
+}
 var publishedBinDir = null;
 var trustRoots = [];
 function publishMegacmdBinDir(dir, roots = []) {
@@ -22271,7 +22322,7 @@ function sessionStoreRoots(binDir) {
   };
   const suffix = process.env.MEGACMD_WORKING_FOLDER_SUFFIX?.trim();
   const names = [".megaCmd", ...suffix ? [`.megaCmd_${suffix}`] : []];
-  for (const name of names) add(resolve4(homedir3(), name));
+  for (const name of names) add(resolve4(homedir5(), name));
   const uid = process.getuid?.();
   if (uid !== void 0) add(`/tmp/megacmd-${uid}`);
   if (isWin2 && binDir) for (const name of names) add(resolve4(binDir, name));
@@ -22283,7 +22334,8 @@ function hitsSessionStore(rawAbs) {
     if (isStoreName(segment)) return true;
     if (fold(segment) === "megacmd.mac") return true;
   }
-  return sessionStoreRoots().some((r) => isAtOrUnder(abs, r));
+  const chain = diskChain(abs);
+  return sessionStoreRoots().some((r) => isAtOrUnder(abs, r) || onDiskAtOrUnder(abs, r, chain));
 }
 function isStoreName(name) {
   const s = fold(name);
@@ -22322,7 +22374,7 @@ function assertNotTrustRoot(abs) {
   if (trustRoots.length === 0) return;
   for (const candidate of spellingsOf(abs)) {
     for (const root of trustRoots) {
-      if (isAtOrUnder(normWinPath(candidate), root) || isAtOrUnder(normWinPath(candidate), realpathBestEffort(root))) {
+      if (isAtOrUnder(normWinPath(candidate), root) || isAtOrUnder(normWinPath(candidate), realpathBestEffort(root)) || onDiskAtOrUnder(candidate, root)) {
         throw new ValidationError(
           "Refusing to read or write inside the MEGAcmd program directory or this connector's data directory - a file placed there would be loaded by MEGAcmd or by the connector itself."
         );
@@ -22336,24 +22388,38 @@ function protectedBelow(abs, inclusive) {
   const hits = /* @__PURE__ */ new Set();
   for (const root of roots) {
     for (const f of forms) {
-      if (isAtOrUnder(root, f) && (inclusive || fold(root) !== fold(f))) hits.add(root);
+      const below = isAtOrUnder(root, f) || onDiskAtOrUnder(root, f);
+      const same = fold(root) === fold(f) || sameOnDisk(root, f);
+      if (below && (inclusive || !same)) hits.add(root);
     }
   }
   return [...hits];
 }
 function assertDownloadTarget(localDir, name) {
-  const known = name !== null && name !== "";
-  const target = known ? join4(localDir, name) : localDir;
-  if (known) {
+  if (name === null || name === "") return assertTargetBelow(localDir, null);
+  const version2 = name.match(/^(.+)#\d{10}$/);
+  for (const n of version2 ? [name, version2[1]] : [name]) assertTargetBelow(localDir, n);
+}
+function assertTargetBelow(localDir, name) {
+  const target = name !== null ? join4(localDir, name) : localDir;
+  if (name !== null) {
     assertNotConfigDir(target);
     assertNotTrustRoot(target);
   }
-  const below = protectedBelow(target, known);
+  const below = protectedBelow(target, name !== null);
   if (below.length > 0) {
     throw new ValidationError(
-      `Refusing to download ${known ? `"${name}" ` : ""}into ${localDir}: the download could write into a directory MEGAcmd or this connector depends on (${below.join(", ")}). Choose a different destination folder${known ? "" : ", such as a subfolder"}.`
+      `Refusing to download ${name !== null ? `"${name}" ` : ""}into ${localDir}: the download could write into a directory MEGAcmd or this connector depends on (${below.join(", ")}). Choose a different destination folder${name !== null ? "" : ", such as a subfolder"}.`
     );
   }
+}
+function assertNoLocalGlob(lp, field = "localPath") {
+  if (/[*?]/.test(lp) && !existsSync2(lp)) {
+    throw new ValidationError(
+      `${field} contains "*" or "?" and does not exist: MEGAcmd would expand it as a pattern after you approve, so the preview could not show what is uploaded. List the files explicitly.`
+    );
+  }
+  return lp;
 }
 function assertNoProtectedWithin(lp, what) {
   const below = protectedBelow(lp, false);
@@ -22367,8 +22433,8 @@ function sessionStoresWithin(abs, binDir) {
   const forms = [...new Set([abs, resolve4(abs)].flatMap(spellingsOf))];
   const hits = /* @__PURE__ */ new Map();
   for (const root of sessionStoreRoots(binDir)) {
-    if (forms.some((f) => fold(root) === fold(f))) continue;
-    if (forms.some((f) => isAtOrUnder(root, f)) && existsSync2(root)) {
+    if (forms.some((f) => fold(root) === fold(f) || sameOnDisk(root, f))) continue;
+    if (forms.some((f) => isAtOrUnder(root, f) || onDiskAtOrUnder(root, f)) && existsSync2(root)) {
       hits.set(fold(realpathBestEffort(root)), root);
     }
   }
@@ -22381,6 +22447,11 @@ function rejectArgvQuote(v, field) {
   if (v.includes('"')) {
     throw new ValidationError(
       `${field} must not contain a double quote - MEGAcmd cannot address such a value: it would re-parse the command and operate on a different target.`
+    );
+  }
+  if (v.trimStart().startsWith("'")) {
+    throw new ValidationError(
+      `${field} must not start with a single quote - MEGAcmd would strip it and could read the rest as an option.`
     );
   }
 }
@@ -22396,6 +22467,9 @@ function assertRemotePath(p, field = "remotePath") {
   if (!t.startsWith("/")) {
     throw new ValidationError(`${field} must be an absolute MEGA path starting with "/".`);
   }
+  if (t.includes("\\")) {
+    throw new ValidationError(`${field} must not contain a backslash - MEGAcmd reads it as an escape, so it would resolve a different path.`);
+  }
   rejectArgvQuote(t, field);
   return t;
 }
@@ -22404,6 +22478,7 @@ function assertOptionalRemotePath(p, field = "remotePath") {
 }
 function assertNoFlag(v, field) {
   rejectNul(v);
+  if (/[\x00-\x1f\x7f]/.test(v)) throw new ValidationError(`${field} must not contain control characters.`);
   const t = v.trim();
   if (t === "") throw new ValidationError(`${field} is empty.`);
   if (t.startsWith("-")) throw new ValidationError(`${field} must not start with "-".`);
@@ -22481,7 +22556,7 @@ function planUpload(lps, rp, binDir) {
   const stores = sessionStoreRoots(binDir).filter((r) => existsSync2(r)).map((r) => realpathBestEffort(r));
   const containsStore = (p) => {
     const real = realpathBestEffort(normWinPath(p));
-    return stores.some((st) => fold(st) !== fold(real) && isAtOrUnder(st, real));
+    return stores.some((st) => !(fold(st) === fold(real) || sameOnDisk(st, p)) && (isAtOrUnder(st, real) || onDiskAtOrUnder(st, p)));
   };
   const direct = [];
   const steps = [];
@@ -22518,6 +22593,13 @@ function planUpload(lps, rp, binDir) {
     else direct.push(lp);
   }
   if (direct.length > 0) steps.unshift({ dest: rp, sources: direct });
+  for (const step of steps) {
+    if (step.dest !== rp && (step.dest.includes("\\") || /#\d{10}(\/|$)/.test(step.dest))) {
+      throw new ValidationError(
+        `Cannot upload around the session store here: the folder name in ${step.dest} would be read differently by MEGAcmd. Upload the subfolders individually instead.`
+      );
+    }
+  }
   return { steps, excluded };
 }
 function globCanMatchStoreName(segment) {
@@ -22540,52 +22622,159 @@ function globCanMatchStoreName(segment) {
   if (states.has(g.length)) return true;
   return [...step(states, "_")].some((i) => !g.slice(i).includes("."));
 }
+function assertNoInshareEnumeration(path, pattern, exposeContacts) {
+  if (exposeContacts || !path) return;
+  const p = path.replace(/^[\x00-\x20]+/, "");
+  if (!p.startsWith("//") || p.startsWith("//bin/") || p.startsWith("//in/")) return;
+  if (pattern || /[*?]/.test(p)) {
+    throw new ValidationError(
+      'Listing incoming shares by pattern reveals the email addresses of the people who shared them. Use mega_mount (it asks first), or turn on the "Expose contact tools" setting.'
+    );
+  }
+}
 function assertNotStoreCopy(p, field = "remotePath") {
-  for (const segment of p.split("/")) {
-    if (isStoreName(segment)) {
-      throw new ValidationError(
-        `${field} is inside a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY. No tool reads, copies, moves, shares or publishes it.`
-      );
-    }
-    if (/[*?]/.test(segment) && globCanMatchStoreName(segment)) {
-      throw new ValidationError(
-        `${field} contains a wildcard that could match a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY. Use a more specific pattern or the exact path.`
-      );
-    }
+  const why = storeCopyIn(p);
+  if (why === "name") {
+    throw new ValidationError(
+      `${field} is inside a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY. No tool reads, copies, moves, shares or publishes it.`
+    );
+  }
+  if (why === "wildcard") {
+    throw new ValidationError(
+      `${field} contains a wildcard that could match a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY. Use a more specific pattern or the exact path.`
+    );
   }
   return p;
+}
+function storeCopyIn(p) {
+  const names = p.split(/[\\/]/).flatMap((segment) => segment.includes(":") ? [segment, segment.slice(segment.indexOf(":") + 1)] : [segment]);
+  if (names.some((name) => isStoreName(name))) return "name";
+  if (names.some((name) => /[*?]/.test(name) && globCanMatchStoreName(name))) return "wildcard";
+  return null;
+}
+
+// src/argv.ts
+function serializeLikeClient(words) {
+  return words.map((w) => w.includes(" ") || w === "" ? `"${w}"` : w).join(" ");
+}
+function splitLikeServer(line) {
+  const words = [];
+  const n = line.length;
+  const at = (k) => k < n ? line[k] : "\0";
+  let i = 0;
+  for (; ; ) {
+    while (i < n && line.charCodeAt(i) > 0 && line.charCodeAt(i) <= 32) i++;
+    if (at(i) === "\0") break;
+    const c = at(i);
+    if (c === '"' || c === "'") {
+      i++;
+      let w = i;
+      let word = "";
+      for (; ; ) {
+        const ch = at(i);
+        if (ch === c || ch === "\\" || ch === "\0") {
+          word += line.slice(w, i);
+          if (ch === "\0") break;
+          i++;
+          if (ch === c) break;
+          w = i - 1;
+        } else {
+          i++;
+        }
+      }
+      words.push(word);
+    } else {
+      while (at(i) === " ") i++;
+      const w = i;
+      let prev = i;
+      while (at(i) !== "\0" && !(at(i) === " " && at(prev) !== "\\")) {
+        if (at(i) === '"' && at(i + 1) !== "\0") {
+          do {
+            i++;
+          } while (at(i) !== '"' && at(i + 1) !== "\0");
+        }
+        prev = i;
+        i++;
+      }
+      words.push(line.slice(w, i));
+    }
+  }
+  return words;
+}
+function survivesRoundTrip(words) {
+  const back = splitLikeServer(serializeLikeClient(words));
+  return back.length === words.length && back.every((w, i) => w === words[i]);
+}
+function isPublicLink(link) {
+  return link.startsWith("http") && (link.includes("#") || link.includes("/file/") || link.includes("/folder/"));
+}
+
+// src/invocation.ts
+var CONTENT_COMMANDS = /* @__PURE__ */ new Set(["cat", "cp", "mv", "get", "put", "export", "share", "import", "sync", "backup", "thumbnail", "mkdir"]);
+function assertSafeInvocation(cmd, args, exposeContacts) {
+  if (!survivesRoundTrip([cmd, ...args])) {
+    throw new ValidationError(
+      "A value would be read differently by MEGAcmd than it was sent (for example a leading control character, or a trailing backslash that joins it to the next value), so the command could do something other than what was approved. Nothing was run."
+    );
+  }
+  const removing = (cmd === "export" || cmd === "share") && args.includes("-d");
+  if (CONTENT_COMMANDS.has(cmd) && !removing && args.some((a) => storeCopyIn(a) !== null)) {
+    throw new ValidationError(
+      "This would pass a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY. Nothing was run."
+    );
+  }
+  const pattern = args.includes("--use-pcre");
+  for (const a of args) assertNoInshareEnumeration(a, pattern, exposeContacts);
 }
 
 // src/fileReading.ts
 import { join as join5 } from "node:path";
-import { mkdirSync as mkdirSync2, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync as mkdirSync2, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 var FILE = "file-reading.json";
-function stateDir(config2, env = process.env) {
-  const injected = env.PLUGIN_DATA?.trim() || env.CLAUDE_PLUGIN_DATA?.trim();
-  return injected ? injected : config2.cacheDir;
+function hostStateDir(env = process.env) {
+  return env.PLUGIN_DATA?.trim() || env.CLAUDE_PLUGIN_DATA?.trim() || null;
 }
-function readRemembered(config2, env = process.env) {
+function stateDir(config2, env = process.env) {
+  return hostStateDir(env) ?? config2.cacheDir;
+}
+function readStored(dir) {
   try {
-    const raw = readFileSync(join5(stateDir(config2, env), FILE), "utf8");
-    return JSON.parse(raw).enabled === true;
+    const raw = JSON.parse(readFileSync(join5(dir, FILE), "utf8"));
+    const gen = typeof raw.gen === "number" && Number.isInteger(raw.gen) && raw.gen >= 0 ? raw.gen : 0;
+    return { enabled: raw.enabled === true, gen };
   } catch {
-    return false;
+    return null;
   }
 }
-function writeRemembered(config2, enabled, env = process.env) {
-  const path = join5(stateDir(config2, env), FILE);
+function writeStored(dir, value) {
   try {
-    if (!enabled) {
-      rmSync(path, { force: true });
-      return true;
-    }
-    mkdirSync2(stateDir(config2, env), { recursive: true });
-    writeFileSync(path, `${JSON.stringify({ enabled: true }, null, 2)}
+    mkdirSync2(dir, { recursive: true });
+    const tmp = join5(dir, `${FILE}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`);
+    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}
 `, "utf8");
+    renameSync(tmp, join5(dir, FILE));
     return true;
   } catch {
     return false;
   }
+}
+function readRemembered(config2, env = process.env) {
+  const dir = hostStateDir(env);
+  return dir ? readStored(dir)?.enabled === true : false;
+}
+function readGeneration(config2, env = process.env) {
+  return readStored(stateDir(config2, env))?.gen ?? null;
+}
+function ensureStateFile(config2, env = process.env) {
+  const dir = stateDir(config2, env);
+  if (!readStored(dir)) writeStored(dir, { enabled: false, gen: 0 });
+}
+function writeRemembered(config2, enabled, env = process.env) {
+  const dir = enabled ? hostStateDir(env) : stateDir(config2, env);
+  if (!dir) return false;
+  const gen = readStored(dir)?.gen ?? 0;
+  return writeStored(dir, enabled ? { enabled: true, gen } : { enabled: false, gen: gen + 1 });
 }
 
 // src/confirm.ts
@@ -22637,13 +22826,15 @@ function configTrustRoots(config2) {
     ...process.platform === "darwin" ? [macLoginHelperDir()] : []
   ];
 }
-function createRuntime(config2) {
+function createRuntime(config2, deps = {}) {
+  const resolveImpl = deps.resolve ?? resolveBinaries;
+  const verifyImpl = deps.verify ?? verifyResolvedBinary;
   publishMegacmdBinDir(null, configTrustRoots(config2));
   let resolvedPromise;
   let serverReady;
-  let integrityVerified;
+  const verified = /* @__PURE__ */ new WeakMap();
   let binDirPromise;
-  const getResolved = () => resolvedPromise ??= resolveBinaries(config2);
+  const getResolved = () => resolvedPromise ??= resolveImpl(config2);
   const getBinDir = () => binDirPromise ??= (async () => {
     const r = await getResolved();
     if (!r) return null;
@@ -22652,26 +22843,31 @@ function createRuntime(config2) {
     return dir;
   })();
   const run = async (cmd, args, opts) => {
+    assertSafeInvocation(cmd, args, config2.exposeContacts);
     const resolved = await getResolved();
     if (!resolved) {
       return { code: -1, stdout: "", stderr: "", spawnError: "NO_MEGACMD" };
     }
-    integrityVerified ??= (async () => {
-      const binDir = await getBinDir();
-      const serverBin = binDir ? join6(binDir, serverName()) : resolved.serverBin;
-      const clientBin = resolved.clientInvocation("whoami", []).bin;
-      const meta = resolved.source === "cache" ? await readActiveCacheMeta(config2) : null;
-      return verifyResolvedBinary(
-        { binDir, serverBin, clientBin: binDir ? join6(binDir, basename3(clientBin)) : clientBin, source: resolved.source },
-        {
-          teamId: config2.download.teamId,
-          serverSha256: meta?.serverSha256,
-          winThumbprint: config2.download.winThumbprint
-        }
-      );
-    })();
-    if (!await integrityVerified) {
-      integrityVerified = void 0;
+    const binDir = resolved.binDir ?? (resolved.source === "path" ? await resolvePathBinDir() : null);
+    let ok2 = verified.get(resolved);
+    if (!ok2) {
+      ok2 = (async () => {
+        const serverBin = binDir ? join6(binDir, serverName()) : resolved.serverBin;
+        const clientBin = resolved.clientInvocation("whoami", []).bin;
+        const meta = resolved.source === "cache" ? await readActiveCacheMeta(config2) : null;
+        return verifyImpl(
+          { binDir, serverBin, clientBin: binDir ? join6(binDir, basename3(clientBin)) : clientBin, source: resolved.source },
+          {
+            teamId: config2.download.teamId,
+            serverSha256: meta?.serverSha256,
+            winThumbprint: config2.download.winThumbprint
+          }
+        );
+      })();
+      verified.set(resolved, ok2);
+    }
+    if (!await ok2) {
+      verified.delete(resolved);
       return { code: -1, stdout: "", stderr: "", spawnError: "INTEGRITY_FAILED" };
     }
     if (resolved.source !== "path") {
@@ -22693,7 +22889,6 @@ function createRuntime(config2) {
       resolvedPromise = void 0;
       binDirPromise = void 0;
       serverReady = void 0;
-      integrityVerified = void 0;
     },
     getAuthState: () => detectAuth(run),
     ensureReady: () => ensureReady(run)
@@ -22717,6 +22912,8 @@ function err(text, structured) {
 }
 
 // src/tools/helpers.ts
+import { createHmac, randomBytes as randomBytes2 } from "node:crypto";
+import { posix } from "node:path";
 var PLAN_MAX = 200;
 function assertPlanSize(count, what) {
   if (count > PLAN_MAX) {
@@ -22726,20 +22923,57 @@ function assertPlanSize(count, what) {
   }
 }
 async function pcreMatchPreview(rt, pattern, max = PLAN_MAX) {
+  assertNoInshareEnumeration(pattern, true, rt.config.exposeContacts);
   const r = await rt.run("find", [pattern, "--use-pcre", "--show-handles"]);
   if (r.code !== 0) return { ok: false, error: classifyExit(r) };
+  const only = await rt.run("find", [pattern, "--use-pcre", "--print-only-handles"]);
+  if (only.code !== 0) return { ok: false, error: classifyExit(only) };
   const entries = [];
   for (const raw of r.stdout.split(/\r?\n/)) {
+    if (!raw.trim()) continue;
+    const m = raw.match(/^(.+) <(H:[A-Za-z0-9_-]+)>$/);
+    if (!m) return { ok: false, error: UNLISTABLE };
+    entries.push({ path: m[1], handle: m[2] });
+  }
+  const authoritative = [];
+  for (const raw of only.stdout.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
-    const m = line.match(/^(.*?)\s*<(H:[A-Za-z0-9_-]+)>\s*$/);
-    if (m) entries.push({ path: m[1], handle: m[2] });
+    if (!/^H:[A-Za-z0-9_-]+$/.test(line)) return { ok: false, error: UNLISTABLE };
+    authoritative.push(line);
   }
-  const handles = entries.map((e) => e.handle);
-  const shown = entries.slice(0, max).map((e) => `${e.path} <${e.handle}>`).join("\n");
-  const note = entries.length > max ? `
-...(${entries.length} total; showing first ${max})` : "";
-  return { ok: true, count: entries.length, handles, paths: entries.map((e) => e.path), text: (shown || "(no matches)") + note };
+  if (!sameMultiset(entries.map((e) => e.handle), authoritative)) return { ok: false, error: UNLISTABLE };
+  const top = topmost(entries);
+  const handles = top.map((e) => e.handle);
+  const shown = top.slice(0, max).map((e) => `${e.path} <${e.handle}>`).join("\n");
+  const note = (top.length > max ? `
+...(${top.length} total; showing first ${max})` : "") + (top.length < new Set(entries.map((e) => e.handle)).size ? "\n(Matched folders are acted on as a whole, together with everything inside them.)" : "");
+  return { ok: true, count: top.length, handles, paths: entries.map((e) => e.path), text: (shown || "(no matches)") + note };
+}
+function hideContacts(text, exposeContacts) {
+  return exposeContacts ? text : text.replace(/[^\s/:<>"']*@[^\s/:<>"']*:?/g, "<contact>:");
+}
+var SECRET_KEY = randomBytes2(32);
+function secretBinding(secret) {
+  if (secret === void 0 || secret === "") return null;
+  return createHmac("sha256", SECRET_KEY).update(secret).digest("hex");
+}
+function localNamesOf(remotePath) {
+  const base = posix.basename(remotePath.replace(/(.)\/+$/, "$1"));
+  return base.includes(":") ? [base, base.slice(base.indexOf(":") + 1)] : [base];
+}
+var UNLISTABLE = "A matching node has a name this preview cannot list unambiguously (for example one containing a line break). Narrow the pattern so it does not match that node, or rename it first.";
+function topmost(entries) {
+  const seen = /* @__PURE__ */ new Set();
+  const unique = entries.filter((e) => seen.has(e.handle) ? false : (seen.add(e.handle), true));
+  const paths = unique.map((e) => e.path.replace(/\/+$/, ""));
+  return unique.filter((_, i) => !paths.some((other, j) => j !== i && (other === "" || paths[i].startsWith(`${other}/`))));
+}
+function sameMultiset(a, b) {
+  if (a.length !== b.length) return false;
+  const x = [...a].sort();
+  const y = [...b].sort();
+  return x.every((v, i) => v === y[i]);
 }
 var pcrePlans = /* @__PURE__ */ new Map();
 function stashPcrePlan(token, handles, ttlMs = 12e4) {
@@ -22788,17 +23022,35 @@ async function runBulk(rt, cmd, sources, trailingArgv, chunkSize = 2e3) {
   for (let i = 0; i < sources.length; i += chunkSize) {
     const chunk = sources.slice(i, i + chunkSize);
     const r = await rt.run(cmd, [...chunk, ...trailingArgv]);
-    if (r.code === 0) {
-      done += chunk.length;
-      continue;
-    }
-    for (const s of chunk) {
-      const one = await rt.run(cmd, [s, ...trailingArgv]);
-      if (one.code === 0) done++;
-      else failed++;
-    }
+    if (r.code === 0) done += chunk.length;
+    else failed += chunk.length;
   }
   return { done, failed };
+}
+async function assertNoStoreCopyBelow(rt, remotePath) {
+  const r = await rt.run("find", [remotePath, "--type=d"]);
+  if (r.code === ExitCode.NOTFOUND || r.spawnError) return;
+  if (r.code !== 0) throw new ValidationError(`Could not check ${remotePath} for a copy of the MEGAcmd session store: ${classifyExit(r)}`);
+  if (r.stdout.split(/\r?\n/).some((line) => storeCopyIn(line.trim()) === "name")) {
+    throw new ValidationError(
+      `${remotePath} contains a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY, so it is not copied, moved, downloaded, shared or published. Delete that .megaCmd folder from the cloud first.`
+    );
+  }
+}
+async function ensureRemoteFolder(rt, path) {
+  if (path.startsWith("//")) return "error";
+  const target = path.replace(/(.)\/+$/, "$1");
+  const r = await rt.run("mkdir", ["-p", target]);
+  if (r.code === 0) return "folder";
+  const leaf = target.slice(target.lastIndexOf("/") + 1);
+  const names = `(?:${escapeRegExp(leaf)}|${escapeRegExp(target)})`;
+  const line = (kind) => new RegExp(`(?:^|\\s)${kind} already exists: ${names}\\]?\\s*$`, "m");
+  if (line("Folder").test(r.stderr)) return "folder";
+  if (line("File").test(r.stderr)) return "file";
+  return "error";
+}
+function escapeRegExp(v) {
+  return v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function guardRun(fn) {
   return fn().catch(
@@ -22848,7 +23100,7 @@ function registerSetup(server, rt) {
     "megacmd_setup",
     {
       title: "MEGA: set up MEGAcmd",
-      description: 'Download and install the MEGAcmd engine (verified by signature + checksum) so the MEGA tools can run. Use this when a tool reports that MEGAcmd is not available. Installs in the background \u2014 if it reports "installing", just retry shortly. Does not log in.',
+      description: 'Download and install the MEGAcmd engine (verified by its MEGA code signature) so the MEGA tools can run. Use this when a tool reports that MEGAcmd is not available. Installs in the background \u2014 if it reports "installing", just retry shortly. Does not log in.',
       inputSchema: { confirm: external_exports.string().optional().describe("Confirmation token from the first call.") },
       annotations: { title: "MEGA: set up MEGAcmd", destructiveHint: false, openWorldHint: true }
     },
@@ -22872,9 +23124,9 @@ function registerSetup(server, rt) {
         });
       }
       if (!inFlight) {
-        const { url, version: version2 } = rt.config.download;
+        const { url, version: version2, sha256Allow } = rt.config.download;
         const failNote = lastFailure ? ` (a previous attempt failed: ${lastFailure.reason}${lastFailure.detail ? " \u2014 " + lastFailure.detail : ""})` : "";
-        const summary = `This will download MEGAcmd ${version2 ?? ""} from ${url} (~50 MB), verify its MEGA code signature and a pinned checksum before running anything, and install it.${failNote} No MEGA login is involved.`;
+        const summary = `This will download MEGAcmd ${version2 ?? ""} from ${url} (~50 MB), verify its MEGA code signature${sha256Allow.length ? " and a pinned checksum" : ""} before running anything, and install it.${failNote} No MEGA login is involved.`;
         const gate = checkConfirm(rt, "megacmd_setup", { url, version: version2 }, confirm, summary);
         if (gate) return gate;
         lastFailure = null;
@@ -22939,7 +23191,11 @@ function loginInstructions(binDir, helperPath) {
   ${helperPath}`);
   }
   if (binDir) {
-    const launch = process.platform === "win32" ? `"${join7(realDir(binDir), "MEGAcmdShell.exe")}"` : `PATH="${binDir}:$PATH" MEGAcmdShell`;
+    const launch = process.platform === "win32" ? `"${join7(realDir(binDir), "MEGAcmdShell.exe")}"` : (
+      // Single-quoted like the .command helper: the user pastes this line, and
+      // inside double quotes a path's $(…) or backticks would run.
+      `PATH=${shQuote(binDir)}:"$PATH" MEGAcmdShell`
+    );
     lines.push("", `- Or in a terminal:
   ${launch}`);
   } else {
@@ -23216,6 +23472,7 @@ function registerReadOnly(server, rt) {
     },
     async ({ remotePath, recursive, showVersions, showHandles, showCreationTime, all, usePcre, compact, pageToken }) => guardRun(async () => {
       const path = usePcre && remotePath ? assertNoFlag(remotePath, "remotePath") : assertOptionalRemotePath(remotePath);
+      assertNoInshareEnumeration(path, usePcre, rt.config.exposeContacts);
       const offset = pageToken ? decodeCursor(pageToken) : 0;
       if (offset === null) return err("Invalid pageToken. Omit it to start from the beginning of the listing.");
       const args = ["-l", `--time-format=${compact ? "ISO6081_WITH_TIME" : "RFC2822"}`];
@@ -23271,6 +23528,7 @@ function registerReadOnly(server, rt) {
     },
     async ({ pattern, remotePath, type, mtime, size, showHandles, usePcre, pageToken }) => guardRun(async () => {
       const path = assertOptionalRemotePath(remotePath);
+      assertNoInshareEnumeration(path, false, rt.config.exposeContacts);
       const offset = pageToken ? decodeCursor(pageToken) : 0;
       if (offset === null) return err("Invalid pageToken. Omit it to start from the beginning of the results.");
       const args = [];
@@ -23301,6 +23559,7 @@ function registerReadOnly(server, rt) {
     },
     async ({ remotePath, pageToken }) => guardRun(async () => {
       const path = assertOptionalRemotePath(remotePath);
+      assertNoInshareEnumeration(path, false, rt.config.exposeContacts);
       const offset = pageToken ? decodeCursor(pageToken) : 0;
       if (offset === null) return err("Invalid pageToken. Omit it to start from the beginning of the tree.");
       const args = [];
@@ -23324,6 +23583,7 @@ function registerReadOnly(server, rt) {
     },
     async ({ remotePath }) => guardRun(async () => {
       const path = assertOptionalRemotePath(remotePath);
+      assertNoInshareEnumeration(path, false, rt.config.exposeContacts);
       const args = ["-h"];
       if (path) args.push(path);
       return runToResult(rt, "du", args, (r) => {
@@ -23336,16 +23596,26 @@ function registerReadOnly(server, rt) {
     "mega_mount",
     {
       title: "MEGA: list roots",
-      description: "List the account root nodes and incoming shares (Cloud Drive, Inbox, Rubbish, shares). Read-only; does not mount anything.",
-      inputSchema: {},
+      description: "List the account root nodes and incoming shares (Cloud Drive, Inbox, Rubbish, shares). Read-only; does not mount anything. Asks for confirmation first unless contact details are exposed, since each incoming share shows its sharer's email address.",
+      inputSchema: { confirm: external_exports.string().optional().describe("Confirmation token (only asked for when contact details are not exposed).") },
       annotations: { title: "MEGA: list roots", ...RO2 }
     },
-    async () => guardRun(
-      async () => runToResult(rt, "mount", [], (r) => {
+    async ({ confirm }) => guardRun(async () => {
+      if (!rt.config.exposeContacts) {
+        const gate = checkConfirm(
+          rt,
+          "mega_mount",
+          {},
+          confirm,
+          'This will list your root folders, including incoming shares - which show the EMAIL ADDRESSES of the people who shared them with you (third-party contact info). Turn on the "Expose contact tools" setting to allow this without confirming each time.'
+        );
+        if (gate) return gate;
+      }
+      return runToResult(rt, "mount", [], (r) => {
         const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
         return ok(text || "(no roots)", { rootCount: total, truncated });
-      })
-    )
+      });
+    })
   );
   server.registerTool(
     "mega_version",
@@ -23383,7 +23653,7 @@ function registerReadOnly(server, rt) {
       if (showCompleted) args.push("--show-completed");
       if (limit !== void 0) args.push(`--limit=${limit}`);
       return runToResult(rt, "transfers", args, (r) => {
-        const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
+        const { text, total, truncated } = capLines(hideContacts(r.stdout, rt.config.exposeContacts), rt.config.maxListLines);
         const note = truncated ? `
 
 (${total} transfers; showing first ${rt.config.maxListLines})` : "";
@@ -23401,6 +23671,7 @@ function registerReadOnly(server, rt) {
     },
     async ({ remotePath }) => guardRun(async () => {
       const rp = assertRemotePath(remotePath);
+      assertNoInshareEnumeration(rp, false, rt.config.exposeContacts);
       return runToResult(rt, "mediainfo", [rp], (r) => {
         const text = r.stdout.trim().slice(0, 4e3);
         return ok(text || "(no media metadata)", { remotePath: rp });
@@ -23417,6 +23688,7 @@ function registerReadOnly(server, rt) {
     },
     async ({ remotePath }) => guardRun(async () => {
       const rp = assertRemotePath(remotePath);
+      assertNoInshareEnumeration(rp, false, rt.config.exposeContacts);
       return runToResult(rt, "attr", [rp], (r) => {
         const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
         return ok(text || "(no attributes)", { remotePath: rp, lineCount: total, truncated });
@@ -23441,8 +23713,13 @@ function registerReadOnly(server, rt) {
 }
 
 // src/tools/mutate.ts
-import { posix } from "node:path";
 var PUT_CHUNK = 200;
+function assertPublicLink(link) {
+  if (!isPublicLink(link)) {
+    throw new ValidationError("link must be a MEGA public link (https://mega.nz/file/... or /folder/...). For a path in your account, use remotePath.");
+  }
+  return link;
+}
 function registerMutate(server, rt) {
   server.registerTool(
     "mega_mkdir",
@@ -23453,7 +23730,7 @@ function registerMutate(server, rt) {
       annotations: { title: "MEGA: make folder", destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
     async ({ remotePath }) => guardRun(async () => {
-      const rp = assertRemotePath(remotePath);
+      const rp = assertNotStoreCopy(assertRemotePath(remotePath));
       return runToResult(rt, "mkdir", ["-p", rp], () => ok(`Created folder ${rp}.`, { remotePath: rp }));
     })
   );
@@ -23472,8 +23749,10 @@ function registerMutate(server, rt) {
     async ({ src, dst, confirm }) => guardRun(async () => {
       const s = assertNotStoreCopy(assertNoWildcard(assertRemotePath(src, "src"), "src"), "src");
       const d = assertRemotePath(dst, "dst");
+      if (!confirm) await assertNoStoreCopyBelow(rt, s);
       const gate = checkConfirm(rt, "mega_cp", { src: s, dst: d }, confirm, `This will copy ${s} to ${d}.`);
       if (gate) return gate;
+      await assertNoStoreCopyBelow(rt, s);
       return runToResult(rt, "cp", [s, d], () => ok(`Copied ${s} -> ${d}.`, { src: s, dst: d }));
     })
   );
@@ -23497,8 +23776,10 @@ function registerMutate(server, rt) {
         assertPlanSize(srcs.length, "items");
         const list = srcs.map((s2, i) => assertNotStoreCopy(assertNoWildcard(assertRemotePath(s2, `srcs[${i}]`), `srcs[${i}]`), `srcs[${i}]`));
         const summary = [`This will move ${list.length} item(s) to ${d}:`, ...list.map((p) => `  ${p}`)];
+        if (!confirm) for (const p of list) await assertNoStoreCopyBelow(rt, p);
         const gate2 = checkConfirm(rt, "mega_mv", { srcs: list, dst: d }, confirm, summary);
         if (gate2) return gate2;
+        for (const p of list) await assertNoStoreCopyBelow(rt, p);
         const { done, failed } = await runBulk(rt, "mv", list, [d]);
         return ok(`Moved ${done}/${list.length} item(s) to ${d}${failed ? `; ${failed} failed` : ""}.`, { dst: d, moved: done, failed });
       }
@@ -23522,8 +23803,10 @@ ${t}`,
       }
       if (!src) throw new ValidationError('Provide "src" (a path or pattern) or "srcs" (a list).');
       const s = assertNotStoreCopy(assertNoWildcard(assertRemotePath(src, "src"), "src"), "src");
+      if (!confirm) await assertNoStoreCopyBelow(rt, s);
       const gate = checkConfirm(rt, "mega_mv", { src: s, dst: d }, confirm, `This will move/rename ${s} to ${d}.`);
       if (gate) return gate;
+      await assertNoStoreCopyBelow(rt, s);
       return runToResult(rt, "mv", [s, d], () => ok(`Moved ${s} -> ${d}.`, { src: s, dst: d }));
     })
   );
@@ -23545,11 +23828,11 @@ ${t}`,
       const raw = [...localPaths ?? [], ...localPath ? [localPath] : []];
       if (raw.length === 0) throw new ValidationError("Provide localPath or localPaths.");
       assertPlanSize(raw.length, "items");
-      const lps = raw.map((p) => assertLocalPath(p));
-      const rp = assertRemotePath(remotePath);
+      const lps = raw.map((p) => assertNoLocalGlob(assertLocalPath(p)));
+      const rp = assertNotStoreCopy(assertRemotePath(remotePath));
       const plan = planUpload(lps, rp, await rt.getBinDir());
       const summary = [
-        `This will upload ${lps.length} item(s) to ${rp}:`,
+        `This will upload ${lps.length} item(s) into the folder ${rp} (created if missing)${background ? ", in the background" : ""}:`,
         ...lps.map((p) => `  ${p}`),
         ...plan.excluded.length > 0 ? [
           "",
@@ -23560,17 +23843,25 @@ ${t}`,
       const gate = checkConfirm(rt, "mega_put", { localPaths: lps, remotePath: rp, background }, confirm, summary);
       if (gate) return gate;
       const putOpts = ["-c", ...background ? ["-q"] : []];
-      if (plan.excluded.length === 0 && plan.steps.length === 1 && plan.steps[0].dest === rp) {
+      const untouched = plan.excluded.length === 0 && plan.steps.length === 1 && plan.steps[0].dest === rp;
+      if (rp.startsWith("//")) {
+        if (!untouched) return err(`Cannot rebuild folders under ${rp}; upload into a regular folder, or upload a subfolder that does not contain the session store.`, { remotePath: rp });
+        return runToResult(rt, "put", [...putOpts, ...lps, rp], () => ok(`Uploaded ${lps.length} item(s) -> ${rp}.`, { localPaths: lps, remotePath: rp, background }));
+      }
+      const target = await ensureRemoteFolder(rt, rp);
+      if (target === "error") return err(`Could not create the destination folder ${rp}.`, { remotePath: rp });
+      if (target === "file") {
+        if (!untouched) return err(`${rp} is a file, not a folder.`, { remotePath: rp });
+        return runToResult(rt, "put", [...putOpts, ...lps, rp], () => ok(`Uploaded ${lps.length} item(s) -> ${rp}.`, { localPaths: lps, remotePath: rp, background }));
+      }
+      if (untouched) {
         return runToResult(rt, "put", [...putOpts, ...lps, rp], () => ok(`Uploaded ${lps.length} item(s) -> ${rp}.`, { localPaths: lps, remotePath: rp, background }));
       }
       let failed = 0;
       for (const step of plan.steps) {
-        if (step.dest !== rp) {
-          const mk = await rt.run("mkdir", ["-p", step.dest]);
-          if (mk.code !== 0) {
-            failed += Math.max(step.sources.length, 1);
-            continue;
-          }
+        if (step.dest !== rp && await ensureRemoteFolder(rt, step.dest) !== "folder") {
+          failed += Math.max(step.sources.length, 1);
+          continue;
         }
         for (let i = 0; i < step.sources.length; i += PUT_CHUNK) {
           const chunk = step.sources.slice(i, i + PUT_CHUNK);
@@ -23622,26 +23913,33 @@ ${t}`,
           { remotePath: rp, localDir: ld, usePcre: true, background, ignoreQuotaWarn, merge: merge2 },
           confirm,
           rp,
-          (n, t) => `This will download ${n} node(s) matching the pattern into ${ld}:
+          (n, t) => `This will download ${n} node(s) matching the pattern into ${ld}${merge2 ? ", merging into folders that already exist there" : ""}:
 ${t}`,
-          (p) => assertDownloadTarget(ld, posix.basename(p))
+          (p) => {
+            assertNotStoreCopy(p, "A matched node");
+            if (merge2) assertDownloadTarget(ld, null);
+            else for (const name of localNamesOf(p)) assertDownloadTarget(ld, name);
+          }
         );
         if (!g.proceed) return g.result;
         if (g.handles.length === 0) return ok("No matching nodes to download.", { downloaded: 0, localDir: ld });
         const { done, failed } = await runPerHandle(rt, "get", g.handles, (h) => [...transferOpts, h, ld]);
         return ok(`Downloaded ${done} node(s)${failed ? `; ${failed} failed` : ""} into ${ld}.`, { downloaded: done, failed, localDir: ld });
       }
-      const source = isLink ? assertNoFlag(link, "link") : remotePath !== void 0 && remotePath !== "" ? assertNoWildcard(assertRemotePath(remotePath), "remotePath") : "";
+      const source = isLink ? assertPublicLink(assertNoFlag(link, "link")) : remotePath !== void 0 && remotePath !== "" ? assertNotStoreCopy(assertNoWildcard(assertRemotePath(remotePath), "remotePath")) : "";
       if (!source) throw new ValidationError("Provide remotePath or link.");
-      assertDownloadTarget(ld, isLink ? null : posix.basename(source));
+      if (isLink || merge2) assertDownloadTarget(ld, null);
+      else for (const name of localNamesOf(source)) assertDownloadTarget(ld, name);
+      if (!isLink && !confirm) await assertNoStoreCopyBelow(rt, source);
       const gate = checkConfirm(
         rt,
         "mega_get",
-        { source, localDir: ld, isLink, background, ignoreQuotaWarn, merge: merge2, hasPassword: password !== void 0 && password !== "" },
+        { source, localDir: ld, isLink, background, ignoreQuotaWarn, merge: merge2, password: secretBinding(password) },
         confirm,
-        `This will download ${isLink ? "the provided link" : source} into ${ld}.`
+        `This will download ${isLink ? `the link ${source}` : source} into ${ld}${merge2 ? ", merging into a folder that already exists there" : ""}${background ? ", in the background" : ""}${ignoreQuotaWarn ? ", ignoring a transfer-quota warning" : ""}.`
       );
       if (gate) return gate;
+      if (!isLink) await assertNoStoreCopyBelow(rt, source);
       const args = [...transferOpts, ...password ? [`--password=${password}`] : [], source, ld];
       return runToResult(rt, "get", args, () => ok(`Downloaded into ${ld}.`, { source, localDir: ld, isLink }));
     })
@@ -23686,6 +23984,21 @@ function parseExportLink(raw) {
 
 // src/tools/dangerous.ts
 var SHARE_LEVEL = { read: "0", readwrite: "1", full: "2", owner: "3" };
+function isSessionHandle(id) {
+  if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return false;
+  const bytes = Buffer.from(id, "base64url");
+  return bytes.length === 8 && !bytes.every((b) => b === 255);
+}
+function isPasswordProtected(link) {
+  return !!link && link.includes("#P!");
+}
+function exportOptionLines(megaHosted, password, expire) {
+  return [
+    ...megaHosted ? ["The folder key will also be shared with MEGA (MEGA-hosted / S4)."] : [],
+    ...password ? ["The link will be password-protected."] : [],
+    ...expire ? [`The link will expire after ${expire}.`] : []
+  ];
+}
 function registerDangerous(server, rt) {
   server.registerTool(
     "mega_logout",
@@ -23713,12 +24026,12 @@ function registerDangerous(server, rt) {
       annotations: { title: "MEGA: close other sessions", destructiveHint: true, openWorldHint: true }
     },
     async ({ sessionId, confirm }) => guardRun(async () => {
-      const sid = sessionId?.trim();
-      if (sid !== void 0 && (sid === "" || /\s/.test(sid))) {
+      const sid = sessionId === void 0 ? void 0 : assertNoFlag(sessionId, "sessionId");
+      if (sid !== void 0 && /\s/.test(sid)) {
         throw new ValidationError("sessionId must be a single non-empty token.");
       }
-      if (sid !== void 0 && sid.startsWith("-")) {
-        throw new ValidationError('sessionId must not start with "-".');
+      if (sid !== void 0 && !isSessionHandle(sid)) {
+        throw new ValidationError("sessionId must be a session handle (11 characters, as listed by MEGA). To close all other sessions, omit sessionId.");
       }
       const summary = sid ? `This will close MEGA session ${sid} (the current session is kept).` : "This will close ALL other MEGA login sessions on this account (the current session is kept).";
       const gate = checkConfirm(rt, "mega_killsession", { sessionId: sid ?? null }, confirm, summary);
@@ -23820,6 +24133,15 @@ ${link}` : `No public link for ${rp2}.`, { remotePath: rp2, link });
         if (password !== void 0) assertSecret(password, "password");
         const exp = expire === void 0 ? void 0 : assertFlagValue(expire, "expire");
         const note = writable ? " These are WRITABLE links \u2014 anyone with the URL can UPLOAD into the folder." : "";
+        const publish = async (node) => {
+          const r2 = await rt.run("export", createArgs(node));
+          if (r2.code !== 0) return "failed";
+          if (password && !isPasswordProtected(parseExportLink(r2.stdout))) {
+            await rt.run("export", ["-d", node]);
+            return "unprotected";
+          }
+          return "ok";
+        };
         const createArgs = (node) => [
           "-a",
           "-f",
@@ -23834,32 +24156,54 @@ ${link}` : `No public link for ${rp2}.`, { remotePath: rp2, link });
           const g = await pcreGate(
             rt,
             "mega_export:create",
-            { remotePath: rp3, writable, megaHosted, hasPassword: password !== void 0 && password !== "", expire: expire ?? null, usePcre: true },
+            { remotePath: rp3, writable, megaHosted, password: secretBinding(password), expire: expire ?? null, usePcre: true },
             confirm,
             rp3,
-            (n, t) => `This will create PUBLIC links for ${n} node(s) that anyone with the URL can access.${note}
-${t}`,
+            (n, t) => [`This will create PUBLIC links for ${n} node(s) that anyone with the URL can access.${note}`, ...exportOptionLines(megaHosted, password, exp), t].join("\n"),
             (p) => assertNotStoreCopy(p, "A matched node")
           );
           if (!g.proceed) return g.result;
           if (g.handles.length === 0) return ok("No matching nodes.", { created: 0 });
-          const { done, failed } = await runPerHandle(rt, "export", g.handles, createArgs);
-          return ok(`Created ${done} public link(s)${failed ? `; ${failed} failed` : ""}.`, { created: done, failed });
+          let done = 0;
+          let failed = 0;
+          let unprotected = 0;
+          for (const h of g.handles) {
+            const outcome = await publish(h);
+            if (outcome === "ok") done++;
+            else if (outcome === "unprotected") unprotected++;
+            else failed++;
+          }
+          return (failed || unprotected ? err : ok)(
+            `Created ${done} public link(s)${failed ? `; ${failed} failed` : ""}${unprotected ? `; ${unprotected} withdrawn because MEGA would not password-protect them (that needs a Pro account)` : ""}.`,
+            { created: done, failed, unprotected }
+          );
         }
         const rp2 = assertNotStoreCopy(assertNoWildcard(assertRemotePath(remotePath), "remotePath"));
+        if (!confirm) await assertNoStoreCopyBelow(rt, rp2);
         const gate2 = checkConfirm(
           rt,
           "mega_export:create",
-          { remotePath: rp2, writable, megaHosted, hasPassword: password !== void 0 && password !== "", expire: expire ?? null },
+          { remotePath: rp2, writable, megaHosted, password: secretBinding(password), expire: expire ?? null },
           confirm,
-          `This will create a PUBLIC link for ${rp2} that anyone with the URL can access.${writable ? " This is a WRITABLE link \u2014 anyone with the URL can UPLOAD into the folder." : ""}`
+          [
+            `This will create a PUBLIC link for ${rp2} that anyone with the URL can access.${writable ? " This is a WRITABLE link \u2014 anyone with the URL can UPLOAD into the folder." : ""}`,
+            ...exportOptionLines(megaHosted, password, exp)
+          ]
         );
         if (gate2) return gate2;
-        return runToResult(rt, "export", createArgs(rp2), (r) => {
-          const link = parseExportLink(r.stdout);
-          return ok(link ? `Public link created for ${rp2}:
+        await assertNoStoreCopyBelow(rt, rp2);
+        const r = await rt.run("export", createArgs(rp2));
+        if (r.code !== 0) return err(classifyExit(r), { ok: false, code: r.code });
+        const link = parseExportLink(r.stdout);
+        if (password && !isPasswordProtected(link)) {
+          await rt.run("export", ["-d", rp2]);
+          return err(
+            `MEGA created the link for ${rp2} WITHOUT a password (password-protected links need a Pro account), so it was removed again. Nothing is published.`,
+            { remotePath: rp2, unprotected: true }
+          );
+        }
+        return ok(link ? `Public link created for ${rp2}:
 ${link}` : `Public link created for ${rp2}.`, { remotePath: rp2, link, writable });
-        });
       }
       if (usePcre) {
         const rp2 = assertNoFlag(remotePath, "remotePath");
@@ -23903,7 +24247,12 @@ ${t}`);
             // token for one literal path must not list every regex match.
             { remotePath: rp2 ?? null, pending: !!pending, usePcre: !!(usePcre && rp2) },
             confirm,
-            'This will reveal the EMAIL ADDRESSES of the users this folder is shared with (third-party contact info). Turn on the "Expose contact tools" setting to allow this without confirming each time.'
+            [
+              // `share <path>` walks the whole tree below the path, so every shared
+              // folder inside it is listed too.
+              `This will reveal the EMAIL ADDRESSES of the users ${!rp2 || rp2 === "/" ? "EVERY shared folder in the account is shared with" : `${usePcre ? "every folder matching " : ""}${rp2} or any folder inside it is shared with`}${pending ? ", including pending invitations" : ""} (third-party contact info).`,
+              'Turn on the "Expose contact tools" setting to allow this without confirming each time.'
+            ]
           );
           if (gate2) return gate2;
         }
@@ -23932,8 +24281,10 @@ ${t}`,
           return ok(`Shared ${done} node(s) with ${withEmail}${failed ? `; ${failed} failed` : ""}.`, { withEmail, shared: done, failed });
         }
         const rp2 = assertNotStoreCopy(assertNoWildcard(assertRemotePath(remotePath ?? "", "remotePath"), "remotePath"));
+        if (!confirm) await assertNoStoreCopyBelow(rt, rp2);
         const gate2 = checkConfirm(rt, "mega_share:add", { remotePath: rp2, withEmail, level: level ?? "read" }, confirm, `This will share ${rp2} with ${withEmail} (${level ?? "read"} access).`);
         if (gate2) return gate2;
+        await assertNoStoreCopyBelow(rt, rp2);
         return runToResult(rt, "share", addArgs(rp2), () => ok(`Shared ${rp2} with ${withEmail} (${level ?? "read"}).`, { remotePath: rp2, withEmail, level: level ?? "read" }));
       }
       const rmArgs = (node) => ["-d", `--with=${withEmail}`, node];
@@ -24126,7 +24477,7 @@ function registerManage(server, rt) {
     async ({ email: email2, action, message, confirm }) => guardRun(async () => {
       const em = assertNoFlag(email2, "email");
       const msg = message === void 0 ? void 0 : assertFlagValue(message, "message");
-      const summary = action === "delete" ? `This will withdraw the contact invitation to ${em}.` : action === "resend" ? `This will resend the contact invitation to ${em}.` : `This will send a contact invitation email to ${em}.`;
+      const summary = action === "delete" ? `This will withdraw the contact invitation to ${em}.` : action === "resend" ? `This will resend the contact invitation to ${em}.` : `This will send a contact invitation email to ${em}${msg ? ` with the message: "${msg}"` : ""}.`;
       const gate = checkConfirm(rt, "mega_invite", { email: em, action, message: msg ?? null }, confirm, summary);
       if (gate) return gate;
       const args = [];
@@ -24172,13 +24523,13 @@ function registerManage(server, rt) {
     },
     async ({ link, remotePath, password, confirm }) => guardRun(async () => {
       const lk = assertNoFlag(link, "link");
-      if (!/^https?:\/\//i.test(lk) && !lk.includes("#") && !/^mega:/i.test(lk)) {
-        throw new ValidationError("link does not look like a MEGA public link.");
+      if (!isPublicLink(lk)) {
+        throw new ValidationError("link must be a MEGA public link (https://mega.nz/file/... or /folder/...).");
       }
       const pw = password === void 0 ? void 0 : assertSecret(password, "password");
       const rp = assertRemotePath(remotePath);
-      const summary = `This will import the contents of the provided link into ${rp}.`;
-      const gate = checkConfirm(rt, "mega_import", { link: lk, remotePath: rp, hasPassword: password !== void 0 && password !== "" }, confirm, summary);
+      const summary = `This will import the contents of the link ${lk} into ${rp}.`;
+      const gate = checkConfirm(rt, "mega_import", { link: lk, remotePath: rp, password: secretBinding(password) }, confirm, summary);
       if (gate) return gate;
       const args = [lk, ...pw ? [`--password=${pw}`] : [], rp];
       return runToResult(rt, "import", args, () => ok(`Imported the link into ${rp}.`, { remotePath: rp }));
@@ -24267,7 +24618,12 @@ function registerConfig(server, rt) {
         default:
           throw new ValidationError("Unsupported setting.");
       }
-      const summary = `This will set ${setting} to "${v}".`;
+      const scopeNote = [
+        ...setting === "speedlimit" && direction ? [`for ${direction}`] : [],
+        ...setting === "log" && scope ? [`for the ${scope.toUpperCase()} logger`] : [],
+        ...setting === "permissions" && target ? [`for new ${target}`] : []
+      ];
+      const summary = `This will set ${setting}${scopeNote.length ? ` ${scopeNote.join(" ")}` : ""} to "${v}".`;
       const gate = checkConfirm(rt, `mega_config:${setting}`, { value: v, direction: direction ?? null, scope: scope ?? null, target: target ?? null }, confirm, summary);
       if (gate) return gate;
       return runToResult(rt, setting, args, () => ok(summary.replace(/^This will /, "Done: "), { setting, value: v }));
@@ -24289,7 +24645,7 @@ function registerSync(server, rt) {
     },
     async () => guardRun(
       async () => runToResult(rt, "sync", [], (r) => {
-        const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
+        const { text, total, truncated } = capLines(hideContacts(r.stdout, rt.config.exposeContacts), rt.config.maxListLines);
         return ok(text || "(no syncs configured)", { syncCount: total, truncated });
       })
     )
@@ -24308,12 +24664,14 @@ function registerSync(server, rt) {
     },
     async ({ localPath, remotePath, confirm }) => guardRun(async () => {
       const lp = assertLocalPath(localPath);
-      const rp = assertRemotePath(remotePath);
+      const rp = assertNotStoreCopy(assertRemotePath(remotePath));
       assertNoStoreWithin(lp, "sync", await rt.getBinDir());
       assertNoProtectedWithin(lp, "sync");
+      if (!confirm) await assertNoStoreCopyBelow(rt, rp);
       const summary = `This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`;
       const gate = checkConfirm(rt, "mega_sync_add", { localPath: lp, remotePath: rp }, confirm, summary);
       if (gate) return gate;
+      await assertNoStoreCopyBelow(rt, rp);
       return runToResult(rt, "sync", [lp, rp], () => ok(`Started sync ${lp} <-> ${rp}.`, { localPath: lp, remotePath: rp }));
     })
   );
@@ -24349,7 +24707,7 @@ function registerSync(server, rt) {
       const r = await rt.run("backup", []);
       if (r.code === ExitCode.NOTFOUND) return ok("(no backups configured)", { backupCount: 0, truncated: false });
       if (r.code !== ExitCode.OK) return err(classifyExit(r), { ok: false, code: r.code });
-      const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
+      const { text, total, truncated } = capLines(hideContacts(r.stdout, rt.config.exposeContacts), rt.config.maxListLines);
       return ok(text || "(no backups configured)", { backupCount: total, truncated });
     })
   );
@@ -24415,7 +24773,7 @@ function registerSync(server, rt) {
       if (detail !== void 0) args.push("--detail", detail.toLowerCase() === "all" ? "--all" : assertNoFlag(detail, "detail"));
       if (limit !== void 0) args.push(`--limit=${limit}`);
       return runToResult(rt, "sync-issues", args, (r) => {
-        const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
+        const { text, total, truncated } = capLines(hideContacts(r.stdout, rt.config.exposeContacts), rt.config.maxListLines);
         return ok(text || "(no sync issues)", { issueCount: total, truncated });
       });
     })
@@ -24468,9 +24826,11 @@ function registerSync(server, rt) {
 var DEFAULT_MAX = 1048576;
 var HARD_MAX = 10485760;
 var NUL = String.fromCharCode(0);
+var ESC = String.fromCharCode(27);
 var REPLACEMENT = "\uFFFD";
 function looksBinary(s) {
   if (s.includes(NUL)) return true;
+  if (s.includes(ESC)) return true;
   const sample = s.slice(0, 8192);
   if (sample.length === 0) return false;
   let nonText = 0;
@@ -24482,8 +24842,8 @@ function looksBinary(s) {
   }
   return nonText / sample.length > 0.05;
 }
-function registerCat(server, rt) {
-  return server.registerTool(
+function registerCat(server, rt, allowed) {
+  const tool = server.registerTool(
     "mega_cat",
     {
       title: "MEGA: read file",
@@ -24495,6 +24855,10 @@ function registerCat(server, rt) {
       annotations: { title: "MEGA: read file", readOnlyHint: true, openWorldHint: true }
     },
     async ({ remotePath, maxBytes }) => guardRun(async () => {
+      if (allowed && !allowed()) {
+        tool.disable();
+        return err("Reading file contents was turned off. Ask the user, then call mega_file_reading to turn it on again.");
+      }
       const rp = assertNotStoreCopy(assertRemotePath(remotePath));
       const cap = Math.min(maxBytes ?? DEFAULT_MAX, HARD_MAX);
       const r = await rt.run("cat", [rp], { maxBuffer: cap });
@@ -24512,21 +24876,22 @@ function registerCat(server, rt) {
           bytes: r.stdout.length
         });
       }
-      return ok(r.stdout.length ? r.stdout : "(empty file)", { remotePath: rp, bytes: r.stdout.length });
+      return { content: [{ type: "text", text: r.stdout.length ? r.stdout : "(empty file)" }] };
     })
   );
+  return tool;
 }
 
 // src/tools/fileReading.ts
-function registerFileReading(server, rt, cat) {
+function registerFileReading(server, rt, cat, grant = {}) {
   server.registerTool(
     "mega_file_reading",
     {
       title: "MEGA: allow reading file contents",
-      description: "Turn on (or off) the assistant's ability to read the text inside your MEGA files. Call this when the user asks to read, summarise or search INSIDE a document and mega_cat is unavailable. Enabling requires confirmation and applies to the current session only, unless remember=true is passed to keep it on for future sessions.",
+      description: "Turn on (or off) the assistant's ability to read the text inside your MEGA files. Call this when the user asks to read, summarise or search INSIDE a document and mega_cat is unavailable. Enabling requires confirmation and lasts until the app is restarted, unless remember=true is passed to keep it on for future sessions.",
       inputSchema: {
         action: external_exports.enum(["enable", "disable"]).default("enable").describe("Turn file-content reading on or off."),
-        remember: external_exports.boolean().default(false).describe(`Keep the choice for future sessions (the user's explicit "don't ask me again"). Pass true ONLY when the user actually said so; otherwise the choice lasts for this session and they are asked again next time.`),
+        remember: external_exports.boolean().default(false).describe(`Keep the choice for future sessions (the user's explicit "don't ask me again"). Pass true ONLY when the user actually said so; otherwise the choice lasts until the app is restarted and they are asked again after that.`),
         confirm: external_exports.string().optional().describe("Confirmation token from the first call (enabling only).")
       },
       // Not destructive to data, but it widens what leaves the machine, so it is
@@ -24536,6 +24901,7 @@ function registerFileReading(server, rt, cat) {
     async ({ action, remember, confirm }) => guardRun(async () => {
       if (action === "disable") {
         cat.disable();
+        grant.gen = void 0;
         const cleared = writeRemembered(rt.config, false);
         const caveat = rt.config.exposeFileContents ? "\n\nNote: file reading is switched on in this connector's own settings (MEGA_MCP_EXPOSE_FILES), which takes precedence, so it will be on again the next time the app starts. To turn it off permanently, change that setting where the connector is configured." : cleared ? "" : "\n\nNote: the saved preference could not be cleared on disk, so it may come back on next start.";
         return ok(
@@ -24543,7 +24909,8 @@ function registerFileReading(server, rt, cat) {
           { enabled: false, remembered: false, sessionOnly: rt.config.exposeFileContents }
         );
       }
-      const scope = remember ? "This will stay on for future sessions until you turn it off." : "This lasts until the app is restarted - you will be asked again after that.";
+      const canRemember = hostStateDir() !== null;
+      const scope = remember ? canRemember ? "This will stay on for future sessions until you turn it off." : "This app gives the connector no private place to save that choice, so this lasts until the app is restarted." : "This lasts until the app is restarted - you will be asked again after that.";
       const gate = checkConfirm(rt, "mega_file_reading", { action, remember }, confirm, [
         "This will let the assistant read the TEXT INSIDE your MEGA files.",
         "File contents become part of this conversation and are therefore visible to the AI provider.",
@@ -24551,9 +24918,11 @@ function registerFileReading(server, rt, cat) {
         scope
       ]);
       if (gate) return gate;
+      ensureStateFile(rt.config);
+      grant.gen = readGeneration(rt.config);
       cat.enable();
       const saved = remember ? writeRemembered(rt.config, true) : true;
-      const tail = remember ? saved ? ' It will stay on for future sessions; call this tool with action="disable" to turn it off.' : " It could not be saved to disk, so it applies to this session only." : " It lasts until the app is restarted, and you will be asked again after that.";
+      const tail = remember ? saved ? ' It will stay on for future sessions; call this tool with action="disable" to turn it off.' : " It could not be saved for future sessions, so it lasts until the app is restarted." : " It lasts until the app is restarted, and you will be asked again after that.";
       return ok(`File-content reading is now ON.${tail}`, { enabled: true, remembered: remember && saved });
     })
   );
@@ -24582,9 +24951,15 @@ function registerFileTools(server, rt) {
     if (rt.config.exposeFileContents) registerCat(server, rt);
     return;
   }
-  const cat = registerCat(server, rt);
+  registerPluginFileTools(server, rt);
+}
+function registerPluginFileTools(server, rt) {
+  if (rt.config.fileContentsForcedOff) return;
+  const grant = {};
+  const allowed = () => rt.config.exposeFileContents || readRemembered(rt.config) || grant.gen !== void 0 && readGeneration(rt.config) === grant.gen;
+  const cat = registerCat(server, rt, allowed);
   if (!(rt.config.exposeFileContents || readRemembered(rt.config))) cat.disable();
-  registerFileReading(server, rt, cat);
+  registerFileReading(server, rt, cat, grant);
 }
 
 // src/index.ts
@@ -24619,7 +24994,7 @@ async function main() {
         "Safety \u2014 these tools use a two-call confirmation protocol: mega_cp, mega_rm, mega_deleteversions, mega_export (create/delete), mega_share (add/remove), mega_mv, mega_put, mega_get, mega_thumbnail, mega_logout, mega_killsession, mega_attr_set, mega_userattr_set, mega_user_remove, mega_user_verify, mega_transfer_control, mega_invite, mega_ipc, mega_import, mega_config (when changing a value or running reload/debug), mega_sync_add, mega_sync_control, mega_sync_ignore (add/remove), mega_backup_add, mega_backup_control. The first call (no `confirm`) returns a preview + `confirmToken` and does NOT execute; relay the preview and only call again with `confirm` set to that token after the user explicitly approves.",
         "",
         'All cloud paths are absolute MEGA paths starting with "/". Listings are capped.',
-        ...isPluginBuild ? [
+        ...isPluginBuild && !config2.fileContentsForcedOff && !config2.exposeFileContents ? [
           "",
           'Reading file contents: `mega_cat` starts DISABLED, so the user is never assumed to have agreed that their documents may enter this conversation. When the user asks you to read, summarise, search inside or analyse a document and `mega_cat` is not available, call `mega_file_reading` (confirm-gated), relay its preview, and only confirm once the user approves. Pass `remember: true` ONLY if the user explicitly says not to ask again \u2014 otherwise the permission lasts until the app is restarted (possibly spanning several conversations) and they are asked again after that. Never call it pre-emptively or to "prepare"; ask only when a request actually needs file contents. It is reversible and the user can always take it back: if they ask you to stop reading their files, or to undo a "don\'t ask again", call `mega_file_reading` with `action: "disable"` (no confirmation needed) - that turns `mega_cat` off and clears any remembered answer.'
         ] : [],

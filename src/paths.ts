@@ -1,6 +1,6 @@
 import { resolve, sep, dirname, basename, join } from 'node:path';
 import { homedir } from 'node:os';
-import { realpathSync, existsSync, readdirSync, lstatSync } from 'node:fs';
+import { realpathSync, existsSync, readdirSync, lstatSync, statSync } from 'node:fs';
 
 /** Thrown when a model-supplied path fails validation. */
 export class ValidationError extends Error {
@@ -58,6 +58,48 @@ function isAtOrUnder(child: string, parent: string): boolean {
   const c = fold(child);
   const p = fold(parent);
   return c === p || c.startsWith(p.endsWith(sep) ? p : p + sep);
+}
+
+/** (dev, ino) of an existing path, else null. bigint: NTFS file ids exceed 2^53. */
+function diskId(p: string): string | null {
+  try {
+    const st = statSync(p, { bigint: true });
+    return `${st.dev}:${st.ino}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The on-disk identities of `p` (when it exists) and of every directory above it.
+ *
+ * Comparing path STRINGS cannot tell that two spellings name one directory when no
+ * symlink is involved: on macOS /System/Volumes/Data/Users/<u> is /Users/<u> (a
+ * firmlink), and realpath keeps whichever spelling it was given. Every containment
+ * check below therefore also asks the filesystem: is the other directory's
+ * identity in this chain?
+ */
+function diskChain(p: string): Set<string> {
+  const ids = new Set<string>();
+  let cur = resolve(p);
+  for (;;) {
+    const id = diskId(cur);
+    if (id) ids.add(id);
+    const parent = dirname(cur);
+    if (parent === cur) return ids;
+    cur = parent;
+  }
+}
+
+/** `child` IS `parent` or lies under it, by on-disk identity (needs `parent` to exist). */
+function onDiskAtOrUnder(child: string, parent: string, chain: Set<string> = diskChain(child)): boolean {
+  const id = diskId(parent);
+  return id !== null && chain.has(id);
+}
+
+function sameOnDisk(a: string, b: string): boolean {
+  const id = diskId(a);
+  return id !== null && id === diskId(b);
 }
 
 /**
@@ -145,7 +187,8 @@ function hitsSessionStore(rawAbs: string): boolean {
     // up ~/Library/Caches carries away nothing but a socket.
     if (fold(segment) === 'megacmd.mac') return true;
   }
-  return sessionStoreRoots().some((r) => isAtOrUnder(abs, r));
+  const chain = diskChain(abs);
+  return sessionStoreRoots().some((r) => isAtOrUnder(abs, r) || onDiskAtOrUnder(abs, r, chain));
 }
 
 /** .megaCmd, plus the MEGACMD_WORKING_FOLDER_SUFFIX variant .megaCmd_<suffix>. */
@@ -236,7 +279,11 @@ function assertNotTrustRoot(abs: string): void {
   if (trustRoots.length === 0) return;
   for (const candidate of spellingsOf(abs)) {
     for (const root of trustRoots) {
-      if (isAtOrUnder(normWinPath(candidate), root) || isAtOrUnder(normWinPath(candidate), realpathBestEffort(root))) {
+      if (
+        isAtOrUnder(normWinPath(candidate), root) ||
+        isAtOrUnder(normWinPath(candidate), realpathBestEffort(root)) ||
+        onDiskAtOrUnder(candidate, root)
+      ) {
         throw new ValidationError(
           "Refusing to read or write inside the MEGAcmd program directory or this connector's data directory - a file placed there would be loaded by MEGAcmd or by the connector itself.",
         );
@@ -262,7 +309,9 @@ function protectedBelow(abs: string, inclusive: boolean): string[] {
   const hits = new Set<string>();
   for (const root of roots) {
     for (const f of forms) {
-      if (isAtOrUnder(root, f) && (inclusive || fold(root) !== fold(f))) hits.add(root);
+      const below = isAtOrUnder(root, f) || onDiskAtOrUnder(root, f);
+      const same = fold(root) === fold(f) || sameOnDisk(root, f);
+      if (below && (inclusive || !same)) hits.add(root);
     }
   }
   return [...hits];
@@ -278,18 +327,43 @@ function protectedBelow(abs: string, inclusive: boolean): string[] {
  * protected directory below `localDir` counts.
  */
 export function assertDownloadTarget(localDir: string, name: string | null): void {
-  const known = name !== null && name !== '';
-  const target = known ? join(localDir, name) : localDir;
-  if (known) {
+  if (name === null || name === '') return assertTargetBelow(localDir, null);
+  // `name#<10 digits>` addresses a previous VERSION of `name`, and the download is
+  // written under the plain name, so both spellings are checked.
+  const version = name.match(/^(.+)#\d{10}$/);
+  for (const n of version ? [name, version[1] as string] : [name]) assertTargetBelow(localDir, n);
+}
+
+function assertTargetBelow(localDir: string, name: string | null): void {
+  const target = name !== null ? join(localDir, name) : localDir;
+  if (name !== null) {
     assertNotConfigDir(target);
     assertNotTrustRoot(target);
   }
-  const below = protectedBelow(target, known);
+  const below = protectedBelow(target, name !== null);
   if (below.length > 0) {
     throw new ValidationError(
-      `Refusing to download ${known ? `"${name}" ` : ''}into ${localDir}: the download could write into a directory MEGAcmd or this connector depends on (${below.join(', ')}). Choose a different destination folder${known ? '' : ', such as a subfolder'}.`,
+      `Refusing to download ${name !== null ? `"${name}" ` : ''}into ${localDir}: the download could write into a directory MEGAcmd or this connector depends on (${below.join(', ')}). Choose a different destination folder${name !== null ? '' : ', such as a subfolder'}.`,
     );
   }
+}
+
+/**
+ * Refuse an upload source that MEGAcmd would expand as a glob AFTER approval.
+ *
+ * `put` runs glob(3) on any local path that does not exist and contains "*" or
+ * "?", so the files it uploads are not the ones the preview named — and the
+ * expansion never passes through assertLocalPath, so it could reach the session
+ * store. A path that exists is taken literally, so a real file named "a?.txt" still
+ * uploads.
+ */
+export function assertNoLocalGlob(lp: string, field = 'localPath'): string {
+  if (/[*?]/.test(lp) && !existsSync(lp)) {
+    throw new ValidationError(
+      `${field} contains "*" or "?" and does not exist: MEGAcmd would expand it as a pattern after you approve, so the preview could not show what is uploaded. List the files explicitly.`,
+    );
+  }
+  return lp;
 }
 
 /**
@@ -334,8 +408,8 @@ export function sessionStoresWithin(abs: string, binDir?: string | null): string
   const hits = new Map<string, string>();
   for (const root of sessionStoreRoots(binDir)) {
     // The store ITSELF is refused upstream by assertLocalPath.
-    if (forms.some((f) => fold(root) === fold(f))) continue;
-    if (forms.some((f) => isAtOrUnder(root, f)) && existsSync(root)) {
+    if (forms.some((f) => fold(root) === fold(f) || sameOnDisk(root, f))) continue;
+    if (forms.some((f) => isAtOrUnder(root, f) || onDiskAtOrUnder(root, f)) && existsSync(root)) {
       hits.set(fold(realpathBestEffort(root)), root);
     }
   }
@@ -379,6 +453,15 @@ function rejectArgvQuote(v: string, field: string): void {
       `${field} must not contain a double quote - MEGAcmd cannot address such a value: it would re-parse the command and operate on a different target.`,
     );
   }
+  // The server-side tokenizer also treats a SINGLE quote at the start of a word as
+  // quoting and strips it, and the client only adds double quotes around values
+  // that contain a space. So `'-a` reaches the parser as `-a`: a flag that no
+  // leading-"-" check ever saw. Paths are absolute and cannot start with one.
+  if (v.trimStart().startsWith("'")) {
+    throw new ValidationError(
+      `${field} must not start with a single quote - MEGAcmd would strip it and could read the rest as an option.`,
+    );
+  }
 }
 
 /** rejectArgvQuote for a value we must never echo back (a link password). */
@@ -400,6 +483,11 @@ export function assertRemotePath(p: string, field = 'remotePath'): string {
   if (!t.startsWith('/')) {
     throw new ValidationError(`${field} must be an absolute MEGA path starting with "/".`);
   }
+  // MEGAcmd unescapes "\ " and "\\" when it resolves a remote path, so a backslash
+  // makes the node it acts on differ from the path every check here looked at.
+  if (t.includes('\\')) {
+    throw new ValidationError(`${field} must not contain a backslash - MEGAcmd reads it as an escape, so it would resolve a different path.`);
+  }
   rejectArgvQuote(t, field);
   return t;
 }
@@ -417,6 +505,9 @@ export function assertOptionalRemotePath(p: string | undefined, field = 'remoteP
  */
 export function assertNoFlag(v: string, field: string): string {
   rejectNul(v);
+  // Ids, tags, names and links never legitimately hold control characters, and
+  // MEGAcmd drops or splits on several of them.
+  if (/[\x00-\x1f\x7f]/.test(v)) throw new ValidationError(`${field} must not contain control characters.`);
   const t = v.trim();
   if (t === '') throw new ValidationError(`${field} is empty.`);
   if (t.startsWith('-')) throw new ValidationError(`${field} must not start with "-".`);
@@ -605,7 +696,7 @@ export function planUpload(lps: string[], rp: string, binDir?: string | null): U
     .map((r) => realpathBestEffort(r));
   const containsStore = (p: string): boolean => {
     const real = realpathBestEffort(normWinPath(p));
-    return stores.some((st) => fold(st) !== fold(real) && isAtOrUnder(st, real));
+    return stores.some((st) => !(fold(st) === fold(real) || sameOnDisk(st, p)) && (isAtOrUnder(st, real) || onDiskAtOrUnder(st, p)));
   };
 
   const direct: string[] = [];
@@ -647,6 +738,16 @@ export function planUpload(lps: string[], rp: string, binDir?: string | null): U
     else direct.push(lp);
   }
   if (direct.length > 0) steps.unshift({ dest: rp, sources: direct });
+  // A rebuilt folder's cloud path comes from LOCAL names, and MEGAcmd unescapes a
+  // backslash and reads `name#<10 digits>` as a file version when it resolves the
+  // destination - so it could land somewhere other than the folder mkdir made.
+  for (const step of steps) {
+    if (step.dest !== rp && (step.dest.includes('\\') || /#\d{10}(\/|$)/.test(step.dest))) {
+      throw new ValidationError(
+        `Cannot upload around the session store here: the folder name in ${step.dest} would be read differently by MEGAcmd. Upload the subfolders individually instead.`,
+      );
+    }
+  }
   return { steps, excluded };
 }
 
@@ -685,6 +786,29 @@ function globCanMatchStoreName(segment: string): boolean {
 }
 
 /**
+ * Refuse listing INCOMING shares by pattern while contact details are not exposed.
+ *
+ * MEGAcmd matches a path that starts with "//f" plus a wildcard (or a PCRE) against
+ * `//from/<sharer-email>:<folder>`, so such a listing enumerates the email address
+ * of everyone who shared a folder with the user - the same data mega_share list
+ * and mega_mount only reveal after a confirmation. A specific in-share path is
+ * fine: it names an address the caller already has.
+ */
+export function assertNoInshareEnumeration(path: string | undefined, pattern: boolean, exposeContacts: boolean): void {
+  if (exposeContacts || !path) return;
+  // Any "//" root other than the rubbish bin and inbox may be resolved against
+  // //from/<email>:<folder>, and MEGAcmd skips leading blanks and control bytes,
+  // so neither may be used to step around the check.
+  const p = path.replace(/^[\x00-\x20]+/, '');
+  if (!p.startsWith('//') || p.startsWith('//bin/') || p.startsWith('//in/')) return;
+  if (pattern || /[*?]/.test(p)) {
+    throw new ValidationError(
+      'Listing incoming shares by pattern reveals the email addresses of the people who shared them. Use mega_mount (it asks first), or turn on the "Expose contact tools" setting.',
+    );
+  }
+}
+
+/**
  * Refuse a CLOUD path that names a copy of the session store.
  *
  * The local guard cannot see a store that was uploaded earlier (by an old version
@@ -694,17 +818,31 @@ function globCanMatchStoreName(segment: string): boolean {
  * name is refused — and so is a wildcard segment that MEGAcmd could expand to it.
  */
 export function assertNotStoreCopy(p: string, field = 'remotePath'): string {
-  for (const segment of p.split('/')) {
-    if (isStoreName(segment)) {
-      throw new ValidationError(
-        `${field} is inside a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY. No tool reads, copies, moves, shares or publishes it.`,
-      );
-    }
-    if (/[*?]/.test(segment) && globCanMatchStoreName(segment)) {
-      throw new ValidationError(
-        `${field} contains a wildcard that could match a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY. Use a more specific pattern or the exact path.`,
-      );
-    }
+  const why = storeCopyIn(p);
+  if (why === 'name') {
+    throw new ValidationError(
+      `${field} is inside a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY. No tool reads, copies, moves, shares or publishes it.`,
+    );
+  }
+  if (why === 'wildcard') {
+    throw new ValidationError(
+      `${field} contains a wildcard that could match a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY. Use a more specific pattern or the exact path.`,
+    );
   }
   return p;
+}
+
+/**
+ * Does `p` pass through a session-store copy: by name, or through a wildcard that
+ * could expand to one? Segments are split on both separators (a local Windows path
+ * reaches MEGAcmd too), and an incoming-share root `<email>:<name>` is judged by
+ * its `<name>`, which is what it is downloaded and resolved as.
+ */
+export function storeCopyIn(p: string): 'name' | 'wildcard' | null {
+  const names = p.split(/[\\/]/).flatMap((segment) => (segment.includes(':') ? [segment, segment.slice(segment.indexOf(':') + 1)] : [segment]));
+  // A real store name anywhere wins over a glob-like segment met earlier: a folder
+  // literally named "*" must not hide the `.megaCmd` below it.
+  if (names.some((name) => isStoreName(name))) return 'name';
+  if (names.some((name) => /[*?]/.test(name) && globCanMatchStoreName(name))) return 'wildcard';
+  return null;
 }

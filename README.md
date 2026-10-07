@@ -10,7 +10,8 @@ configuration.
 ## Security model (non-negotiable)
 
 - **Login never goes through the AI.** There is no login tool and no tool accepts
-  a password. You authenticate **out-of-band** in the MEGAcmd interactive shell
+  your account password (only a public link's own password, for opening that
+  link). You authenticate **out-of-band** in the MEGAcmd interactive shell
   (`login <email>`, hidden password prompt); this server only issues
   already-authenticated `mega-*` commands.
 - **No session/credential material is ever returned or logged.** `mega_whoami`
@@ -255,9 +256,9 @@ Removing the connector does **not** automatically remove MEGAcmd or your session
 4. Codex plugin only: if you told the assistant not to ask again about reading
    file contents, that answer outlives an uninstall and would apply to a
    reinstall. Ask the assistant to turn file reading off **before** removing the
-   plugin, or delete `file-reading.json` from the plugin's data directory
-   (falling back to the cache directory in step 2). The Claude Code plugin keeps
-   that answer in its own data directory, which Claude Code deletes on uninstall.
+   plugin, or delete `file-reading.json` from the plugin's data directory. A "don't
+   ask again" is only ever kept there, never in the cache directory. The Claude Code
+   plugin keeps it in its own data directory, which Claude Code deletes on uninstall.
 
 ## Development
 
@@ -350,13 +351,16 @@ Don't push to `release` directly or force-push it.
   `mega_ipc`, `mega_import`, `mega_sync_add`, `mega_sync_control`,
   `mega_sync_ignore` (add/remove), `mega_backup_add`, `mega_backup_control`
 - Opt-in only (`expose_contacts`, off by default — surfaces contact PII):
-  `mega_users`, `mega_showpcr`, `mega_userattr`
+  `mega_users`, `mega_showpcr`, `mega_userattr`. With it off, `mega_mount` and
+  `mega_share` list ask first (they show the email addresses of people who share
+  with you or whom you share with), and incoming shares cannot be listed by pattern.
 - Opt-in only (`expose_account_details`, off by default — surfaces your own login
   metadata + financial PII): `mega_sessions`, `mega_balance`
 - Opt-in only (off by default — brings file content into the conversation):
   `mega_cat` (read a file's text, capped to 1 MB / max 10 MB, text-only). File
   content is treated as untrusted data; destructive/exfiltration tools stay
-  confirm-gated so embedded instructions cannot cause silent harm. How it is
+  confirm-gated, so instructions embedded in a file still face a preview (see the
+  note above on what that preview does and does not guarantee). How it is
   turned on depends on the distribution:
   - **Claude Desktop (MCPB):** the `expose_file_contents` checkbox in the
     extension's settings. Hand-registered servers: `MEGA_MCP_EXPOSE_FILES=true`.
@@ -364,8 +368,12 @@ Don't push to `release` directly or force-push it.
     changed from Codex (or from Cowork), so the assistant asks instead. When a request needs a file's contents
     it calls `mega_file_reading` (confirm-gated), which enables `mega_cat` **until
     the app is restarted** — you are asked again after that — unless you say not
-    to ask again. Ask the assistant to stop reading your files
-    at any time; that turns it off immediately and clears a remembered answer.
+    to ask again (kept only in the data folder the app gives the plugin). Ask the
+    assistant to stop reading your files at any time; that turns it off at once,
+    in every conversation of that app using the plugin (except where
+    `MEGA_MCP_EXPOSE_FILES=true` forces it on), and clears a remembered answer.
+    Setting `MEGA_MCP_EXPOSE_FILES=false` turns file reading off for good: the
+    assistant then does not offer to ask.
 
 `mega_account` runs `whoami -l` (the only source of the plan tier) but returns
 ONLY plan + storage via a fail-closed allowlist parser — the session list,

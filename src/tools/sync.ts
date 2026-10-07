@@ -3,9 +3,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
 import { ExitCode, classifyExit } from '../errors.js';
-import { assertRemotePath, assertLocalPath, assertNoFlag, assertFlagValue, assertNoStoreWithin, assertNoProtectedWithin, ValidationError } from '../paths.js';
+import { assertRemotePath, assertLocalPath, assertNoFlag, assertFlagValue, assertNoStoreWithin, assertNoProtectedWithin, assertNotStoreCopy, ValidationError } from '../paths.js';
 import { capLines } from '../parsers/listing.js';
-import { guardRun, runToResult, checkConfirm, assertPlanSize } from './helpers.js';
+import { guardRun, runToResult, checkConfirm, assertPlanSize, hideContacts, assertNoStoreCopyBelow } from './helpers.js';
 
 const RO = { readOnlyHint: true, openWorldHint: true } as const;
 const SYNC_CTRL: Record<string, string> = { pause: '-p', resume: '-e', delete: '-d' };
@@ -30,7 +30,7 @@ export function registerSync(server: McpServer, rt: Runtime): void {
     async () =>
       guardRun(async () =>
         runToResult(rt, 'sync', [], (r) => {
-          const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
+          const { text, total, truncated } = capLines(hideContacts(r.stdout, rt.config.exposeContacts), rt.config.maxListLines);
           return ok(text || '(no syncs configured)', { syncCount: total, truncated });
         }),
       ),
@@ -53,13 +53,17 @@ export function registerSync(server: McpServer, rt: Runtime): void {
     async ({ localPath, remotePath, confirm }) =>
       guardRun(async () => {
         const lp = assertLocalPath(localPath);
-        const rp = assertRemotePath(remotePath);
+        // Two-way: the cloud side is downloaded too, so a store copy there would land on disk.
+        const rp = assertNotStoreCopy(assertRemotePath(remotePath));
         assertNoStoreWithin(lp, 'sync', await rt.getBinDir());
         // Two-way: cloud changes are written back below lp.
         assertNoProtectedWithin(lp, 'sync');
+        // A store copy anywhere BELOW the cloud folder would be synced down to disk.
+        if (!confirm) await assertNoStoreCopyBelow(rt, rp);
         const summary = `This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`;
         const gate = checkConfirm(rt, 'mega_sync_add', { localPath: lp, remotePath: rp }, confirm, summary);
         if (gate) return gate;
+        await assertNoStoreCopyBelow(rt, rp);
         return runToResult(rt, 'sync', [lp, rp], () => ok(`Started sync ${lp} <-> ${rp}.`, { localPath: lp, remotePath: rp }));
       }),
   );
@@ -107,7 +111,7 @@ export function registerSync(server: McpServer, rt: Runtime): void {
         // as a clean empty result rather than an error.
         if (r.code === ExitCode.NOTFOUND) return ok('(no backups configured)', { backupCount: 0, truncated: false });
         if (r.code !== ExitCode.OK) return err(classifyExit(r), { ok: false, code: r.code });
-        const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
+        const { text, total, truncated } = capLines(hideContacts(r.stdout, rt.config.exposeContacts), rt.config.maxListLines);
         return ok(text || '(no backups configured)', { backupCount: total, truncated });
       }),
   );
@@ -184,7 +188,7 @@ export function registerSync(server: McpServer, rt: Runtime): void {
         if (detail !== undefined) args.push('--detail', detail.toLowerCase() === 'all' ? '--all' : assertNoFlag(detail, 'detail'));
         if (limit !== undefined) args.push(`--limit=${limit}`);
         return runToResult(rt, 'sync-issues', args, (r) => {
-          const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
+          const { text, total, truncated } = capLines(hideContacts(r.stdout, rt.config.exposeContacts), rt.config.maxListLines);
           return ok(text || '(no sync issues)', { issueCount: total, truncated });
         });
       }),

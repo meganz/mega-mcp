@@ -1,9 +1,11 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { createHmac, randomBytes } from 'node:crypto';
+import { posix } from 'node:path';
 import type { Runtime } from '../runtime.js';
 import type { RunResult } from '../types.js';
 import { ok, err } from '../mcpResult.js';
-import { ValidationError } from '../paths.js';
-import { classifyExit } from '../errors.js';
+import { ValidationError, assertNoInshareEnumeration, storeCopyIn } from '../paths.js';
+import { classifyExit, ExitCode } from '../errors.js';
 import { capLines } from '../parsers/listing.js';
 
 /**
@@ -35,19 +37,100 @@ export async function pcreMatchPreview(
   pattern: string,
   max = PLAN_MAX,
 ): Promise<{ ok: true; count: number; handles: string[]; paths: string[]; text: string } | { ok: false; error: string }> {
+  // The match listing below is returned in the preview, in-share paths included.
+  assertNoInshareEnumeration(pattern, true, rt.config.exposeContacts);
   const r = await rt.run('find', [pattern, '--use-pcre', '--show-handles']);
   if (r.code !== 0) return { ok: false, error: classifyExit(r) };
+  // The listing prints node NAMES raw, one per line, and a name may contain a
+  // line break - so a crafted name could add lines of its own, each with any
+  // handle and any path it likes. The handle-only listing cannot be forged that
+  // way (a handle is base64), so it is the authority: every line of the named
+  // listing must parse, and the handles it yields must be exactly that set.
+  const only = await rt.run('find', [pattern, '--use-pcre', '--print-only-handles']);
+  if (only.code !== 0) return { ok: false, error: classifyExit(only) };
   const entries: { path: string; handle: string }[] = [];
   for (const raw of r.stdout.split(/\r?\n/)) {
+    if (!raw.trim()) continue;
+    // Every line must carry a handle; together with the multiset check below, an
+    // extra line from a name with a line break can no longer pass unnoticed.
+    const m = raw.match(/^(.+) <(H:[A-Za-z0-9_-]+)>$/);
+    if (!m) return { ok: false, error: UNLISTABLE };
+    entries.push({ path: m[1] as string, handle: m[2] as string });
+  }
+  const authoritative: string[] = [];
+  for (const raw of only.stdout.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
-    const m = line.match(/^(.*?)\s*<(H:[A-Za-z0-9_-]+)>\s*$/);
-    if (m) entries.push({ path: m[1] as string, handle: m[2] as string });
+    if (!/^H:[A-Za-z0-9_-]+$/.test(line)) return { ok: false, error: UNLISTABLE };
+    authoritative.push(line);
   }
-  const handles = entries.map((e) => e.handle);
-  const shown = entries.slice(0, max).map((e) => `${e.path} <${e.handle}>`).join('\n');
-  const note = entries.length > max ? `\n...(${entries.length} total; showing first ${max})` : '';
-  return { ok: true, count: entries.length, handles, paths: entries.map((e) => e.path), text: (shown || '(no matches)') + note };
+  if (!sameMultiset(entries.map((e) => e.handle), authoritative)) return { ok: false, error: UNLISTABLE };
+  // `find` recurses into every matched folder, so the raw set holds each match AND
+  // all of its contents. Acting on all of them would move every descendant out on
+  // its own (flattening the folder), or publish a link per file. Only the topmost
+  // matches are acted on - their contents go with them - while `paths` keeps the
+  // full set, so checks such as "no session-store copy" still see everything.
+  const top = topmost(entries);
+  const handles = top.map((e) => e.handle);
+  const shown = top.slice(0, max).map((e) => `${e.path} <${e.handle}>`).join('\n');
+  const note =
+    (top.length > max ? `\n...(${top.length} total; showing first ${max})` : '') +
+    (top.length < new Set(entries.map((e) => e.handle)).size ? '\n(Matched folders are acted on as a whole, together with everything inside them.)' : '');
+  return { ok: true, count: top.length, handles, paths: entries.map((e) => e.path), text: (shown || '(no matches)') + note };
+}
+
+/**
+ * Hide the sharer's email in incoming-share paths (`<email>:<folder>`) of a status
+ * listing, unless contact details are exposed. Transfers, syncs and backups of a
+ * shared folder print those paths, and the sharer's address is third-party data
+ * gated everywhere else.
+ */
+export function hideContacts(text: string, exposeContacts: boolean): string {
+  // MEGAcmd shortens long paths in these listings ("alice@e..."), so the address is
+  // not always whole: any run around an "@" up to a path separator or blank goes.
+  return exposeContacts ? text : text.replace(/[^\s/:<>"']*@[^\s/:<>"']*:?/g, '<contact>:');
+}
+
+/** Per-process key: binds a secret into a confirm token without keeping or echoing it. */
+const SECRET_KEY = randomBytes(32);
+
+/**
+ * What a confirm token binds for a secret value (a link password): an HMAC under a
+ * key that never leaves this process. A preview approved for one password cannot
+ * then be spent with another, and the password itself is never stored.
+ */
+export function secretBinding(secret: string | undefined): string | null {
+  if (secret === undefined || secret === '') return null;
+  return createHmac('sha256', SECRET_KEY).update(secret).digest('hex');
+}
+
+/**
+ * Every name a downloaded node may be written under. The top folder of an incoming
+ * share is spelled `<email>:<name>` - with or without `//from/`, and with or
+ * without a trailing slash - but saved as `<name>`. Any last segment holding a
+ * colon is therefore checked both ways.
+ */
+export function localNamesOf(remotePath: string): string[] {
+  const base = posix.basename(remotePath.replace(/(.)\/+$/, '$1'));
+  return base.includes(':') ? [base, base.slice(base.indexOf(':') + 1)] : [base];
+}
+
+const UNLISTABLE =
+  'A matching node has a name this preview cannot list unambiguously (for example one containing a line break). Narrow the pattern so it does not match that node, or rename it first.';
+
+/** Entries not inside another listed entry (a folder's match covers its contents). */
+function topmost<T extends { path: string; handle: string }>(entries: T[]): T[] {
+  const seen = new Set<string>();
+  const unique = entries.filter((e) => (seen.has(e.handle) ? false : (seen.add(e.handle), true)));
+  const paths = unique.map((e) => e.path.replace(/\/+$/, ''));
+  return unique.filter((_, i) => !paths.some((other, j) => j !== i && (other === '' || paths[i]!.startsWith(`${other}/`))));
+}
+
+function sameMultiset(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const x = [...a].sort();
+  const y = [...b].sort();
+  return x.every((v, i) => v === y[i]);
 }
 
 // Token -> the exact node handles resolved at preview time. Keyed by the confirm
@@ -90,6 +173,7 @@ export async function pcreGate(
     // Checked on the PINNED set: execution runs on these handles and nothing else,
     // so a match refused here cannot come back in the second call.
     if (checkPath) for (const p of prev.paths) checkPath(p);
+    // (prev.count counts the topmost matches only: their contents go with them.)
     // Split into lines so the match listing keeps its structure; each line is
     // then escaped individually, since the node names in it come from the cloud
     // and are as untrusted as any other model-reachable value.
@@ -131,10 +215,14 @@ export async function runPerHandle(
  * Execute a command over MANY sources in a SINGLE invocation per chunk —
  * `cmd <src1> <src2> … <trailing…>` — instead of one call per source. MEGAcmd
  * `mv` accepts multiple sources, so an N-node move collapses to ⌈N/chunk⌉ calls
- * (usually 1). Sources are chunked to stay well under argv length limits. If a
- * chunk's bulk call fails, we retry that chunk item-by-item so a single bad node
- * doesn't sink the whole chunk and the done/failed tally stays exact.
+ * (usually 1). Sources are chunked to stay well under argv length limits.
  * `trailingArgv` is appended after the sources (e.g. `[dst]` for mv).
+ *
+ * A failed chunk is NOT retried one source at a time. A multi-source `mv` fails
+ * as a whole when the destination is not an existing folder, and a one-source
+ * `mv` to such a destination is a RENAME: the first retry would rename that node
+ * to the destination name, and each later retry would replace it, deleting the
+ * previous one. The approved preview said "move N items into X", never that.
  */
 export async function runBulk(
   rt: Runtime,
@@ -148,17 +236,63 @@ export async function runBulk(
   for (let i = 0; i < sources.length; i += chunkSize) {
     const chunk = sources.slice(i, i + chunkSize);
     const r = await rt.run(cmd, [...chunk, ...trailingArgv]);
-    if (r.code === 0) {
-      done += chunk.length;
-      continue;
-    }
-    for (const s of chunk) {
-      const one = await rt.run(cmd, [s, ...trailingArgv]);
-      if (one.code === 0) done++;
-      else failed++;
-    }
+    if (r.code === 0) done += chunk.length;
+    else failed += chunk.length;
   }
   return { done, failed };
+}
+
+/**
+ * Refuse when a copy of the session store lies anywhere BELOW `remotePath`.
+ *
+ * The path checks see only the segments of the path itself, so copying, moving,
+ * downloading, sharing or publishing the folder that CONTAINS a `.megaCmd` copy
+ * would carry the master key along. Fails closed on any other error.
+ */
+export async function assertNoStoreCopyBelow(rt: Runtime, remotePath: string): Promise<void> {
+  // Every FOLDER below, judged by name here rather than by a MEGAcmd pattern:
+  // MEGAcmd's wildcards are case-sensitive, and a store copy may be `.MEGACMD`.
+  const r = await rt.run('find', [remotePath, '--type=d']);
+  // Not found, or no runnable MEGAcmd at all: the real command cannot run either,
+  // and reports that itself.
+  if (r.code === ExitCode.NOTFOUND || r.spawnError) return;
+  if (r.code !== 0) throw new ValidationError(`Could not check ${remotePath} for a copy of the MEGAcmd session store: ${classifyExit(r)}`);
+  if (r.stdout.split(/\r?\n/).some((line) => storeCopyIn(line.trim()) === 'name')) {
+    throw new ValidationError(
+      `${remotePath} contains a copy of the MEGAcmd session store (.megaCmd), which holds this account's MASTER KEY, so it is not copied, moved, downloaded, shared or published. Delete that .megaCmd folder from the cloud first.`,
+    );
+  }
+}
+
+/**
+ * Make sure `path` is an existing cloud FOLDER, creating it (and its parents) if
+ * missing. MEGAcmd's `mkdir -p` reports an existing last folder as an error, so
+ * that case is recognised here rather than failing the caller. 'file' when a
+ * file already sits at `path`.
+ */
+export async function ensureRemoteFolder(rt: Runtime, path: string): Promise<'folder' | 'file' | 'error'> {
+  // `mkdir` does not resolve the special roots (//from/, //in/, //bin): it would
+  // create look-alike folders under / and report success.
+  if (path.startsWith('//')) return 'error';
+  // A trailing "/" makes mkdir accept an existing FILE as if it were a folder.
+  const target = path.replace(/(.)\/+$/, '$1');
+  const r = await rt.run('mkdir', ['-p', target]);
+  if (r.code === 0) return 'folder';
+  // Only MEGAcmd's own line about THIS path counts, never the same words echoed
+  // from a name elsewhere in the message. Measured on MEGAcmd 2.6.0, it names just
+  // the last component and closes the log bracket:
+  //   [2026-10-07_03-49-59.658032 cmd ERR  Folder already exists: a]
+  // The full path is accepted too, in case another version prints that.
+  const leaf = target.slice(target.lastIndexOf('/') + 1);
+  const names = `(?:${escapeRegExp(leaf)}|${escapeRegExp(target)})`;
+  const line = (kind: string) => new RegExp(`(?:^|\\s)${kind} already exists: ${names}\\]?\\s*$`, 'm');
+  if (line('Folder').test(r.stderr)) return 'folder';
+  if (line('File').test(r.stderr)) return 'file';
+  return 'error';
+}
+
+function escapeRegExp(v: string): string {
+  return v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**

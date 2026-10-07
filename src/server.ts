@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import type { Resolved, RunResult } from './types.js';
 import { execClient, childEnv } from './exec.js';
@@ -47,6 +48,7 @@ export async function ensureServerRunning(resolved: Resolved, tries = 6, baseDel
       detached: true,
       stdio: 'ignore',
       env: childEnv(resolved),
+      cwd: resolved.binDir ?? homedir(),
       windowsHide: true,
     });
     child.unref();

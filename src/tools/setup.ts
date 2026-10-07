@@ -22,7 +22,7 @@ let lastFailure: Acq | null = null;
 
 /**
  * megacmd_setup — download MEGAcmd for this platform on first use, verify its
- * signature + checksum, and install it so the other tools work. Confirm-gated
+ * code signature (and a checksum, when one is pinned), and install it so the other tools work. Confirm-gated
  * (downloads + executes a ~50 MB native binary). Runs in the background and
  * reconciles on later calls so a slow install can't surface as a timeout error.
  * No login is involved.
@@ -33,7 +33,7 @@ export function registerSetup(server: McpServer, rt: Runtime): void {
     {
       title: 'MEGA: set up MEGAcmd',
       description:
-        'Download and install the MEGAcmd engine (verified by signature + checksum) so the MEGA tools can run. Use this when a tool reports that MEGAcmd is not available. Installs in the background — if it reports "installing", just retry shortly. Does not log in.',
+        'Download and install the MEGAcmd engine (verified by its MEGA code signature) so the MEGA tools can run. Use this when a tool reports that MEGAcmd is not available. Installs in the background — if it reports "installing", just retry shortly. Does not log in.',
       inputSchema: { confirm: z.string().optional().describe('Confirmation token from the first call.') },
       annotations: { title: 'MEGA: set up MEGAcmd', destructiveHint: false, openWorldHint: true },
     },
@@ -68,12 +68,12 @@ export function registerSetup(server: McpServer, rt: Runtime): void {
         // Not installed. Start a background install if one isn't already running
         // (starting requires confirmation; joining an in-progress one does not).
         if (!inFlight) {
-          const { url, version } = rt.config.download;
+          const { url, version, sha256Allow } = rt.config.download;
           const failNote = lastFailure
             ? ` (a previous attempt failed: ${lastFailure.reason}${lastFailure.detail ? ' — ' + lastFailure.detail : ''})`
             : '';
           const summary =
-            `This will download MEGAcmd ${version ?? ''} from ${url} (~50 MB), verify its MEGA code signature and a pinned checksum before running anything, and install it.${failNote} No MEGA login is involved.`;
+            `This will download MEGAcmd ${version ?? ''} from ${url} (~50 MB), verify its MEGA code signature${sha256Allow.length ? ' and a pinned checksum' : ''} before running anything, and install it.${failNote} No MEGA login is involved.`;
           const gate = checkConfirm(rt, 'megacmd_setup', { url, version }, confirm, summary);
           if (gate) return gate;
 

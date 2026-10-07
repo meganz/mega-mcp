@@ -34,12 +34,13 @@ client, on your own computer.
 3. **Log in yourself, outside the conversation.** Claude tells you which
    MEGAcmd shell to open; there you run `login <your-email>` and type your
    password at a hidden prompt (on macOS, by double-clicking the provided
-   `Login to MEGA.command` file). There is no login tool, and no tool accepts a
-   password, so your credentials never pass through Claude.
+   `Login to MEGA.command` file). There is no login tool, and no tool accepts your
+   account password, so your credentials never pass through Claude.
 4. Ask Claude to work with your files. Deleting, moving, uploading, downloading,
    sharing, creating public links, logging out and similar actions use a
-   two-step confirmation: the first call returns only a preview, and Claude
-   needs your go-ahead before it makes the second call that acts.
+   two-step confirmation: the first call returns only a preview, and the second
+   call acts. The preview is what your app's approval prompt shows you; if you set
+   a tool to "always allow", nothing stops Claude from making both calls itself.
 
 Reading a file's contents is off by default. When a request needs it, Claude
 calls `mega_file_reading`, which asks you first. Your answer lasts while the
@@ -95,9 +96,11 @@ This plugin is governed by MEGA's privacy policy: <https://mega.io/privacy>.
 - **Data collection:** the plugin collects no personal data and no telemetry.
 - **Usage and storage:** it runs entirely on your computer. MEGAcmd stores your
   login session in its own local folder (`~/.megaCmd`), which no tool of this
-  plugin can read or return. If you tell Claude not to ask again about file
-  reading, that answer is saved as `file-reading.json` in the plugin's data
-  directory under `~/.claude/plugins/data/`.
+  plugin can read or return. Your file-reading choices are kept in
+  `file-reading.json` in the plugin's data directory under
+  `~/.claude/plugins/data/`: whether you said not to ask again, and a counter
+  that goes up each time you turn reading off (so other open conversations stop
+  too). It holds no file contents or account data.
 - **Third-party sharing:** none. Your files and commands go only to MEGA,
   through MEGAcmd. Tool arguments and results reach Anthropic as part of your
   Claude conversation and are handled under Anthropic's terms.

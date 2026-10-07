@@ -34,6 +34,19 @@ function fakeRt(config: Partial<Config> = {}, run?: Runtime['run'], binDir: stri
   } as Runtime;
 }
 
+/**
+ * A fake `find` for PCRE previews: the named listing, or - for the handle-only
+ * listing the preview cross-checks it against - just its handles.
+ */
+function findStdout(args: string[], listing: string): string {
+  if (!args.includes('--print-only-handles')) return listing;
+  return listing
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => (l.match(/<(H:[^>]+)>$/) as RegExpMatchArray)[1])
+    .join('\n');
+}
+
 /** Capture every tool a register* function declares. */
 function capture(register: (server: any, rt: Runtime) => void, rt: Runtime): Map<string, ToolFn> {
   const tools = new Map<string, ToolFn>();
@@ -111,7 +124,10 @@ describe('session-store exfiltration is refused by the tools themselves', () => 
       const done = await put({ localPath: home, remotePath: '/Backup', confirm: confirmToken });
       expect(done.isError).toBeFalsy();
       const dest = `/Backup/${home.split(/[\\/]/).pop()}`;
-      expect(argv[0]).toEqual(['mkdir', '-p', dest]);
+      // The destination folder first (so a missing one is not taken as a new
+      // name), then the rebuilt home folder inside it.
+      expect(argv[0]).toEqual(['mkdir', '-p', '/Backup']);
+      expect(argv[1]).toEqual(['mkdir', '-p', dest]);
       const puts = argv.filter((a) => a[0] === 'put');
       expect(puts).toHaveLength(1);
       expect(puts[0]!.at(-1)).toBe(dest);
@@ -210,7 +226,7 @@ describe('cloud copies of the session store are refused by the tools themselves'
     const argv: string[][] = [];
     const rt = fakeRt({ exposeFileContents: true }, async (cmd, args) => {
       argv.push([cmd, ...args]);
-      return { code: 0, stdout: cmd === 'find' ? findOut : '', stderr: '' } as RunResult;
+      return { code: 0, stdout: cmd === 'find' ? findStdout(args, findOut) : '', stderr: '' } as RunResult;
     });
     return { rt, argv };
   }
@@ -254,7 +270,7 @@ describe('cloud copies of the session store are refused by the tools themselves'
       const register = tool === 'mega_mv' ? registerMutate : registerDangerous;
       const res = await capture(register, rt).get(tool)!(args);
       refusedStore(res);
-      expect(argv.map((a) => a[0])).toEqual(['find']);
+      expect(argv.map((a) => a[0])).toEqual(['find', 'find']);
     }
   });
 
@@ -268,7 +284,8 @@ describe('cloud copies of the session store are refused by the tools themselves'
     expect(preview.isError).toBeFalsy();
     const done = await cp({ src: '/Docs/megaCmd-notes.txt', dst: '/x', confirm: (preview.structuredContent as any).confirmToken });
     expect(done.isError).toBeFalsy();
-    expect(argv.map((a) => a[0])).toEqual(['cat', 'cat', 'cp']);
+    // The copy first checks that no session-store copy lies below its source.
+    expect(argv.map((a) => a[0])).toEqual(['cat', 'cat', 'find', 'find', 'cp']);
   });
 });
 
@@ -361,11 +378,11 @@ describe('the remembered file-reading consent cannot be written by a transfer', 
       const argv: string[][] = [];
       const rt = fakeRt({}, async (cmd, args) => {
         argv.push([cmd, ...args]);
-        return { code: 0, stdout: cmd === 'find' ? `/x/ok.txt <H:aaaa>\n/x/${basename(data)} <H:bbbb>\n` : '', stderr: '' } as RunResult;
+        return { code: 0, stdout: cmd === 'find' ? findStdout(args, `/x/ok.txt <H:aaaa>\n/x/${basename(data)} <H:bbbb>\n`) : '', stderr: '' } as RunResult;
       });
       const res = await capture(registerMutate, rt).get('mega_get')!({ remotePath: '.*', usePcre: true, localDir: dirname(data), merge: true });
       expect(res.isError).toBe(true);
-      expect(argv.map((a) => a[0])).toEqual(['find']);
+      expect(argv.map((a) => a[0])).toEqual(['find', 'find']);
     } finally {
       publishMegacmdBinDir(null);
       rmSync(base, { recursive: true, force: true });
@@ -427,11 +444,11 @@ describe('security-sweep regressions, at the tool boundary', () => {
     const preview = await cp({ src: '/Private/report.pdf', dst: '/Shared' });
     expect(preview.structuredContent).toMatchObject({ requiresConfirmation: true });
     expect((preview.structuredContent as any).summary).toBe('This will copy /Private/report.pdf to /Shared.');
-    expect(argv).toEqual([]);
+    expect(argv.map((a) => a[0])).toEqual(['find']);
     // A token for one copy cannot be spent on another.
     const token = (preview.structuredContent as any).confirmToken;
     expect((await cp({ src: '/Private/other.pdf', dst: '/Shared', confirm: token })).isError).toBe(true);
-    expect(argv).toEqual([]);
+    expect(argv.map((a) => a[0])).toEqual(['find']);
   });
 
   // The value is part of what is approved; the token always bound it, but the
@@ -460,11 +477,11 @@ describe('security-sweep regressions, at the tool boundary', () => {
 
     const findOut = many.map((p, i) => `${p} <H:h${i}>`).join('\n');
     const pcre = recordingRt();
-    const pcreRt = fakeRt({}, async (cmd, args) => (pcre.argv.push([cmd, ...args]), { code: 0, stdout: cmd === 'find' ? findOut : '', stderr: '' }) as RunResult);
+    const pcreRt = fakeRt({}, async (cmd, args) => (pcre.argv.push([cmd, ...args]), { code: 0, stdout: cmd === 'find' ? findStdout(args, findOut) : '', stderr: '' }) as RunResult);
     const res = await capture(registerDangerous, pcreRt).get('mega_rm')!({ remotePath: '/f.*', usePcre: true });
     expect(res.isError).toBe(true);
     expect((res.content?.[0] as any).text).toMatch(/at most 200/);
-    expect(pcre.argv.map((a) => a[0])).toEqual(['find']);
+    expect(pcre.argv.map((a) => a[0])).toEqual(['find', 'find']);
   });
 
   /**
@@ -620,7 +637,8 @@ describe('mega_killsession argv hardening', () => {
 
   it('a valid sessionId reaches the confirm gate (not an error)', async () => {
     const tools = capture(registerDangerous, fakeRt());
-    const res = await tools.get('mega_killsession')!({ sessionId: 'goodHandle123' });
+    // A session handle: 8 bytes in base64url, 11 characters.
+    const res = await tools.get('mega_killsession')!({ sessionId: 'AbCdEfGhIjK' });
     expect(res.isError).toBeFalsy();
     expect(res.structuredContent).toMatchObject({ requiresConfirmation: true });
   });
@@ -864,7 +882,7 @@ describe('PCRE node-handle execution is TOCTOU-safe (#3)', () => {
     const calls: { cmd: string; args: string[] }[] = [];
     const run: Runtime['run'] = async (cmd, args) => {
       calls.push({ cmd, args });
-      if (cmd === 'find') return { code: 0, stdout: '/a.tmp <H:AAAA>\n/b.tmp <H:BBBB>\n', stderr: '' } as RunResult;
+      if (cmd === 'find') return { code: 0, stdout: findStdout(args, '/a.tmp <H:AAAA>\n/b.tmp <H:BBBB>\n'), stderr: '' } as RunResult;
       return { code: 0, stdout: '', stderr: '' } as RunResult;
     };
     const tools = capture(registerDangerous, fakeRt({}, run));
@@ -886,8 +904,8 @@ describe('PCRE node-handle execution is TOCTOU-safe (#3)', () => {
   });
 
   it('an expired/unknown confirm token does not fall back to the pattern', async () => {
-    const run: Runtime['run'] = async (cmd) =>
-      (cmd === 'find' ? { code: 0, stdout: '/a <H:AAAA>\n', stderr: '' } : { code: 0, stdout: '', stderr: '' }) as RunResult;
+    const run: Runtime['run'] = async (cmd, args) =>
+      (cmd === 'find' ? { code: 0, stdout: findStdout(args, '/a <H:AAAA>\n'), stderr: '' } : { code: 0, stdout: '', stderr: '' }) as RunResult;
     const tools = capture(registerDangerous, fakeRt({}, run));
     // a token never issued by this store -> plan missing -> safe error, no rm
     const res = await tools.get('mega_rm')!({ remotePath: '/.*', usePcre: true, confirm: 'bogus-token' });

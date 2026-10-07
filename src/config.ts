@@ -19,12 +19,15 @@ const MAX_MAX_LIST = 10_000;
  * variables are set.
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const megacmdDir = clean(env.MEGA_MCP_MEGACMD_DIR);
+  // Absolute, always: spawns run with the bin dir as their working directory, so
+  // a relative dir would resolve differently for the spawn than for the check.
+  const configuredDir = clean(env.MEGA_MCP_MEGACMD_DIR);
+  const megacmdDir = configuredDir ? resolve(configuredDir) : undefined;
 
   // In production the manifest injects ${__dirname}/vendor/megacmd. In dev we
   // derive a path relative to this module (which will simply be empty).
   const here = dirname(fileURLToPath(import.meta.url));
-  const bundledDir = clean(env.MEGA_MCP_BUNDLED_DIR) ?? resolve(here, '..', 'vendor', 'megacmd');
+  const bundledDir = resolve(clean(env.MEGA_MCP_BUNDLED_DIR) ?? resolve(here, '..', 'vendor', 'megacmd'));
 
   return {
     megacmdDir,
@@ -36,6 +39,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     exposeContacts: parseBool(env.MEGA_MCP_EXPOSE_CONTACTS),
     exposeAccountDetails: parseBool(env.MEGA_MCP_EXPOSE_ACCOUNT),
     exposeFileContents: parseBool(env.MEGA_MCP_EXPOSE_FILES),
+    fileContentsForcedOff: parseFalse(env.MEGA_MCP_EXPOSE_FILES),
   };
 }
 
@@ -152,6 +156,12 @@ function clean(v: string | undefined): string | undefined {
 function parseBool(v: string | undefined): boolean {
   const t = clean(v)?.toLowerCase();
   return t === '1' || t === 'true' || t === 'yes' || t === 'on';
+}
+
+/** An EXPLICIT false - distinct from unset, which means "not configured". */
+function parseFalse(v: string | undefined): boolean {
+  const t = clean(v)?.toLowerCase();
+  return t === '0' || t === 'false' || t === 'no' || t === 'off';
 }
 
 function parseMaxList(v: string | undefined): number {

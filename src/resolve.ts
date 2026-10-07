@@ -1,9 +1,6 @@
 import { access, constants, readFile, realpath } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { dirname, join, resolve, sep, win32 as winPath, posix as posixPath } from 'node:path';
+import { dirname, join, resolve, sep, isAbsolute, win32 as winPath, posix as posixPath } from 'node:path';
 import type { Config, Resolved } from './types.js';
-import { systemTool } from './sysbin.js';
 
 /** Layout of a cached MEGAcmd, recorded by the downloader in meta.json. */
 export interface CacheMeta {
@@ -16,7 +13,6 @@ export interface CacheMeta {
   serverSha256?: string;
 }
 
-const pExecFile = promisify(execFile);
 const isWin = process.platform === 'win32';
 
 /** Name of a mega-<command> client binary for the current platform. Used for
@@ -83,8 +79,11 @@ async function isExecutable(p: string): Promise<boolean> {
 
 /**
  * Resolve the REAL install dir of the on-PATH client, for the 'path' source. We
- * `which`/`where` the whoami client, follow symlinks (realpath), and take its
- * directory. Every client is then launched by ABSOLUTE path from this one dir,
+ * walk PATH ourselves for the whoami client, follow symlinks (realpath), and take
+ * its directory. Not `which`/`where`: `where` searches the working directory before
+ * PATH, and `which` reads an empty or "." PATH entry as the working directory -
+ * under a coding assistant that is whatever project is open. Only absolute PATH
+ * entries are considered. Every client is then launched by ABSOLUTE path from this one dir,
  * which is also what signature verification checks (the .app bundle on macOS, or
  * the dir holding MEGAcmdServer.exe on Windows). Invoking bare `mega-*` names
  * instead would search PATH again per command, so an earlier PATH directory
@@ -92,14 +91,19 @@ async function isExecutable(p: string): Promise<boolean> {
  * install passed the check. Returns null if it can't be resolved.
  */
 export async function resolvePathBinDir(): Promise<string | null> {
-  try {
-    const { stdout } = await pExecFile(systemTool(isWin ? 'where' : 'which'), [clientName('whoami')], { windowsHide: true });
-    const first = stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0];
-    if (!first) return null;
-    return dirname(await realpath(first));
-  } catch {
-    return null;
+  const entries = (process.env.PATH ?? '').split(isWin ? ';' : ':');
+  for (const raw of entries) {
+    const dir = raw.trim().replace(/^"(.*)"$/, '$1');
+    if (!dir || !isAbsolute(dir)) continue;
+    const candidate = join(dir, clientName('whoami'));
+    if (!(await isExecutable(candidate))) continue;
+    try {
+      return dirname(await realpath(candidate));
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 function makeResolved(source: Resolved['source'], binDir: string | null, libDir: string | null = null): Resolved {

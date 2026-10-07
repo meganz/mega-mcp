@@ -42,6 +42,9 @@ export interface Config {
   /** Expose mega_cat (read cloud file contents). Off by default: it brings
    * cloud file content into the model context (capped, text-only). */
   exposeFileContents: boolean;
+  /** MEGA_MCP_EXPOSE_FILES explicitly set to a false value: file reading stays off,
+   * and the plugin build does not even offer to ask. Unset means "ask". */
+  fileContentsForcedOff?: boolean;
 }
 
 /** How the MEGAcmd binaries were located. */

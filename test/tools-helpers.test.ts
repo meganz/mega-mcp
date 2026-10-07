@@ -82,19 +82,20 @@ describe('runBulk (multi-source in one call)', () => {
     expect(calls.length).toBe(3); // 2 + 2 + 1
   });
 
-  it('on a chunk failure, retries item-by-item so the tally stays exact', async () => {
+  // A multi-source mv fails as a whole when the destination is not a folder, and a
+  // one-source mv to it is a RENAME: retrying item by item renamed the first node to
+  // the destination name and then replaced it with each next one, deleting data.
+  it('does NOT retry a failed chunk item by item', async () => {
     const calls: string[][] = [];
     const rt = fakeRt({
       run: async (_c, argv) => {
         calls.push(argv);
-        const sources = argv.slice(0, -1); // last arg is the dst
-        if (sources.length > 1) return { code: 1, stdout: '', stderr: 'bulk failed' }; // chunk call fails
-        return { code: sources[0] === 'bad' ? 1 : 0, stdout: '', stderr: '' }; // per-item
+        return { code: 1, stdout: '', stderr: 'bulk failed' };
       },
     });
-    const { done, failed } = await runBulk(rt, 'mv', ['ok1', 'ok2', 'bad'], ['/dst']);
-    expect(done).toBe(2);
-    expect(failed).toBe(1);
-    expect(calls.length).toBe(4); // 1 failed bulk + 3 per-item retries
+    const { done, failed } = await runBulk(rt, 'mv', ['a', 'b', 'c'], ['/not-a-folder']);
+    expect(done).toBe(0);
+    expect(failed).toBe(3);
+    expect(calls).toEqual([['a', 'b', 'c', '/not-a-folder']]);
   });
 });

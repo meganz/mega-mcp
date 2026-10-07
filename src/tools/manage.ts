@@ -3,7 +3,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok } from '../mcpResult.js';
 import { assertRemotePath, assertNoFlag, assertFlagValue, assertSecret, assertNoWildcard, ValidationError } from '../paths.js';
-import { guardRun, runToResult, checkConfirm } from './helpers.js';
+import { guardRun, runToResult, checkConfirm, secretBinding } from './helpers.js';
+import { isPublicLink } from '../argv.js';
 
 const TRANSFER_FLAG: Record<string, string> = { pause: '-p', resume: '-r', cancel: '-c' };
 const IPC_FLAG: Record<string, string> = { accept: '-a', deny: '-d', ignore: '-i' };
@@ -157,7 +158,7 @@ export function registerManage(server: McpServer, rt: Runtime): void {
             ? `This will withdraw the contact invitation to ${em}.`
             : action === 'resend'
               ? `This will resend the contact invitation to ${em}.`
-              : `This will send a contact invitation email to ${em}.`;
+              : `This will send a contact invitation email to ${em}${msg ? ` with the message: "${msg}"` : ''}.`;
         // Bind the VALIDATED message, so the token pins what actually gets sent.
         const gate = checkConfirm(rt, 'mega_invite', { email: em, action, message: msg ?? null }, confirm, summary);
         if (gate) return gate;
@@ -215,14 +216,15 @@ export function registerManage(server: McpServer, rt: Runtime): void {
     async ({ link, remotePath, password, confirm }) =>
       guardRun(async () => {
         const lk = assertNoFlag(link, 'link');
-        if (!/^https?:\/\//i.test(lk) && !lk.includes('#') && !/^mega:/i.test(lk)) {
-          throw new ValidationError('link does not look like a MEGA public link.');
+        // MEGAcmd's own predicate: anything else would be resolved as a cloud path.
+        if (!isPublicLink(lk)) {
+          throw new ValidationError('link must be a MEGA public link (https://mega.nz/file/... or /folder/...).');
         }
         const pw = password === undefined ? undefined : assertSecret(password, 'password');
         const rp = assertRemotePath(remotePath);
-        const summary = `This will import the contents of the provided link into ${rp}.`;
+        const summary = `This will import the contents of the link ${lk} into ${rp}.`;
         // Bind only the presence of a password into the token, never its value.
-        const gate = checkConfirm(rt, 'mega_import', { link: lk, remotePath: rp, hasPassword: password !== undefined && password !== '' }, confirm, summary);
+        const gate = checkConfirm(rt, 'mega_import', { link: lk, remotePath: rp, password: secretBinding(password) }, confirm, summary);
         if (gate) return gate;
         // The VALIDATED password, not the raw one: an embedded quote here would
         // re-tokenize the command and redirect the import to another destination.

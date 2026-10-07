@@ -3,7 +3,7 @@ import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server
 import type { Runtime } from '../runtime.js';
 import { ok } from '../mcpResult.js';
 import { guardRun, checkConfirm } from './helpers.js';
-import { writeRemembered } from '../fileReading.js';
+import { writeRemembered, hostStateDir, readGeneration, ensureStateFile } from '../fileReading.js';
 
 /**
  * mega_file_reading — the Codex-plugin answer to "how does a non-technical user
@@ -29,19 +29,19 @@ import { writeRemembered } from '../fileReading.js';
  * not something to infer forever from one "yes". `remember: true` is the user's
  * explicit "don't ask again" and is the ONLY thing that persists.
  */
-export function registerFileReading(server: McpServer, rt: Runtime, cat: RegisteredTool): void {
+export function registerFileReading(server: McpServer, rt: Runtime, cat: RegisteredTool, grant: { gen?: number | null } = {}): void {
   server.registerTool(
     'mega_file_reading',
     {
       title: 'MEGA: allow reading file contents',
       description:
-        "Turn on (or off) the assistant's ability to read the text inside your MEGA files. Call this when the user asks to read, summarise or search INSIDE a document and mega_cat is unavailable. Enabling requires confirmation and applies to the current session only, unless remember=true is passed to keep it on for future sessions.",
+        "Turn on (or off) the assistant's ability to read the text inside your MEGA files. Call this when the user asks to read, summarise or search INSIDE a document and mega_cat is unavailable. Enabling requires confirmation and lasts until the app is restarted, unless remember=true is passed to keep it on for future sessions.",
       inputSchema: {
         action: z.enum(['enable', 'disable']).default('enable').describe('Turn file-content reading on or off.'),
         remember: z
           .boolean()
           .default(false)
-          .describe("Keep the choice for future sessions (the user's explicit \"don't ask me again\"). Pass true ONLY when the user actually said so; otherwise the choice lasts for this session and they are asked again next time."),
+          .describe("Keep the choice for future sessions (the user's explicit \"don't ask me again\"). Pass true ONLY when the user actually said so; otherwise the choice lasts until the app is restarted and they are asked again after that."),
         confirm: z.string().optional().describe('Confirmation token from the first call (enabling only).'),
       },
       // Not destructive to data, but it widens what leaves the machine, so it is
@@ -51,8 +51,10 @@ export function registerFileReading(server: McpServer, rt: Runtime, cat: Registe
     async ({ action, remember, confirm }) =>
       guardRun(async () => {
         if (action === 'disable') {
-          // Narrowing access never needs a confirmation step.
+          // Narrowing access never needs a confirmation step. Recorded as a
+          // timestamp, so other running server processes drop their grants too.
           cat.disable();
+          grant.gen = undefined;
           const cleared = writeRemembered(rt.config, false);
           // An explicitly configured MEGA_MCP_EXPOSE_FILES outranks the remembered
           // answer at startup, so with it set this turns file reading off for the
@@ -71,8 +73,13 @@ export function registerFileReading(server: McpServer, rt: Runtime, cat: Registe
           );
         }
 
+        // A "don't ask again" is only kept in a data folder the host gives this
+        // plugin; without one, say so up front rather than after the approval.
+        const canRemember = hostStateDir() !== null;
         const scope = remember
-          ? 'This will stay on for future sessions until you turn it off.'
+          ? canRemember
+            ? 'This will stay on for future sessions until you turn it off.'
+            : 'This app gives the connector no private place to save that choice, so this lasts until the app is restarted.'
           : 'This lasts until the app is restarted - you will be asked again after that.';
         // Action key is the bare tool name (not a "tool:sub" key like the
         // export/share gates use): checkConfirm echoes it back as "call <key>
@@ -87,12 +94,16 @@ export function registerFileReading(server: McpServer, rt: Runtime, cat: Registe
         ]);
         if (gate) return gate;
 
+        // Recorded against the current turn-off generation; the file is created first
+        // so that deleting it later reads as a change rather than as "never off".
+        ensureStateFile(rt.config);
+        grant.gen = readGeneration(rt.config);
         cat.enable();
         const saved = remember ? writeRemembered(rt.config, true) : true;
         const tail = remember
           ? saved
             ? ' It will stay on for future sessions; call this tool with action="disable" to turn it off.'
-            : ' It could not be saved to disk, so it applies to this session only.'
+            : ' It could not be saved for future sessions, so it lasts until the app is restarted.'
           : ' It lasts until the app is restarted, and you will be asked again after that.';
         return ok(`File-content reading is now ON.${tail}`, { enabled: true, remembered: remember && saved });
       }),
