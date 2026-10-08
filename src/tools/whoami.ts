@@ -78,6 +78,10 @@ export function registerWhoami(server: McpServer, rt: Runtime): void {
         });
       }
 
+      if (state.reason === 'integrity_failed') {
+        return err(state.detail ?? 'MEGAcmd failed its signature check, so it was not run.', { loggedIn: false, reason: 'integrity_failed' });
+      }
+
       if (state.reason === 'no_megacmd') {
         return err(
           'MEGAcmd is not available. Run the `megacmd_setup` tool to download it automatically, or install MEGAcmd / set the MEGAcmd directory in this server\'s configuration.',

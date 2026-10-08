@@ -15,7 +15,8 @@ const build = join(root, 'build');
 // no uncommitted changes, and no untracked source that would be compiled in.
 if (!process.argv.includes('--allow-dirty')) {
   const dirty = execSync('git status --porcelain --untracked-files=no', { cwd: root, encoding: 'utf8' }).trim();
-  const untracked = execSync('git ls-files --others --exclude-standard -- src', { cwd: root, encoding: 'utf8' }).trim();
+  // Ignored files too: tsc compiles everything under src/, ignored or not.
+  const untracked = execSync('git ls-files --others -- src', { cwd: root, encoding: 'utf8' }).trim();
   if (dirty || untracked) {
     console.error('Uncommitted changes or untracked files under src/ - commit them first (or pass --allow-dirty for a local test build).');
     process.exit(1);
@@ -56,8 +57,17 @@ if (existsSync(join(root, 'assets'))) {
   cpSync(join(root, 'assets'), join(build, 'assets'), { recursive: true });
 }
 
-// Bundled MEGAcmd binaries (mode C2) are included only if vendored.
+// Bundled MEGAcmd binaries (mode C2) are included only if vendored. On Windows
+// MEGAcmd keeps its session store next to the exe, so a developer who logged in
+// with vendored binaries has one in there: never ship it.
 if (existsSync(join(root, 'vendor', 'megacmd'))) {
+  const stores = readdirSync(join(root, 'vendor', 'megacmd'), { recursive: true }).filter((p) =>
+    String(p).split(/[\\/]/).some((part) => /^\.megacmd/i.test(part)),
+  );
+  if (stores.length > 0) {
+    console.error(`stage: vendor/megacmd contains a MEGAcmd session store (${stores.join(', ')}). Remove it, then pack again.`);
+    process.exit(1);
+  }
   cpSync(join(root, 'vendor', 'megacmd'), join(build, 'vendor', 'megacmd'), { recursive: true });
   console.log('Included vendor/megacmd binaries (mode C2).');
 } else {

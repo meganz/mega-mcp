@@ -35,15 +35,17 @@ async function main(): Promise<void> {
       version: resolveVersion(),
     },
     {
+      // A guard against oversized arguments (validated before any tool runs), far above any real list.
+      maxToolInputElements: 100_000,
       instructions: [
         'This server operates the user\'s MEGA cloud account via the MEGAcmd CLI.',
         '',
         'Setup & login (handle proactively):',
-        '- If any tool reports "MEGAcmd is not available", call `megacmd_setup` to download and verify the MEGAcmd engine. It is confirm-gated and does NOT log in: the first call returns a preview + confirmToken (no download); relay the preview to the user and only call again with that token once they approve.',
+        '- If any tool reports "MEGAcmd is not available", call `megacmd_setup` to download and verify the MEGAcmd engine. It is confirm-gated and does NOT log in: the first call returns a preview + confirmToken (no download); relay the preview to the user and only call again with that token once they approve. On Linux, and when a MEGAcmd is found but fails its signature check, it instead returns what the user has to install or reinstall - relay that.',
         '- Login is OUT-OF-BAND and the user\'s job. There is no login tool by design. NEVER ask for, accept, or pass a MEGA password (or any credential) through any tool or argument. When a tool reports "Not logged in", relay the login instructions from that message VERBATIM — they tell the user to open the MEGAcmd interactive shell and run `login <email>`, entering the password at a hidden prompt (on macOS, by double-clicking the provided "Login to MEGA.command" file). Do NOT suggest the one-shot `mega-login email password` form (it would put the password in argv/shell history).',
         '- `mega_whoami` reports the current login state (email only).',
         '',
-        'Safety — these tools use a two-call confirmation protocol: mega_cp, mega_rm, mega_deleteversions, mega_export (create/delete), mega_share (add/remove), mega_mv, mega_put, mega_get, mega_thumbnail, mega_logout, mega_killsession, mega_attr_set, mega_userattr_set, mega_user_remove, mega_user_verify, mega_transfer_control, mega_invite, mega_ipc, mega_import, mega_config (when changing a value or running reload/debug), mega_sync_add, mega_sync_control, mega_sync_ignore (add/remove), mega_backup_add, mega_backup_control. The first call (no `confirm`) returns a preview + `confirmToken` and does NOT execute; relay the preview and only call again with `confirm` set to that token after the user explicitly approves.',
+        'Safety — these tools use a two-call confirmation protocol: mega_rm, mega_deleteversions, mega_export (create/delete), mega_share (add/remove), mega_mv, mega_put, mega_get, mega_thumbnail, mega_logout, mega_killsession, mega_attr_set, mega_userattr_set, mega_user_remove, mega_user_verify, mega_transfer_control, mega_invite, mega_ipc, mega_import, mega_config (when changing a value or running reload/debug), mega_sync_add, mega_sync_control, mega_sync_ignore (add/remove), mega_backup_add, mega_backup_control, and mega_cp / mega_mkdir only when the destination is shared, publicly linked or invited to, someone else\'s shared folder, in a two-way synced folder, or cannot be checked, or (cp) would replace a file or make a new version of one - otherwise they run at once. mega_cp and mega_mv take a list (srcs) or a pattern (usePcre) to act on many nodes in one call: do not loop them per file. The first call (no `confirm`) returns a preview + `confirmToken` and does NOT execute; relay the preview and only call again with `confirm` set to that token after the user explicitly approves.',
         '',
         'All cloud paths are absolute MEGA paths starting with "/". Listings are capped.',
         ...(isPluginBuild && !config.fileContentsForcedOff && !config.exposeFileContents

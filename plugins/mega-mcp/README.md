@@ -75,8 +75,8 @@ stop reading your files at any time.
 - **Shares with Claude:** as with any tool, the arguments Claude passes and the
   results the tools return become part of your conversation, for example a
   folder listing, a path or a public link you created. File contents enter the
-  conversation only through `mega_cat`, after you allow file reading. Session
-  data, your master key and payment details are never returned by any tool.
+  conversation only through `mega_cat`, after you allow file reading. Your login
+  session, master key and payment details are never returned by any tool.
 
 ## Shell access warning
 

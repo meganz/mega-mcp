@@ -37,12 +37,15 @@ export function hideNodeSecrets(stdout: string): Filtered {
  */
 export function hideUserSecrets(stdout: string): Filtered {
   let hidden = 0;
+  // A value MEGAcmd prints with a line break in it continues on the next lines:
+  // those go with their attribute, kept or dropped.
+  let dropping = false;
   const kept = stdout.split(/\r?\n/).filter((line) => {
     const m = line.match(/\(([^()]*)\)\s*=/);
-    if (!m) return true;
-    if (/^[A-Za-z]+$/.test(m[1] as string)) return true;
-    hidden++;
-    return false;
+    if (!m) return !dropping;
+    dropping = !/^[A-Za-z]+$/.test(m[1] as string);
+    if (dropping) hidden++;
+    return !dropping;
   });
   return { text: kept.join('\n').trimEnd(), hidden };
 }

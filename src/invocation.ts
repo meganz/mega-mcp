@@ -26,10 +26,12 @@ const ALLOWED_COMMANDS = new Set([
 const LINK_KEYS = [/( AuthKey=)[^\s)]+/g, /(\bAuthToken[ \t]*=[ \t]*)[^\s)]+/g];
 // The folder key handed to MEGA by `export --mega-hosted` (S4).
 const SHARE_KEY = /(Share key encryption key[ \t]*=[ \t]*)\S+/g;
-// whoami -l: "    Session ID: <handle>". Session IDs allow account actions.
-const SESSION_ID = /^([ \t]*Session ID:[ \t]*)\S+/gm;
-// logout --keep-session (never run): "You can also login with the session id: <session>".
-const SESSION_TOKEN = /(login with the session id:[ \t]*)\S+/g;
+// The key part of a MEGA link ("#..." to the end of the word): a contact or share listing has no
+// reason to carry one (`users -s` prints in-shares in full where MEGA knows the sharer's link).
+const LINK_KEY_IN_URL = /(https?:\/\/mega\.(?:nz|co\.nz|app)\/[^\s#]*#)[^\s)]+/gi;
+// The login session (resumes a login without the password), from logout --keep-session or the
+// session command: never run, held anyway. whoami -l's "Session ID" handle cannot log in.
+const SESSION_TOKEN = /((?:login with the session id|\(secret\) session is):[ \t]*)\S+/g;
 
 /**
  * Which of those a command's output can carry. Only these outputs are scrubbed:
@@ -40,13 +42,14 @@ const SESSION_TOKEN = /(login with the session id:[ \t]*)\S+/g;
 function secretsIn(cmd: string, args: readonly string[]): RegExp[] {
   switch (cmd) {
     case 'whoami':
-      return [SESSION_ID];
     case 'logout':
       return [SESSION_TOKEN];
     case 'export':
       return [...LINK_KEYS, SHARE_KEY];
     case 'users':
-      return LINK_KEYS;
+    // share listings print no links today; held anyway, as for users.
+    case 'share':
+      return [...LINK_KEYS, LINK_KEY_IN_URL];
     // Extended node info (find -l; ls/tree -a) prints a link with its key.
     case 'find':
       return args.includes('-l') ? LINK_KEYS : [];
@@ -84,12 +87,30 @@ export function assertSafeInvocation(cmd: string, args: readonly string[]): void
   if (!ALLOWED_COMMANDS.has(cmd)) {
     throw new ValidationError(`The MEGAcmd command "${cmd}" is not one this connector runs. Nothing was run.`);
   }
+  // A lone UTF-16 surrogate reaches MEGAcmd as U+FFFD: the checks would have compared another name.
+  if (args.some((a) => /\p{Cs}/u.test(a))) {
+    throw new ValidationError('A value holds a broken Unicode character (a lone surrogate), which MEGAcmd would read as another name. Nothing was run.');
+  }
+  // MEGAcmd's server may read only the first 8 KB of a command line (one socket read on macOS):
+  // the rest would be dropped and the last word read became the target.
+  // (On Windows the client also prefixes a local path with "\\?\": four more bytes a word.)
+  if (Buffer.byteLength([cmd, ...args].join(' ')) + (process.platform === 'win32' ? 7 : 3) * args.length + 128 > 8000) {
+    throw new ValidationError('The command would be too long for MEGAcmd to read whole. Nothing was run; act on fewer items at a time.');
+  }
   if (!survivesRoundTrip([cmd, ...args])) {
     throw new ValidationError(
       'A value would be read differently by MEGAcmd than it was sent (for example a leading control character, or a trailing backslash that joins it to the next value), so the command could do something other than what was approved. Nothing was run.',
     );
   }
-  const removing = (cmd === 'export' || cmd === 'share') && args.includes('-d');
+  // MEGAcmd's client rewrites some command lines: a one-path get/thumbnail gets its program
+  // folder as the local target, and on Windows "-o <value>" is dropped. Refuse both.
+  const positional = args.filter((a) => a !== '' && !a.startsWith('-'));
+  if ((cmd === 'get' || cmd === 'thumbnail') && positional.length < 2) {
+    throw new ValidationError(`${cmd} needs both a cloud path and a local path. Nothing was run.`);
+  }
+  if (args.includes('-o')) throw new ValidationError('The "-o" option is not passed to MEGAcmd. Nothing was run.');
+  // (Only a pure removal: "-d" beside "-a" would still publish.)
+  const removing = (cmd === 'export' || cmd === 'share') && args.includes('-d') && !args.includes('-a');
   // mkdir resolves names literally, so only a real .megaCmd name counts there.
   const hits = (a: string) => (cmd === 'mkdir' ? storeCopyIn(a) === 'name' : storeCopyIn(a) !== null);
   if (CONTENT_COMMANDS.has(cmd) && !removing && args.some(hits)) {

@@ -14,13 +14,28 @@ import { registerCat } from './cat.js';
 import { registerFileReading } from './fileReading.js';
 import { isPluginBuild } from '../buildFlags.js';
 import { readRemembered, readGeneration } from '../fileReading.js';
+import { withWriteLock } from './helpers.js';
+
+/** Tools that place content in the cloud, or open it to others: run one at a time. */
+const SERIALIZED = new Set(['mega_cp', 'mega_mkdir', 'mega_mv', 'mega_put', 'mega_share', 'mega_export', 'mega_import', 'mega_sync_add', 'mega_sync_control', 'mega_sync_ignore', 'mega_backup_add', 'mega_backup_control', 'mega_thumbnail', 'mega_attr_set', 'mega_rm', 'mega_deleteversions', 'mega_user_remove']);
+
+function serializeWrites(server: McpServer): McpServer {
+  return new Proxy(server, {
+    get(target, prop, receiver) {
+      if (prop !== 'registerTool') return Reflect.get(target, prop, receiver);
+      return (name: string, config: unknown, cb: (...args: unknown[]) => Promise<unknown>) =>
+        (target.registerTool as (...a: unknown[]) => unknown).call(target, name, config, SERIALIZED.has(name) ? (...args: unknown[]) => withWriteLock(() => cb(...args)) : cb);
+    },
+  });
+}
 
 /**
  * Register all MCP tools. Each register* module declares its own tools' names,
  * annotations and confirm-gating; the three conditional ones expose extra data
  * (contact PII / account PII / file contents) and stay off unless enabled.
  */
-export function registerAll(server: McpServer, rt: Runtime): void {
+export function registerAll(mcp: McpServer, rt: Runtime): void {
+  const server = serializeWrites(mcp);
   registerSetup(server, rt);
   registerWhoami(server, rt);
   registerAccount(server, rt);
@@ -70,8 +85,12 @@ export function registerPluginFileTools(server: McpServer, rt: Runtime): void {
   // This process's own "yes": the turn-off generation it was given under. Any later
   // turn-off sharing the state dir (or a lost state file) changes it and ends it.
   const grant: { gen?: number | null } = {};
+  // A settings switch-on holds until a turn-off raises the generation (not a lost state file).
+  const startGen = readGeneration(rt.config) ?? 0;
   const allowed = () =>
-    rt.config.exposeFileContents || readRemembered(rt.config) || (grant.gen !== undefined && readGeneration(rt.config) === grant.gen);
+    (rt.config.exposeFileContents && (readGeneration(rt.config) ?? 0) <= startGen) ||
+    readRemembered(rt.config) ||
+    (grant.gen !== undefined && readGeneration(rt.config) === grant.gen);
   const cat = registerCat(server, rt, allowed);
   if (!(rt.config.exposeFileContents || readRemembered(rt.config))) cat.disable();
   registerFileReading(server, rt, cat, grant);

@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
 import { ExitCode, classifyExit } from '../errors.js';
-import { assertRemotePath, assertLocalPath, assertNoFlag, assertFlagValue, assertNoStoreWithin, assertNoProtectedWithin, assertNotStoreCopy, ValidationError } from '../paths.js';
+import { assertNoWildcard, assertRemotePath, assertRemoteDest, assertLocalPath, assertNoFlag, assertFlagValue, assertNoStoreWithin, assertNotStoreCopy, syncExclusions, globCanMatchStoreName, ValidationError } from '../paths.js';
+import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { join, basename } from 'node:path';
 import { capLines } from '../parsers/listing.js';
-import { guardRun, runToResult, checkConfirm, assertPlanSize, assertNoStoreCopyBelow, destinationNotes } from './helpers.js';
+import { syncById, folderStillAt, downloadedIntoLines, assertNoPendingIgnoreUpload, sharedBelowNotes, childNames, assertNoWritersReach, rootIgnoreFile, assertNoNestedIgnoreFile, assertNoNestedLocalIgnoreFile, assertSyncedLanding, assertNoFoldTwinBelow, guardRun, runToResult, checkConfirm, listedLines, assertNoStoreCopyBelow, destinationNotes, executableDownloadNote, backupNamesOf } from './helpers.js';
 
 const RO = { readOnlyHint: true, openWorldHint: true } as const;
 const SYNC_CTRL: Record<string, string> = { pause: '-p', resume: '-e', delete: '-d' };
@@ -17,7 +20,113 @@ const SYNC_CTRL: Record<string, string> = { pause: '-p', resume: '-e', delete: '
  * files. Setup is confirm-gated and validates paths exactly like put/get; the
  * persistent two-way nature is called out in the confirmation preview.
  */
+/**
+ * Append `rules` to <lp>/.megaignore as its final block (the last matching rule wins), ending
+ * with `-sync:.megaignore` so the cloud cannot replace it. A new file starts from the defaults.
+ */
+async function addIgnoreRules(rt: Runtime, lp: string, rules: string[]): Promise<void> {
+  const file = join(lp, '.megaignore');
+  const block = [IGNORE_HEADER, ...rules, '-sync:.megaignore'].join('\n') + '\n';
+  if (existsSync(file) || isSymlink(file)) {
+    if (lstatSync(file).isSymbolicLink() || !lstatSync(file).isFile()) {
+      throw new ValidationError(`${file} is not a regular file; not writing exclusion rules through it. Nothing was synced.`);
+    }
+    const content = readFileSync(file, 'utf8');
+    if (content.endsWith(block)) return;
+    writeFileSync(file, `${content}${content === '' || content.endsWith('\n') ? '' : '\n'}${block}`);
+    return;
+  }
+  const d = await rt.run('sync-ignore', ['--show', 'DEFAULT']);
+  const shown = d.code === 0 ? d.stdout.trim() : '';
+  // MEGAcmd writes .megaignore.default only on a sync's first start: else use the SDK's
+  // built-in list (DefaultFilterChain), which keeps hidden folders such as ~/.ssh out.
+  const defaults = shown ? `${shown}\n` : `${SDK_DEFAULT_EXCLUSIONS.map((n) => `-:${n}`).join('\n')}\n`;
+  writeFileSync(file, `${defaults}${block}`, { flag: 'wx' });
+}
+
+/** The SDK's predefined name exclusions (syncfilter.cpp mPredefinedNameExclusions). */
+const SDK_DEFAULT_EXCLUSIONS = ['Thumbs.db', 'desktop.ini', '~*', '.*', '*~.*', '*.crdownload', '*.sb-????????-??????', '*.tmp'];
+
+/** An existing root .megaignore is used as it is (MEGA's default exclusions only seed a new one). */
+function rootRulesLines(lp: string): string[] {
+  const f = rootIgnoreFile(lp);
+  return f ? [`${f} already exists: its own rules decide what else is synced (MEGA's default exclusions apply only if it lists them).`] : [];
+}
+
+const IGNORE_HEADER = "# Added by MEGA Cloud MCP: never sync MEGAcmd's session store or these app folders.";
+
+function isSymlink(p: string): boolean {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/** Does an exclusion rule keep .megaCmd out (like the default `-:.*`)? A regex counts as yes. */
+function excludesStore(rule: string): boolean {
+  const m = rule.match(/^-([adfs]?)([Nnp]?)([GgRr]?):(.*)$/);
+  if (!m) return false;
+  if (m[1] === 'f' || m[1] === 's') return false;
+  if (m[3] === 'R' || m[3] === 'r') return true;
+  return (m[4] as string).split('/').some((seg) => seg.toLowerCase() === '.megacmd' || (/[*?]/.test(seg) && globCanMatchStoreName(seg)));
+}
+
+/** mega_sync_ignore may not undo syncExclusions: no include rules (last match wins), no removals. */
+function assertFiltersKeepExclusions(action: string, filters: readonly string[]): void {
+  for (const f of filters) {
+    const rule = action === 'add-exclusion' || action === 'remove-exclusion' ? `-${f.replace(/^-/, '')}` : f;
+    if (action.startsWith('add') && rule.startsWith('+')) {
+      throw new ValidationError(`Include filters ("${f}") are not added through this tool: one could re-include MEGAcmd's session store or a protected folder. Edit the .megaignore file yourself if you need it.`);
+    }
+    if (action.startsWith('remove') && (/megacmd/i.test(rule) || /^-ap[gr]:/i.test(rule) || /sync:\.megaignore/i.test(rule) || excludesStore(rule))) {
+      throw new ValidationError(`"${f}" keeps MEGAcmd's session store, a protected folder or the sync's own rules out of the sync; it is not removed through this tool.`);
+    }
+  }
+}
+
 export function registerSync(server: McpServer, rt: Runtime): void {
+  /**
+   * Resuming syncs again everything changed on either side while paused: the same checks as
+   * mega_sync_add, on the sync's CURRENT cloud folder (a paused sync does not follow a move).
+   */
+  const resumeSync = async (sid: string, confirm: string | undefined, done: () => CallToolResult): Promise<CallToolResult> => {
+    const row = await syncById(rt, sid);
+    if (row === undefined) throw new ValidationError(`Could not read MEGAcmd's list of syncs, so what resuming sync ${sid} would carry is unknown. Nothing was run.`);
+    if (row === null) throw new ValidationError(`There is no sync ${sid}; mega_sync_list shows the ids.`);
+    const lp = assertLocalPath(row.local);
+    // A spelling assertLocalPath changes (a trailing space, say) would be checked as another folder.
+    if (lp !== row.local) throw new ValidationError(`Sync ${sid}'s local folder "${row.local}" cannot be checked under that spelling; resume it yourself in MEGAcmd if intended.`);
+    const rp = row.remote;
+    if (!(await folderStillAt(rt, rp, row.handle))) {
+      throw new ValidationError(`Sync ${sid}'s cloud folder is no longer at ${rp} (moved or renamed while paused), so what resuming it would carry cannot be checked. Delete this sync and add it again with mega_sync_add.`);
+    }
+    const exclusions = syncExclusions(lp, await rt.getBinDir());
+    await assertNoStoreCopyBelow(rt, rp);
+    await assertNoFoldTwinBelow(rt, rp, exclusions.filter((e) => e.rel !== '').map((e) => e.rel));
+    await assertNoNestedIgnoreFile(rt, rp);
+    await assertNoNestedLocalIgnoreFile(rt, lp);
+    await assertNoWritersReach(rt, rp, lp);
+    await assertNoPendingIgnoreUpload(rt, rp);
+    const execNote = await executableDownloadNote(rt);
+    const notes = [...(await destinationNotes(rt, rp)), ...(await sharedBelowNotes(rt, rp))];
+    // Downloaded into earlier in this session: synced up to the cloud side too.
+    const downloaded = downloadedIntoLines([lp]);
+    const summary = [
+      `This will resume sync ${sid}: a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. What changed on either side while it was paused (including deletions) propagates to the other, and so does every later change.`,
+      ...(exclusions.length > 0 ? ['', `Never synced, in either direction (rules in ${join(lp, '.megaignore')}):`, ...exclusions.map((e) => `  ${e.label}`)] : []),
+      ...rootRulesLines(lp),
+      ...(execNote ? [execNote] : []),
+      ...notes,
+      ...downloaded,
+    ];
+    const gate = checkConfirm(rt, 'mega_sync_control', { action: 'resume', id: sid, localPath: lp, remotePath: rp, handle: row.handle, exclusions: exclusions.map((e) => e.rule), root: rootRulesLines(lp), exec: execNote, notes, downloaded }, confirm, summary);
+    if (gate) return gate;
+    await assertNoStoreCopyBelow(rt, rp);
+    if (exclusions.length > 0) await addIgnoreRules(rt, lp, exclusions.map((e) => e.rule));
+    return runToResult(rt, 'sync', [SYNC_CTRL.resume as string, sid], done);
+  };
+
   // mega_sync_list — list configured synchronizations.
   server.registerTool(
     'mega_sync_list',
@@ -54,18 +163,36 @@ export function registerSync(server: McpServer, rt: Runtime): void {
       guardRun(async () => {
         const lp = assertLocalPath(localPath);
         // Two-way: the cloud side is downloaded too, so a store copy there would land on disk.
-        const rp = assertNotStoreCopy(assertRemotePath(remotePath));
-        assertNoStoreWithin(lp, 'sync', await rt.getBinDir());
-        // Two-way: cloud changes are written back below lp.
-        assertNoProtectedWithin(lp, 'sync');
-        // A store copy anywhere BELOW the cloud folder would be synced down to disk.
-        if (!confirm) await assertNoStoreCopyBelow(rt, rp);
-        const notes = confirm ? [] : await destinationNotes(rt, rp);
-        const summary = [`This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`, ...notes];
-        const gate = checkConfirm(rt, 'mega_sync_add', { localPath: lp, remotePath: rp }, confirm, summary);
+        const rp = assertNotStoreCopy(assertNoWildcard(assertRemoteDest(remotePath), 'remotePath'));
+        // The store and protected folders in lp are excluded (both directions) by .megaignore rules.
+        const exclusions = syncExclusions(lp, await rt.getBinDir());
+        // A store copy below rp, or a fold twin of an excluded folder, would sync down to disk.
+        await assertNoStoreCopyBelow(rt, rp);
+        await assertNoFoldTwinBelow(rt, rp, exclusions.filter((e) => e.rel !== '').map((e) => e.rel));
+        await assertNoNestedIgnoreFile(rt, rp);
+        await assertNoNestedLocalIgnoreFile(rt, lp);
+        await assertNoWritersReach(rt, rp, lp);
+        await assertNoPendingIgnoreUpload(rt, rp);
+        // Two-way: files from the cloud are written locally with MEGAcmd's permissions.
+        const execNote = await executableDownloadNote(rt);
+        const notes = [...(await destinationNotes(rt, rp)), ...(await sharedBelowNotes(rt, rp))];
+        const downloaded = downloadedIntoLines([lp]);
+        const summary = [
+          `This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`,
+          ...(exclusions.length > 0
+            ? ['', `Never synced, in either direction (rules added to ${join(lp, '.megaignore')}):`, ...exclusions.map((e) => `  ${e.label}`)]
+            : []),
+          ...rootRulesLines(lp),
+          ...(execNote ? [execNote] : []),
+          ...notes,
+          ...downloaded,
+        ];
+        const gate = checkConfirm(rt, 'mega_sync_add', { localPath: lp, remotePath: rp, exclusions: exclusions.map((e) => e.rule), root: rootRulesLines(lp), exec: execNote, notes, downloaded }, confirm, summary);
         if (gate) return gate;
         await assertNoStoreCopyBelow(rt, rp);
-        return runToResult(rt, 'sync', [lp, rp], () => ok(`Started sync ${lp} <-> ${rp}.`, { localPath: lp, remotePath: rp }));
+        // The rules must be in place BEFORE the sync starts: it uploads at once.
+        if (exclusions.length > 0) await addIgnoreRules(rt, lp, exclusions.map((e) => e.rule));
+        return runToResult(rt, 'sync', [lp, rp], () => ok(`Started sync ${lp} <-> ${rp}.`, { localPath: lp, remotePath: rp, excluded: exclusions.map((e) => e.label) }));
       }),
   );
 
@@ -86,13 +213,15 @@ export function registerSync(server: McpServer, rt: Runtime): void {
     async ({ action, id, confirm }) =>
       guardRun(async () => {
         const sid = assertNoFlag(id, 'id');
+        const done = () => ok(`Done: ${action} sync ${sid}.`, { action, id: sid });
+        if (action === 'resume') return resumeSync(sid, confirm, done);
         const summary =
           action === 'delete'
             ? `This will delete sync ${sid} (stops mirroring; does not delete files).`
             : `This will ${action} sync ${sid}.`;
         const gate = checkConfirm(rt, 'mega_sync_control', { action, id: sid }, confirm, summary);
         if (gate) return gate;
-        return runToResult(rt, 'sync', [SYNC_CTRL[action] as string, sid], () => ok(summary.replace(/^This will /, 'Done: '), { action, id: sid }));
+        return runToResult(rt, 'sync', [SYNC_CTRL[action] as string, sid], done);
       }),
   );
 
@@ -136,12 +265,31 @@ export function registerSync(server: McpServer, rt: Runtime): void {
     async ({ localPath, remotePath, period, numBackups, confirm }) =>
       guardRun(async () => {
         const lp = assertLocalPath(localPath);
-        const rp = assertRemotePath(remotePath);
+        const rp = assertNoWildcard(assertRemoteDest(remotePath), 'remotePath');
         const per = assertFlagValue(period, 'period');
-        assertNoStoreWithin(lp, 'back up', await rt.getBinDir());
-        const notes = confirm ? [] : await destinationNotes(rt, rp);
-        const summary = [`This will configure a periodic backup of ${lp} into ${rp} (period "${per}", keep ${numBackups}).`, ...notes];
-        const gate = checkConfirm(rt, 'mega_backup_add', { localPath: lp, remotePath: rp, period: per, numBackups }, confirm, summary);
+        const walkNote = assertNoStoreWithin(lp, 'back up', await rt.getBinDir());
+        // Each run adds a copy of lp in rp, written to this computer too if rp is two-way synced.
+        await assertSyncedLanding(rt, rp, 'unknown', { local: [lp] });
+        // MEGA deletes the oldest "<name>_bk_<time>" folders in rp beyond the count - whoever made them.
+        // MEGAcmd registers the backup under lp's real path (symlinks resolved), which names its copies.
+        let real = lp;
+        try {
+          real = realpathSync.native(lp);
+        } catch {
+          // Missing: MEGAcmd refuses it.
+        }
+        const bases = [...new Set([...backupNamesOf(lp), ...backupNamesOf(real)])];
+        const name = bases[0] ?? basename(lp);
+        const here = await childNames(rt, rp);
+        const older = here ? [...here].filter((n) => bases.some((b) => n.normalize('NFC').startsWith(b)) && n.includes('_bk_')) : [];
+        const notes = [
+          ...walkNote,
+          ...(await destinationNotes(rt, rp)),
+          ...(older.length > 0 ? [`${rp} already holds ${older.length} folder(s) that MEGA counts as backups of a folder named ${name}: beyond ${numBackups} copies the oldest are DELETED, whoever made them:`, ...listedLines(older)] : []),
+        ];
+        const downloaded = downloadedIntoLines([lp]);
+        const summary = [`This will configure a periodic backup of ${lp} into ${rp} (period "${per}", keep ${numBackups}).`, ...notes, ...downloaded];
+        const gate = checkConfirm(rt, 'mega_backup_add', { localPath: lp, remotePath: rp, period: per, numBackups, notes, downloaded }, confirm, summary);
         if (gate) return gate;
         const args = [lp, rp, `--period=${per}`, `--num-backups=${numBackups}`];
         return runToResult(rt, 'backup', args, () => ok(`Configured backup ${lp} -> ${rp}.`, { localPath: lp, remotePath: rp }));
@@ -218,11 +366,11 @@ export function registerSync(server: McpServer, rt: Runtime): void {
     {
       title: 'MEGA: sync ignore filters',
       description:
-        'View or modify the ignore filters of a sync (use target="DEFAULT" for the defaults applied to new syncs). action="show" is read-only; add/remove change what is synced and require confirmation.',
+        'View or modify the ignore filters of a sync (use target="DEFAULT" for the defaults applied to new syncs). action="show" is read-only; the others change what is synced and require confirmation. Use add-exclusion / remove-exclusion with the filter WITHOUT its leading "-" (e.g. ":*.tmp", "d:node_modules"). Include filters ("+...") are not added through this tool, and the rules that keep MEGAcmd\'s session store and protected folders out (including MEGA\'s default ":.*") are not removed.',
       inputSchema: {
         action: z.enum(['show', 'add', 'add-exclusion', 'remove', 'remove-exclusion']).describe('Operation on the filters.'),
         target: z.string().describe('Sync ID, local path, or "DEFAULT".'),
-        filters: z.array(z.string()).optional().describe('Filter patterns (required for add/remove actions).'),
+        filters: z.array(z.string()).optional().describe('Filters in MEGA\'s <CLASS><TARGET><TYPE><STRATEGY>:<PATTERN> form (for the *-exclusion actions, without the leading "-").'),
         confirm: z.string().optional().describe('Confirmation token from the first call.'),
       },
       // Destructive: removing an exclusion starts uploading what it kept out.
@@ -233,15 +381,35 @@ export function registerSync(server: McpServer, rt: Runtime): void {
         const tgt = assertNoFlag(target, 'target');
         if (action === 'show') {
           return runToResult(rt, 'sync-ignore', ['--show', tgt], (r) => {
-            const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
-            return ok(text || '(no filters)', { target: tgt, filterCount: total, truncated });
+            // MEGAcmd prints every non-comment line of the rules file: only rule-shaped lines are shown
+            // (a file copied in under that name is not read out through this tool).
+            const lines = r.stdout.split(/\r?\n/).filter((l) => l.trim() !== '');
+            const rules = lines.filter((l) => /^[-+](?:[adfs]?[Nnp]?[GgRr]?|sync):.+$|^exclude-(?:larger|smaller):\s*\d+[kKmMgGtT]?\s*$/.test(l.trim()));
+            const other = lines.length - rules.length;
+            const { text, total, truncated } = capLines(rules.join('\n'), rt.config.maxListLines);
+            return ok(`${text || '(no filters)'}${other ? `\n(${other} other line(s) that are not filter rules are not shown.)` : ''}`, { target: tgt, filterCount: total, truncated, hidden: other });
           });
         }
         const fs = (filters ?? []).map((f) => assertNoFlag(f, 'filter'));
         if (fs.length === 0) throw new ValidationError('Provide at least one filter for add/remove.');
-        assertPlanSize(fs.length, 'filters');
-        const summary = [`This will ${action} ${fs.length} filter(s) on sync ${tgt} (changes what gets synced):`, ...fs.map((f) => `  ${f}`)];
-        const gate = checkConfirm(rt, 'mega_sync_ignore', { action, target: tgt, filters: fs }, confirm, summary);
+        assertFiltersKeepExclusions(action, fs);
+        // Which folders change, and who sees the cloud side.
+        let where: string[] = ['(DEFAULT: the filters new syncs start with; existing syncs keep theirs.)'];
+        // (MEGAcmd reads "default" in any case.)
+        if (tgt.toLowerCase() !== 'default') {
+          const row = await syncById(rt, tgt);
+          if (row === undefined) throw new ValidationError(`Could not read MEGAcmd's list of syncs, so which folders sync ${tgt} covers is unknown. Nothing was run.`);
+          if (row === null) throw new ValidationError(`There is no sync ${tgt}; mega_sync_list shows the ids.`);
+          where = [
+            `Sync ${tgt} is between ${row.local} and ${row.remote}.`,
+            ...(action.startsWith('remove') ? [`What these rules kept out is synced from then on: uploaded to ${row.remote} and downloaded to ${row.local}.`] : []),
+            ...(await destinationNotes(rt, row.remote)),
+            // Newly included files go into every folder of the sync, shared or linked ones too.
+            ...(action.startsWith('remove') ? await sharedBelowNotes(rt, row.remote) : []),
+          ];
+        }
+        const summary = [`This will ${action} ${fs.length} filter(s) on sync ${tgt} (changes what gets synced):`, ...listedLines(fs), ...where];
+        const gate = checkConfirm(rt, 'mega_sync_ignore', { action, target: tgt, filters: fs, where }, confirm, summary);
         if (gate) return gate;
         return runToResult(rt, 'sync-ignore', [`--${action}`, ...fs, tgt], () => ok(`Done: ${action} ${fs.length} filter(s) on sync ${tgt}.`, { action, target: tgt }));
       }),

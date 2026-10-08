@@ -2984,7 +2984,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve5.call(this, root, ref);
+      let _sch = resolve6.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3011,7 +3011,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve5(root, ref) {
+    function resolve6(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3841,7 +3841,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve5(baseURI, relativeURI, options) {
+    function resolve6(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const {
         parsed: baseParsed,
@@ -3874,49 +3874,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative, options, skipNormalization) {
+    function resolveComponent(base, relative4, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse3(serialize(base, options), options);
-        relative = parse3(serialize(relative, options), options);
+        relative4 = parse3(serialize(relative4, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative.scheme) {
-        target.scheme = relative.scheme;
-        target.userinfo = relative.userinfo;
-        target.host = relative.host;
-        target.port = relative.port;
-        target.path = removeDotSegments(relative.path || "");
-        target.query = relative.query;
+      if (!options.tolerant && relative4.scheme) {
+        target.scheme = relative4.scheme;
+        target.userinfo = relative4.userinfo;
+        target.host = relative4.host;
+        target.port = relative4.port;
+        target.path = removeDotSegments(relative4.path || "");
+        target.query = relative4.query;
       } else {
-        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
-          target.userinfo = relative.userinfo;
-          target.host = relative.host;
-          target.port = relative.port;
-          target.path = removeDotSegments(relative.path || "");
-          target.query = relative.query;
+        if (relative4.userinfo !== void 0 || relative4.host !== void 0 || relative4.port !== void 0) {
+          target.userinfo = relative4.userinfo;
+          target.host = relative4.host;
+          target.port = relative4.port;
+          target.path = removeDotSegments(relative4.path || "");
+          target.query = relative4.query;
         } else {
-          if (!relative.path) {
+          if (!relative4.path) {
             target.path = base.path;
-            if (relative.query !== void 0) {
-              target.query = relative.query;
+            if (relative4.query !== void 0) {
+              target.query = relative4.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative.path[0] === "/") {
-              target.path = removeDotSegments(relative.path);
+            if (relative4.path[0] === "/") {
+              target.path = removeDotSegments(relative4.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative.path;
+                target.path = "/" + relative4.path;
               } else if (!base.path) {
-                target.path = relative.path;
+                target.path = relative4.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative4.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative.query;
+            target.query = relative4.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3924,7 +3924,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative.fragment;
+      target.fragment = relative4.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -4210,7 +4210,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve5,
+      resolve: resolve6,
       resolveComponent,
       equal,
       serialize,
@@ -7200,9 +7200,9 @@ var require_dist = __commonJS({
 });
 
 // src/index.ts
-import { readFileSync as readFileSync2 } from "node:fs";
+import { readFileSync as readFileSync4 } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-import { dirname as dirname5, join as join8 } from "node:path";
+import { dirname as dirname6, join as join9 } from "node:path";
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -7750,16 +7750,16 @@ var ParseStatus = class _ParseStatus {
     return { status: status.value, value: arrayValue };
   }
   static async mergeObjectAsync(status, pairs) {
-    const syncPairs = [];
+    const syncPairs2 = [];
     for (const pair of pairs) {
       const key = await pair.key;
       const value = await pair.value;
-      syncPairs.push({
+      syncPairs2.push({
         key,
         value
       });
     }
-    return _ParseStatus.mergeObjectSync(status, syncPairs);
+    return _ParseStatus.mergeObjectSync(status, syncPairs2);
   }
   static mergeObjectSync(status, pairs) {
     const finalObject = {};
@@ -9655,19 +9655,19 @@ var ZodObject = class _ZodObject extends ZodType {
     }
     if (ctx.common.async) {
       return Promise.resolve().then(async () => {
-        const syncPairs = [];
+        const syncPairs2 = [];
         for (const pair of pairs) {
           const key = await pair.key;
           const value = await pair.value;
-          syncPairs.push({
+          syncPairs2.push({
             key,
             value,
             alwaysSet: pair.alwaysSet
           });
         }
-        return syncPairs;
-      }).then((syncPairs) => {
-        return ParseStatus.mergeObjectSync(status, syncPairs);
+        return syncPairs2;
+      }).then((syncPairs2) => {
+        return ParseStatus.mergeObjectSync(status, syncPairs2);
       });
     } else {
       return ParseStatus.mergeObjectSync(status, pairs);
@@ -15178,16 +15178,32 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
+function getDotPath(path) {
+  if (path.length === 0) {
+    return "object root";
+  }
+  return path.reduce((acc, seg, index) => {
+    if (index === 0) {
+      return String(seg);
+    }
+    if (typeof seg === "number") {
+      return `${acc}[${seg}]`;
+    }
+    return `${acc}.${seg}`;
+  }, "");
+}
 function getParseErrorMessage(error2) {
   if (error2 && typeof error2 === "object") {
+    if ("issues" in error2 && Array.isArray(error2.issues) && error2.issues.length > 0) {
+      return error2.issues.map((i) => {
+        if (!i.path?.length) {
+          return i.message;
+        }
+        return `${i.message} at ${getDotPath(i.path)}`;
+      }).join("\n");
+    }
     if ("message" in error2 && typeof error2.message === "string") {
       return error2.message;
-    }
-    if ("issues" in error2 && Array.isArray(error2.issues) && error2.issues.length > 0) {
-      const firstIssue = error2.issues[0];
-      if (firstIssue && typeof firstIssue === "object" && "message" in firstIssue) {
-        return String(firstIssue.message);
-      }
     }
     try {
       return JSON.stringify(error2);
@@ -18836,6 +18852,9 @@ var Protocol = class {
       this.setRequestHandler(GetTaskPayloadRequestSchema, async (request, extra) => {
         const handleTaskResult = async () => {
           const taskId = request.params.taskId;
+          if (!await this._taskStore.getTask(taskId, extra.sessionId)) {
+            throw new McpError(ErrorCode.InvalidParams, `Task not found: ${taskId}`);
+          }
           if (this._taskMessageQueue) {
             let queuedMessage;
             while (queuedMessage = await this._taskMessageQueue.dequeue(taskId, extra.sessionId)) {
@@ -18866,12 +18885,12 @@ var Protocol = class {
             throw new McpError(ErrorCode.InvalidParams, `Task not found: ${taskId}`);
           }
           if (!isTerminal(task.status)) {
-            await this._waitForTaskUpdate(taskId, extra.signal);
+            await this._waitForTaskUpdate(taskId, extra.signal, extra.sessionId);
             return await handleTaskResult();
           }
           if (isTerminal(task.status)) {
             const result = await this._taskStore.getTaskResult(taskId, extra.sessionId);
-            this._clearTaskQueue(taskId);
+            this._clearTaskQueue(taskId, extra.sessionId);
             return {
               ...result,
               _meta: {
@@ -18908,7 +18927,7 @@ var Protocol = class {
             throw new McpError(ErrorCode.InvalidParams, `Cannot cancel task in terminal status: ${task.status}`);
           }
           await this._taskStore.updateTaskStatus(request.params.taskId, "cancelled", "Client cancelled task execution.", extra.sessionId);
-          this._clearTaskQueue(request.params.taskId);
+          this._clearTaskQueue(request.params.taskId, extra.sessionId);
           const cancelledTask = await this._taskStore.getTask(request.params.taskId, extra.sessionId);
           if (!cancelledTask) {
             throw new McpError(ErrorCode.InvalidParams, `Task not found after cancellation: ${request.params.taskId}`);
@@ -19036,6 +19055,19 @@ var Protocol = class {
     const handler = this._requestHandlers.get(request.method) ?? this.fallbackRequestHandler;
     const capturedTransport = this._transport;
     const relatedTaskId = request.params?._meta?.[RELATED_TASK_META_KEY]?.taskId;
+    const sessionId = capturedTransport?.sessionId;
+    const store = this._taskStore;
+    let relatedTaskFound = true;
+    let relatedTaskLookup;
+    if (relatedTaskId && store && this._taskMessageQueue && sessionId !== void 0) {
+      relatedTaskFound = false;
+      relatedTaskLookup = (async () => {
+        if (!await store.getTask(relatedTaskId, sessionId)) {
+          throw new McpError(ErrorCode.InvalidParams, `Task not found: ${relatedTaskId}`);
+        }
+        relatedTaskFound = true;
+      })();
+    }
     if (handler === void 0) {
       const errorResponse = {
         jsonrpc: "2.0",
@@ -19045,7 +19077,10 @@ var Protocol = class {
           message: "Method not found"
         }
       };
-      if (relatedTaskId && this._taskMessageQueue) {
+      if (relatedTaskId && relatedTaskLookup) {
+        const queuedError = { type: "error", message: errorResponse, timestamp: Date.now() };
+        relatedTaskLookup.then(() => this._enqueueTaskMessage(relatedTaskId, queuedError, sessionId), () => capturedTransport?.send(errorResponse)).catch((error2) => this._onerror(new Error(`Failed to send an error response: ${error2}`)));
+      } else if (relatedTaskId && this._taskMessageQueue) {
         this._enqueueTaskMessage(relatedTaskId, {
           type: "error",
           message: errorResponse,
@@ -19096,7 +19131,10 @@ var Protocol = class {
       closeSSEStream: extra?.closeSSEStream,
       closeStandaloneSSEStream: extra?.closeStandaloneSSEStream
     };
-    Promise.resolve().then(() => {
+    (relatedTaskLookup ?? Promise.resolve()).then(() => {
+      if (relatedTaskLookup && abortController.signal.aborted) {
+        throw new McpError(ErrorCode.ConnectionClosed, "Request was cancelled");
+      }
       if (taskCreationParams) {
         this.assertTaskHandlerCapability(request.method);
       }
@@ -19131,7 +19169,7 @@ var Protocol = class {
           ...error2["data"] !== void 0 && { data: error2["data"] }
         }
       };
-      if (relatedTaskId && this._taskMessageQueue) {
+      if (relatedTaskId && this._taskMessageQueue && relatedTaskFound) {
         await this._enqueueTaskMessage(relatedTaskId, {
           type: "error",
           message: errorResponse,
@@ -19295,7 +19333,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
+        await new Promise((resolve6) => setTimeout(resolve6, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -19312,7 +19350,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve6, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -19390,7 +19428,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve5(parseResult.data);
+            resolve6(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -19611,7 +19649,7 @@ var Protocol = class {
       throw new Error("Cannot enqueue task message: taskStore and taskMessageQueue are not configured");
     }
     const maxQueueSize = this._options?.maxTaskQueueSize;
-    await this._taskMessageQueue.enqueue(taskId, message, sessionId, maxQueueSize);
+    await this._taskMessageQueue.enqueue(taskId, message, sessionId ?? this._transport?.sessionId, maxQueueSize);
   }
   /**
    * Clears the message queue for a task and rejects any pending request resolvers.
@@ -19640,23 +19678,24 @@ var Protocol = class {
    * Uses polling to check for updates at the task's configured poll interval.
    * @param taskId The task ID to wait for
    * @param signal Abort signal to cancel the wait
+   * @param sessionId Session of the request that waits, passed to the task store
    * @returns Promise that resolves when an update occurs or rejects if aborted
    */
-  async _waitForTaskUpdate(taskId, signal) {
+  async _waitForTaskUpdate(taskId, signal, sessionId) {
     let interval = this._options?.defaultTaskPollInterval ?? 1e3;
     try {
-      const task = await this._taskStore?.getTask(taskId);
+      const task = await this._taskStore?.getTask(taskId, sessionId);
       if (task?.pollInterval) {
         interval = task.pollInterval;
       }
     } catch {
     }
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve6, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve5, interval);
+      const timeoutId = setTimeout(resolve6, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -20131,16 +20170,7 @@ var Server = class extends Protocol {
     if (!methodSchema) {
       throw new Error("Schema is missing a method literal");
     }
-    let methodValue;
-    if (isZ4Schema(methodSchema)) {
-      const v4Schema = methodSchema;
-      const v4Def = v4Schema._zod?.def;
-      methodValue = v4Def?.value ?? v4Schema.value;
-    } else {
-      const v3Schema = methodSchema;
-      const legacyDef = v3Schema._def;
-      methodValue = legacyDef?.value ?? v3Schema.value;
-    }
+    const methodValue = getLiteralValue(methodSchema);
     if (typeof methodValue !== "string") {
       throw new Error("Schema method literal must be a string");
     }
@@ -20533,6 +20563,42 @@ var ExperimentalMcpServerTasks = class {
 };
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js
+function toolInputElementCount(value, max) {
+  let count = 0;
+  const stack = [value];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === null || typeof node !== "object")
+      continue;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        if (++count > max)
+          return count;
+        if (child !== null && typeof child === "object")
+          stack.push(child);
+      }
+    } else {
+      for (const key in node) {
+        if (!Object.prototype.hasOwnProperty.call(node, key))
+          continue;
+        if (++count > max)
+          return count;
+        const child = node[key];
+        if (child !== null && typeof child === "object")
+          stack.push(child);
+      }
+    }
+  }
+  return count;
+}
+function resolveMaxToolInputElements(value) {
+  if (value === void 0 || value === Infinity)
+    return void 0;
+  if (typeof value !== "number" || Number.isNaN(value) || value < 1) {
+    throw new RangeError(`maxToolInputElements must be a number of at least 1, or Infinity, got ${String(value)}`);
+  }
+  return value;
+}
 var McpServer = class {
   constructor(serverInfo, options) {
     this._registeredResources = {};
@@ -20544,6 +20610,7 @@ var McpServer = class {
     this._resourceHandlersInitialized = false;
     this._promptHandlersInitialized = false;
     this.server = new Server(serverInfo, options);
+    this._maxToolInputElements = resolveMaxToolInputElements(options?.maxToolInputElements);
   }
   /**
    * Access experimental features.
@@ -20674,12 +20741,15 @@ var McpServer = class {
    * Validates tool input arguments against the tool's input schema.
    */
   async validateToolInput(tool, args, toolName) {
+    if (this._maxToolInputElements !== void 0 && toolInputElementCount(args, this._maxToolInputElements) > this._maxToolInputElements) {
+      throw new McpError(ErrorCode.InvalidParams, `Invalid arguments for tool ${toolName}: arguments contain more than the maximum of ${this._maxToolInputElements} elements`);
+    }
     if (!tool.inputSchema) {
       return void 0;
     }
     const inputObj = normalizeObjectSchema(tool.inputSchema);
     const schemaToParse = inputObj ?? tool.inputSchema;
-    const parseResult = await safeParseAsync2(schemaToParse, args);
+    const parseResult = await safeParseAsync2(schemaToParse, args ?? {});
     if (!parseResult.success) {
       const error2 = "error" in parseResult ? parseResult.error : "Unknown error";
       const errorMessage = getParseErrorMessage(error2);
@@ -20756,7 +20826,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
+      await new Promise((resolve6) => setTimeout(resolve6, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -20917,7 +20987,7 @@ var McpServer = class {
       }
       if (prompt.argsSchema) {
         const argsObj = normalizeObjectSchema(prompt.argsSchema);
-        const parseResult = await safeParseAsync2(argsObj, request.params.arguments);
+        const parseResult = await safeParseAsync2(argsObj, request.params.arguments ?? {});
         if (!parseResult.success) {
           const error2 = "error" in parseResult ? parseResult.error : "Unknown error";
           const errorMessage = getParseErrorMessage(error2);
@@ -21328,8 +21398,17 @@ var EMPTY_COMPLETION_RESULT = {
 import process2 from "node:process";
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
+var STDIO_DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
 var ReadBuffer = class {
+  constructor(options) {
+    this._maxBufferSize = options?.maxBufferSize ?? STDIO_DEFAULT_MAX_BUFFER_SIZE;
+  }
   append(chunk) {
+    const newSize = (this._buffer?.length ?? 0) + chunk.length;
+    if (newSize > this._maxBufferSize) {
+      this.clear();
+      throw new Error(`ReadBuffer exceeded maximum size of ${this._maxBufferSize} bytes`);
+    }
     this._buffer = this._buffer ? Buffer.concat([this._buffer, chunk]) : chunk;
   }
   readMessage() {
@@ -21357,18 +21436,24 @@ function serializeMessage(message) {
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 var StdioServerTransport = class {
-  constructor(_stdin = process2.stdin, _stdout = process2.stdout) {
+  constructor(_stdin = process2.stdin, _stdout = process2.stdout, options) {
     this._stdin = _stdin;
     this._stdout = _stdout;
-    this._readBuffer = new ReadBuffer();
     this._started = false;
     this._ondata = (chunk) => {
-      this._readBuffer.append(chunk);
-      this.processReadBuffer();
+      try {
+        this._readBuffer.append(chunk);
+        this.processReadBuffer();
+      } catch (error2) {
+        this.onerror?.(error2);
+        this.close().catch(() => {
+        });
+      }
     };
     this._onerror = (error2) => {
       this.onerror?.(error2);
     };
+    this._readBuffer = new ReadBuffer({ maxBufferSize: options?.maxBufferSize });
   }
   /**
    * Starts listening for messages on stdin.
@@ -21405,12 +21490,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve5) => {
+    return new Promise((resolve6) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve5();
+        resolve6();
       } else {
-        this._stdout.once("drain", resolve5);
+        this._stdout.once("drain", resolve6);
       }
     });
   }
@@ -21432,6 +21517,7 @@ function loadConfig(env = process.env) {
   return {
     megacmdDir,
     bundledDir,
+    appDir: resolve(here, ".."),
     cacheDir: resolveCacheDir(env),
     systemAppBinDirs: systemAppBinDirs(env),
     download: downloadSpec(env),
@@ -21521,7 +21607,9 @@ function parseMaxList(v) {
 }
 
 // src/runtime.ts
-import { basename as basename3, join as join6 } from "node:path";
+import { basename as basename3, join as join6, isAbsolute as isAbsolute3, dirname as dirname4, resolve as resolve5 } from "node:path";
+import { readFileSync as readFileSync2, readdirSync as readdirSync2, realpathSync as realpathSync3, lstatSync as lstatSync2, statSync as statSync2, readlinkSync } from "node:fs";
+import { homedir as homedir6 } from "node:os";
 
 // src/resolve.ts
 import { access, constants as constants2, readFile, realpath } from "node:fs/promises";
@@ -21667,8 +21755,8 @@ function childEnv(resolved) {
   return env;
 }
 var UNSAFE_ENV = /* @__PURE__ */ new Set(["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "PS4", "CDPATH", "GLOBIGNORE", "LD_PRELOAD", "LD_AUDIT"]);
-function prepend(dir, existing, sep3) {
-  return existing ? `${dir}${sep3}${existing}` : dir;
+function prepend(dir, existing, sep4) {
+  return existing ? `${dir}${sep4}${existing}` : dir;
 }
 async function execClient(resolved, cmd, args, opts = {}) {
   const { bin, argv } = resolved.clientInvocation(cmd, args);
@@ -21840,17 +21928,17 @@ function firstStderrLine(stderr) {
   return "";
 }
 function redact(text) {
-  return text.replace(/\bsession\b[^\n]*/gi, "session [redacted]").replace(/[A-Za-z0-9_-]{40,}/g, "[redacted]");
+  return text.replace(/\bsession\b[^\n]*/gi, "session [redacted]").replace(/([#!])[A-Za-z0-9_-]{16,}/g, "$1[redacted]").replace(/[A-Za-z0-9_-]{40,}/g, "[redacted]");
 }
 function classifyExit(result) {
   if (result.maxBufferExceeded) {
     return "Output too large to return. Narrow the request (a more specific path or pattern).";
   }
   if (result.timedOut) {
-    return "The MEGAcmd command timed out. The server may be busy or still starting; try again shortly.";
+    return "The MEGAcmd command timed out. The server may be busy or still starting; a transfer may also still be running in MEGAcmd (see mega_transfers). Try again shortly.";
   }
   if (result.spawnError === "INTEGRITY_FAILED") {
-    return "The cached MEGAcmd failed an integrity check. Run the `megacmd_setup` tool to re-download a verified copy.";
+    return "The MEGAcmd found on this computer failed its signature check (it is not the program MEGA signed), so it was not run. Remove it and reinstall MEGAcmd from https://mega.io/cmd.";
   }
   if (result.spawnError) {
     return "MEGAcmd is not available. Run the `megacmd_setup` tool to download it, or install MEGAcmd / set the MEGAcmd directory in the extension settings.";
@@ -22232,6 +22320,9 @@ var delay3 = (ms) => new Promise((r) => setTimeout(r, ms));
 var PROBE_TIMEOUT_MS2 = 1e4;
 async function detectAuth(run) {
   const r = await run("whoami", [], { timeoutMs: PROBE_TIMEOUT_MS2 });
+  if (r.spawnError === "INTEGRITY_FAILED") {
+    return { loggedIn: false, reason: "integrity_failed", detail: classifyExit(r) };
+  }
   if (r.spawnError) {
     return { loggedIn: false, reason: "no_megacmd", detail: classifyExit(r) };
   }
@@ -22248,14 +22339,14 @@ async function ensureReady(run, tries = 3, baseDelayMs = 500) {
   let last = { loggedIn: false, reason: "server_error" };
   for (let i = 0; i < tries; i++) {
     last = await detectAuth(run);
-    if (last.loggedIn || last.reason === "no_megacmd") return last;
+    if (last.loggedIn || last.reason === "no_megacmd" || last.reason === "integrity_failed") return last;
     if (i < tries - 1) await delay3(baseDelayMs * (i + 1));
   }
   return last;
 }
 
 // src/paths.ts
-import { resolve as resolve4, sep as sep2, dirname as dirname3, basename as basename2, join as join4 } from "node:path";
+import { resolve as resolve4, sep as sep2, dirname as dirname3, basename as basename2, join as join4, relative, isAbsolute as isAbsolute2 } from "node:path";
 import { homedir as homedir5 } from "node:os";
 import { realpathSync as realpathSync2, existsSync as existsSync2, readdirSync, lstatSync, statSync } from "node:fs";
 var ValidationError = class extends Error {
@@ -22267,7 +22358,10 @@ var ValidationError = class extends Error {
 var isWin2 = process.platform === "win32";
 var SEG_SPLIT = isWin2 ? /[\\/]+/ : /\//;
 function fold(p) {
-  return p.toLowerCase();
+  return p.normalize("NFC").toUpperCase().toLowerCase().toUpperCase().toLowerCase().normalize("NFC");
+}
+function foldName(name) {
+  return fold(name);
 }
 function normSegment(s) {
   if (!isWin2 || s === "" || /^\.+$/.test(s) || /^[A-Za-z]:$/.test(s)) return s;
@@ -22304,7 +22398,45 @@ function diskChain(p) {
 }
 function onDiskAtOrUnder(child, parent, chain = diskChain(child)) {
   const id = diskId(parent);
-  return id !== null && chain.has(id);
+  if (id !== null) return chain.has(id);
+  const rest = [];
+  let base = resolve4(parent);
+  for (; ; ) {
+    const up = dirname3(base);
+    if (up === base) return false;
+    rest.unshift(basename2(base));
+    base = up;
+    const baseId = diskId(base);
+    if (baseId === null) continue;
+    if (!chain.has(baseId)) return false;
+    const below = [];
+    for (let c = resolve4(child); ; ) {
+      if (diskId(c) === baseId) return below.length >= rest.length && rest.every((r, i) => fold(r) === fold(below[i]));
+      const cUp = dirname3(c);
+      if (cUp === c) return false;
+      below.unshift(basename2(c));
+      c = cUp;
+    }
+  }
+}
+function localAtOrUnder(child, parent) {
+  const parents = [parent, realpathBestEffort(parent)];
+  return spellingsOf(resolve4(child)).some((c) => parents.some((p) => isAtOrUnder(normWinPath(c), p)) || onDiskAtOrUnder(c, parent));
+}
+function shortFirmlinkSpelling(abs) {
+  if (process.platform !== "darwin") return abs;
+  const m = abs.match(/^\/System\/Volumes\/Data(\/.+)$/i);
+  if (!m) return abs;
+  const short = m[1];
+  let a = abs;
+  let b = short;
+  while (!existsSync2(a)) {
+    const up = dirname3(a);
+    if (up === a || dirname3(b) === b) return abs;
+    a = up;
+    b = dirname3(b);
+  }
+  return sameOnDisk(a, b) ? short : abs;
 }
 function sameOnDisk(a, b) {
   const id = diskId(a);
@@ -22312,9 +22444,18 @@ function sameOnDisk(a, b) {
 }
 var publishedBinDir = null;
 var trustRoots = [];
-function publishMegacmdBinDir(dir, roots = []) {
+var writeRootsOf = () => [];
+function publishMegacmdBinDir(dir, roots = [], writeOnly = []) {
   publishedBinDir = dir;
-  trustRoots = [...new Set([...dir ? [dir] : [], ...roots].filter(Boolean).map((p) => resolve4(p)))];
+  trustRoots = [...new Set([...dir ? [dir] : [], ...roots].filter(Boolean).map((p) => resolve4(appBundleOf(p))))];
+  writeRootsOf = typeof writeOnly === "function" ? writeOnly : () => writeOnly;
+}
+function currentWriteRoots() {
+  return [...new Set(writeRootsOf().filter(Boolean).map((p) => resolve4(p)))];
+}
+function appBundleOf(p) {
+  const m = p.match(/^(.*?\.app)(?:[\\/]|$)/i);
+  return m ? m[1] : p;
 }
 function homeIsDir() {
   try {
@@ -22351,9 +22492,16 @@ function hitsSessionStore(rawAbs) {
   const chain = diskChain(abs);
   return sessionStoreRoots().some((r) => isAtOrUnder(abs, r) || onDiskAtOrUnder(abs, r, chain));
 }
+function localSpellings(name) {
+  if (name === ".") return ["%2e"];
+  if (name === "..") return ["%2e%2e"];
+  const esc2 = (bad) => Array.from(name, (c) => c.length === 1 && c.charCodeAt(0) < 128 && bad(c) ? `%${c.charCodeAt(0).toString(16).padStart(2, "0")}` : c).join("");
+  const strict = esc2((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 || '\\/:?"<>|*'.includes(c));
+  const dots = strict.replace(/\.+$/, (m) => "%2e".repeat(m.length));
+  return [.../* @__PURE__ */ new Set([name, esc2((c) => c === "/" || c === "\0"), esc2((c) => c === "/" || c === ":" || c === "\0"), strict, dots])];
+}
 function isStoreName(name) {
-  const s = fold(name);
-  return s === ".megacmd" || s.startsWith(".megacmd_");
+  return [name, cloudNameOf(name)].some((n) => fold(n).startsWith(".megacmd"));
 }
 function realpathBestEffort(abs) {
   let head = abs;
@@ -22385,20 +22533,70 @@ function pathHitsSessionStore(abs) {
   return spellingsOf(abs).some(hitsSessionStore);
 }
 function assertNotTrustRoot(abs) {
-  if (trustRoots.length === 0) return;
+  insideAny(abs, trustRoots, "Refusing to read or write inside the MEGAcmd program directory or this connector's data directory - a file placed there would be loaded by MEGAcmd or by the connector itself.");
+}
+function isIgnoreFileName(name) {
+  return [name, cloudNameOf(name)].some((n) => fold(normSegment(n)) === ".megaignore");
+}
+var RECOVERY_KEY_NAMES = [
+  "MEGA-RECOVERYKEY",
+  "MEGA-RETTUNGSSCHLUESSEL",
+  "MEGA-CL\xC9deR\xC9CUP\xC9RATION",
+  "MEGA-CLAVEDERECUPERACION",
+  "MEGA-CHAVEDERECUPERACAO",
+  "MEGA-CHIAVEDIRECUPERO",
+  "MEGA-HERSTELSLEUTEL",
+  "MEGA-KLUCZODZYSKIWANIA",
+  "MEGA-CHEIEDERECUPERARE",
+  "MEGA-KUNCIPEMULIHAN",
+  "MEGA-KURTARMA-ANAHTARI",
+  "CHIAKHOAPHUCHOI-MEGA",
+  "MEGA-\u041A\u041B\u042E\u0427-\u0412\u041E\u0421\u0421\u0422\u0410\u041D\u041E\u0412\u041B\u0415\u041D\u0418\u042F",
+  "MEGA-\u0E04\u0E35\u0E22\u0E4C\u0E01\u0E32\u0E23\u0E01\u0E39\u0E49\u0E04\u0E37\u0E19",
+  "MEGA-\u56DE\u5FA9\u30AD\u30FC",
+  "MEGA-\u6062\u590D\u5BC6\u94A5",
+  "MEGA-\u9084\u539F\u91D1\u9470",
+  "\u0645\u0641\u062A\u0627\u062D \u0627\u0644\u0627\u0633\u062A\u0639\u0627\u062F\u0629-MEGA"
+].map((n) => n.normalize("NFC").toLowerCase());
+function isRecoveryKeyName(name) {
+  const n = name.replace(/#\d{10}$/, "").normalize("NFC").toLowerCase();
+  return n.endsWith(".txt") && RECOVERY_KEY_NAMES.some((k) => n.startsWith(k));
+}
+function cloudNameOf(local) {
+  return decodeLocalName(local).normalize("NFC");
+}
+function decodeLocalName(local) {
+  const n = local.normalize("NFC");
+  if (n === "%2e%2e") return "..";
+  if (n === "%2e") return ".";
+  return n.replace(/%([0-7][0-9a-f])/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+}
+function assertNotIgnoreFile(target) {
+  if (isIgnoreFileName(basename2(target))) {
+    throw new ValidationError(`Refusing to write ${target}: a .megaignore file decides what a MEGA sync carries.`);
+  }
+}
+function assertNotInsideProtected(abs) {
+  assertNotConfigDir(abs);
+  assertNotTrustRoot(abs);
+  assertNotWriteRoot(abs);
+}
+function assertNotWriteRoot(abs) {
+  insideAny(abs, currentWriteRoots(), "Refusing to write into an app configuration folder or this connector's own folder - a file placed there would decide what runs at the next start.");
+}
+function insideAny(abs, roots, message) {
+  if (roots.length === 0) return;
   for (const candidate of spellingsOf(abs)) {
-    for (const root of trustRoots) {
+    for (const root of roots) {
       if (isAtOrUnder(normWinPath(candidate), root) || isAtOrUnder(normWinPath(candidate), realpathBestEffort(root)) || onDiskAtOrUnder(candidate, root)) {
-        throw new ValidationError(
-          "Refusing to read or write inside the MEGAcmd program directory or this connector's data directory - a file placed there would be loaded by MEGAcmd or by the connector itself."
-        );
+        throw new ValidationError(message);
       }
     }
   }
 }
 function protectedBelow(abs, inclusive) {
   const forms = [...new Set([abs, resolve4(abs)].flatMap(spellingsOf))].map(normWinPath);
-  const roots = [...trustRoots, ...sessionStoreRoots()].flatMap((r) => [r, realpathBestEffort(r)]);
+  const roots = [...trustRoots, ...currentWriteRoots(), ...sessionStoreRoots()].flatMap((r) => [r, realpathBestEffort(r)]);
   const hits = /* @__PURE__ */ new Set();
   for (const root of roots) {
     for (const f of forms) {
@@ -22414,13 +22612,51 @@ function assertDownloadTarget(localDir, name) {
   const version2 = name.match(/^(.+)#\d{10}$/);
   for (const n of version2 ? [name, version2[1]] : [name]) assertTargetBelow(localDir, n);
 }
+function protectedViaSymlinks(abs) {
+  const roots = [...trustRoots, ...currentWriteRoots(), ...sessionStoreRoots()].flatMap((r) => [r, realpathBestEffort(r)]);
+  return linksBelow(abs).filter(({ real }) => roots.some((r) => isAtOrUnder(real, r) || isAtOrUnder(r, real) || onDiskAtOrUnder(real, r) || onDiskAtOrUnder(r, real))).map(({ link, real }) => `${link} -> ${real}`);
+}
+function linksBelow(abs) {
+  const out = [];
+  const stack = [normWinPath(abs)];
+  const seen = /* @__PURE__ */ new Set();
+  let visited = 0;
+  while (stack.length > 0 && ++visited <= STORE_WALK_MAX_DIRS) {
+    const dir = stack.pop();
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const child = join4(dir, e.name);
+      if (e.isSymbolicLink()) {
+        const real = realpathBestEffort(child);
+        try {
+          if (statSync(real).isDirectory() && !seen.has(real)) {
+            seen.add(real);
+            stack.push(real);
+          }
+        } catch {
+        }
+        out.push({ link: child, real });
+      } else if (e.isDirectory()) {
+        stack.push(child);
+      }
+    }
+  }
+  return out;
+}
 function assertTargetBelow(localDir, name) {
   const target = name !== null ? join4(localDir, name) : localDir;
   if (name !== null) {
     assertNotConfigDir(target);
     assertNotTrustRoot(target);
+    if (holdsDataVolume(target)) throw new ValidationError(`Refusing to download "${name}" into ${localDir}: ${target} holds the whole data volume (every home folder).`);
   }
-  const below = protectedBelow(target, name !== null);
+  assertNotWriteRoot(target);
+  const below = [...protectedBelow(target, name !== null), ...protectedViaSymlinks(target)];
   if (below.length > 0) {
     throw new ValidationError(
       `Refusing to download ${name !== null ? `"${name}" ` : ""}into ${localDir}: the download could write into a directory MEGAcmd or this connector depends on (${below.join(", ")}). Choose a different destination folder${name !== null ? "" : ", such as a subfolder"}.`
@@ -22435,13 +22671,68 @@ function assertNoLocalGlob(lp, field = "localPath") {
   }
   return lp;
 }
-function assertNoProtectedWithin(lp, what) {
-  const below = protectedBelow(lp, false);
-  if (below.length > 0) {
-    throw new ValidationError(
-      `Refusing to ${what} ${lp}: it contains a directory MEGAcmd or this connector depends on (${below.join(", ")}), and changes from the cloud would be written into it. Choose a folder that does not contain it.`
-    );
+var STORE_WALK_MAX_DIRS = 2e4;
+function storeCopiesIn(abs) {
+  const found = [];
+  const stack = [normWinPath(abs)];
+  let visited = 0;
+  let complete = true;
+  while (stack.length > 0) {
+    if (++visited > STORE_WALK_MAX_DIRS) return { found, complete: false };
+    const dir = stack.pop();
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch (e) {
+      if (isUnreadable(e)) complete = false;
+      continue;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const child = join4(dir, e.name);
+      if (isStoreName(e.name)) found.push(child);
+      else stack.push(child);
+    }
   }
+  return { found, complete };
+}
+function isUnreadable(e) {
+  const code = e.code;
+  return code === "EACCES" || code === "EPERM";
+}
+function ignoreFilesIn(lps) {
+  const found = [];
+  let visited = 0;
+  let complete = true;
+  for (const lp of lps) {
+    let isDir = false;
+    try {
+      isDir = statSync(lp).isDirectory();
+    } catch {
+      continue;
+    }
+    if (!isDir) continue;
+    const stack = [normWinPath(lp)];
+    while (stack.length > 0) {
+      if (++visited > STORE_WALK_MAX_DIRS) return { found, complete: false };
+      const dir = stack.pop();
+      let entries;
+      try {
+        entries = readdirSync(dir, { withFileTypes: true });
+      } catch (e) {
+        if (isUnreadable(e)) complete = false;
+        continue;
+      }
+      for (const e of entries) {
+        if (e.isDirectory()) stack.push(join4(dir, e.name));
+        else if (isIgnoreFileName(e.name)) found.push(join4(dir, e.name));
+      }
+    }
+  }
+  return { found, complete };
+}
+function storeCopiesWithin(abs) {
+  return storeCopiesIn(abs).found;
 }
 function sessionStoresWithin(abs, binDir) {
   const forms = [...new Set([abs, resolve4(abs)].flatMap(spellingsOf))];
@@ -22452,6 +22743,7 @@ function sessionStoresWithin(abs, binDir) {
       hits.set(fold(realpathBestEffort(root)), root);
     }
   }
+  for (const copy of storeCopiesWithin(abs)) hits.set(fold(realpathBestEffort(copy)), copy);
   return [...hits.values()];
 }
 function rejectNul(p) {
@@ -22476,7 +22768,7 @@ function assertSecret(v, field) {
 }
 function assertRemotePath(p, field = "remotePath") {
   rejectNul(p);
-  const t = p.trim();
+  const t = p.trim().normalize("NFC");
   if (t === "") throw new ValidationError(`${field} is empty.`);
   if (!t.startsWith("/")) {
     throw new ValidationError(`${field} must be an absolute MEGA path starting with "/".`);
@@ -22484,8 +22776,36 @@ function assertRemotePath(p, field = "remotePath") {
   if (t.includes("\\")) {
     throw new ValidationError(`${field} must not contain a backslash - MEGAcmd reads it as an escape, so it would resolve a different path.`);
   }
+  if (t.split("/").some((seg) => seg === "." || seg === "..")) {
+    throw new ValidationError(`${field} must not contain "." or ".." segments - MEGAcmd resolves them, so it would act on a different path.`);
+  }
+  if (t.replace(/^\/\/(?:bin|in|from)(?=\/|$)/, "").includes("//")) {
+    throw new ValidationError(`${field} must not contain an empty segment ("//").`);
+  }
+  rejectControls(t, field);
   rejectArgvQuote(t, field);
   return t;
+}
+function assertRemoteDest(p, field = "remotePath") {
+  return assertNoHandleName(assertNoVersionName(assertRemotePath(p, field), field), field);
+}
+function assertNoHandleName(p, field = "remotePath") {
+  if (p.split("/").some((seg) => /^H:[A-Za-z0-9_-]{8}$/.test(seg))) {
+    throw new ValidationError(`${field} must not name an item "H:" and 8 characters - MEGAcmd reads that as a node handle.`);
+  }
+  return p;
+}
+function assertNoVersionName(p, field = "remotePath") {
+  if (p.split("/").some((seg) => /#\d{10}$/.test(seg))) {
+    throw new ValidationError(`${field} must not contain a name ending in "#" and 10 digits - MEGAcmd reads that as a file version, which keeps its own name.`);
+  }
+  return p;
+}
+function rejectControls(p, field) {
+  if (/[\x00-\x1f\x7f-\x9f\u2028\u2029]/.test(p)) {
+    throw new ValidationError(`${field} must not contain line breaks or other control characters.`);
+  }
+  if (new RegExp("\\p{Cs}", "u").test(p)) throw new ValidationError(`${field} holds a broken Unicode character (a lone surrogate).`);
 }
 function assertOptionalRemotePath(p, field = "remotePath") {
   return p === void 0 ? void 0 : assertRemotePath(p, field);
@@ -22549,25 +22869,100 @@ function assertLocalPath(p, field = "localPath") {
   rejectNul(p);
   const t = p.trim();
   if (t === "") throw new ValidationError(`${field} is empty.`);
-  const abs = resolve4(t);
+  const abs = shortFirmlinkSpelling(resolve4(t));
+  rejectControls(abs, field);
   rejectArgvQuote(abs, field);
+  assertNotDataVolumeRoot(abs);
   assertNotConfigDir(abs);
   assertNotTrustRoot(abs);
   return abs;
 }
+function assertNotDataVolumeRoot(abs) {
+  if (process.platform === "win32") return;
+  const spellings = spellingsOf(abs);
+  if (spellings.some((s) => /^\/(?:dev|proc)(?:\/|$)/.test(s) || process.platform === "darwin" && /^\/\.(?:vol|nofollow|resolve)(?:\/|$)/i.test(s))) {
+    throw new ValidationError(`${abs} uses a special path form; use the folder's ordinary path.`);
+  }
+  if (holdsDataVolume(abs, spellings)) {
+    throw new ValidationError(`${abs} holds the whole data volume (every home folder); choose a folder inside it, such as /Users/<name>/Documents.`);
+  }
+}
+function holdsDataVolume(abs, spellings = spellingsOf(abs)) {
+  if (process.platform !== "darwin") return false;
+  const roots = ["/System", "/System/Volumes", "/System/Volumes/Data"];
+  return spellings.some((s) => roots.some((r) => fold(r) === fold(s).replace(/(.)\/+$/, "$1") || sameOnDisk(r, s)));
+}
 function assertNoStoreWithin(lp, what, binDir) {
   const stores = sessionStoresWithin(lp, binDir);
-  if (stores.length === 0) return;
+  if (stores.length === 0) {
+    return storeCopiesIn(lp).complete ? [] : [`(Could not search ${lp} completely - too many subfolders, or folders that cannot be read - for copies of a MEGAcmd session store (.megaCmd).)`];
+  }
   throw new ValidationError(
-    `Refusing to ${what} ${lp}: it contains the MEGAcmd session store (${stores.join(", ")}), which holds this account's MASTER KEY, and a continuous sync/backup cannot reliably leave it out. Choose a folder that does not contain it, or use mega_put, which uploads a folder without the session store.`
+    `Refusing to ${what} ${lp}: it contains the MEGAcmd session store (${stores.join(", ")}), which holds this account's MASTER KEY, and a periodic backup cannot leave it out (MEGA's scheduled copies have no exclusion rules). Use mega_sync_add, which leaves it out, or mega_put, which uploads the folder without it.`
   );
+}
+function regexOfPath(p) {
+  return p.replace(/[\\.[()*+?{|^$]/g, "\\$&").replace(/[ \t\v\f]/g, "[$&]");
+}
+function syncExclusions(lp, binDir) {
+  assertNotWriteRoot(lp);
+  const out = [];
+  const stores = sessionStoresWithin(lp, binDir);
+  out.push({ rule: "-dng:.megacmd*", label: ".megaCmd folders at any depth (the MEGAcmd session store, and any copy of it)", rel: "" });
+  const paths = /* @__PURE__ */ new Map();
+  for (const target of [...stores, ...protectedBelow(lp, false)]) {
+    const rel = relativeWithin(lp, target);
+    if (rel === null) {
+      throw new ValidationError(`Refusing to sync ${lp}: ${target} is inside it, but its path relative to ${lp} cannot be worked out to leave it out. Use the usual spelling of the folder.`);
+    }
+    if (!rel) continue;
+    const segs = rel.split("/").map((seg) => decodeLocalName(seg));
+    if (segs.some((seg) => /[\r\n/]/.test(seg) || seg === "." || seg === ".." || seg !== seg.normalize("NFC"))) {
+      throw new ValidationError(`Refusing to sync ${lp}: ${target} is inside it and its path cannot be written as an exclusion rule. Choose a folder that does not contain it.`);
+    }
+    if (segs.length === 1 && isStoreName(segs[0])) continue;
+    const cloudRel = segs.join("/");
+    const literal2 = segs.every((seg) => !/[*?[\]\\]/.test(seg) && seg === seg.trim());
+    const rule = literal2 ? `-apg:${cloudRel}` : `-apr:${regexOfPath(cloudRel)}`;
+    if (!paths.has(cloudRel)) paths.set(cloudRel, { rule, label: rel, rel: cloudRel });
+  }
+  out.push(...paths.values());
+  return out;
+}
+function onDiskSpelling(abs) {
+  return realpathBestEffort(abs);
+}
+function relativeWithin(lp, target) {
+  for (const base of spellingsOf(lp)) {
+    for (const t of [target, ...spellingsOf(target)]) {
+      const rel = relative(normWinPath(base), normWinPath(t));
+      if (rel === "" || !rel.startsWith("..") && !isAbsolute2(rel)) return rel.split(sep2).join("/");
+    }
+  }
+  for (const t of [target, ...spellingsOf(target)]) {
+    for (let a = t; dirname3(a) !== a; a = dirname3(a)) {
+      if (sameOnDisk(lp, a)) return relative(a, t).split(sep2).join("/");
+    }
+  }
+  return null;
 }
 function joinRemote(parent, name) {
   if (!name) return parent;
   return `${parent.replace(/\/+$/, "")}/${name}`;
 }
 function planUpload(lps, rp, binDir, name) {
-  const stores = sessionStoreRoots(binDir).filter((r) => existsSync2(r)).map((r) => realpathBestEffort(r));
+  const isDir = (p) => {
+    try {
+      return statSync(normWinPath(p)).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  const folders = lps.filter(isDir);
+  const walks = folders.map((lp) => ({ lp, ...storeCopiesIn(lp) }));
+  const stores = [...sessionStoreRoots(binDir).filter((r) => existsSync2(r)), ...walks.flatMap((w) => w.found)].map(
+    (r) => realpathBestEffort(r)
+  );
   const containsStore = (p) => {
     const real = realpathBestEffort(normWinPath(p));
     return stores.some((st) => !(fold(st) === fold(real) || sameOnDisk(st, p)) && (isAtOrUnder(st, real) || onDiskAtOrUnder(st, p)));
@@ -22575,9 +22970,10 @@ function planUpload(lps, rp, binDir, name) {
   const direct = [];
   const steps = [];
   const excluded = [];
+  const links = [];
   const split = (dir, remoteParent, as) => {
     const listed = realpathBestEffort(normWinPath(dir));
-    const step = { dest: joinRemote(remoteParent, as ?? basename2(normWinPath(dir))), sources: [] };
+    const step = { dest: joinRemote(remoteParent, as ?? cloudNameOf(basename2(normWinPath(dir)))), sources: [] };
     steps.push(step);
     let names;
     try {
@@ -22597,27 +22993,39 @@ function planUpload(lps, rp, binDir, name) {
         excluded.push(child);
         continue;
       }
+      if (isLink) {
+        links.push(child);
+        continue;
+      }
       rejectArgvQuote(child, `"${name2}" inside ${dir}`);
-      if (!isLink && containsStore(child)) split(child, step.dest);
+      if (containsStore(child) || holdsDataVolume(child)) split(child, step.dest);
       else step.sources.push(child);
     }
   };
+  const folderSet = new Set(folders);
   for (const lp of lps) {
-    if (sessionStoresWithin(lp, binDir).length > 0 || containsStore(lp)) split(lp, rp, name);
+    if (folderSet.has(lp) && (sessionStoresWithin(lp, binDir).length > 0 || containsStore(lp))) split(lp, rp, name);
     else direct.push(lp);
   }
   if (direct.length > 0) steps.unshift({ dest: rp, sources: direct });
   for (const step of steps) {
-    if (step.dest !== rp && (step.dest.includes("\\") || /#\d{10}(\/|$)/.test(step.dest))) {
+    if (step.dest === rp) continue;
+    let plain = !step.dest.includes("\\") && !/#\d{10}(\/|$)/.test(step.dest) && (rp === "/" ? step.dest.startsWith("/") : step.dest.startsWith(`${rp.replace(/\/+$/, "")}/`));
+    try {
+      plain &&= assertRemotePath(step.dest) === step.dest;
+    } catch {
+      plain = false;
+    }
+    if (!plain) {
       throw new ValidationError(
         `Cannot upload around the session store here: the folder name in ${step.dest} would be read differently by MEGAcmd. Upload the subfolders individually instead.`
       );
     }
   }
-  return { steps, excluded };
+  return { steps, excluded, links, unchecked: walks.filter((w) => !w.complete).map((w) => w.lp) };
 }
 function globCanMatchStoreName(segment) {
-  const g = fold(segment);
+  const g = fold(segment).replace(/\*+/g, "*");
   const close = (states2) => {
     const out = new Set(states2);
     for (const i of states2) for (let j = i; g[j] === "*"; j++) out.add(j + 1);
@@ -22762,18 +23170,19 @@ var ALLOWED_COMMANDS = /* @__PURE__ */ new Set([
 ]);
 var LINK_KEYS = [/( AuthKey=)[^\s)]+/g, /(\bAuthToken[ \t]*=[ \t]*)[^\s)]+/g];
 var SHARE_KEY = /(Share key encryption key[ \t]*=[ \t]*)\S+/g;
-var SESSION_ID = /^([ \t]*Session ID:[ \t]*)\S+/gm;
-var SESSION_TOKEN = /(login with the session id:[ \t]*)\S+/g;
+var LINK_KEY_IN_URL = /(https?:\/\/mega\.(?:nz|co\.nz|app)\/[^\s#]*#)[^\s)]+/gi;
+var SESSION_TOKEN = /((?:login with the session id|\(secret\) session is):[ \t]*)\S+/g;
 function secretsIn(cmd, args) {
   switch (cmd) {
     case "whoami":
-      return [SESSION_ID];
     case "logout":
       return [SESSION_TOKEN];
     case "export":
       return [...LINK_KEYS, SHARE_KEY];
     case "users":
-      return LINK_KEYS;
+    // share listings print no links today; held anyway, as for users.
+    case "share":
+      return [...LINK_KEYS, LINK_KEY_IN_URL];
     // Extended node info (find -l; ls/tree -a) prints a link with its key.
     case "find":
       return args.includes("-l") ? LINK_KEYS : [];
@@ -22792,12 +23201,23 @@ function assertSafeInvocation(cmd, args) {
   if (!ALLOWED_COMMANDS.has(cmd)) {
     throw new ValidationError(`The MEGAcmd command "${cmd}" is not one this connector runs. Nothing was run.`);
   }
+  if (args.some((a) => new RegExp("\\p{Cs}", "u").test(a))) {
+    throw new ValidationError("A value holds a broken Unicode character (a lone surrogate), which MEGAcmd would read as another name. Nothing was run.");
+  }
+  if (Buffer.byteLength([cmd, ...args].join(" ")) + (process.platform === "win32" ? 7 : 3) * args.length + 128 > 8e3) {
+    throw new ValidationError("The command would be too long for MEGAcmd to read whole. Nothing was run; act on fewer items at a time.");
+  }
   if (!survivesRoundTrip([cmd, ...args])) {
     throw new ValidationError(
       "A value would be read differently by MEGAcmd than it was sent (for example a leading control character, or a trailing backslash that joins it to the next value), so the command could do something other than what was approved. Nothing was run."
     );
   }
-  const removing = (cmd === "export" || cmd === "share") && args.includes("-d");
+  const positional = args.filter((a) => a !== "" && !a.startsWith("-"));
+  if ((cmd === "get" || cmd === "thumbnail") && positional.length < 2) {
+    throw new ValidationError(`${cmd} needs both a cloud path and a local path. Nothing was run.`);
+  }
+  if (args.includes("-o")) throw new ValidationError('The "-o" option is not passed to MEGAcmd. Nothing was run.');
+  const removing = (cmd === "export" || cmd === "share") && args.includes("-d") && !args.includes("-a");
   const hits = (a) => cmd === "mkdir" ? storeCopyIn(a) === "name" : storeCopyIn(a) !== null;
   if (CONTENT_COMMANDS.has(cmd) && !removing && args.some(hits)) {
     throw new ValidationError(
@@ -22902,14 +23322,191 @@ function configTrustRoots(config2) {
     stateDir(config2),
     // The macOS login helper: a script the user is told to double-click, so a
     // transfer must not be able to replace it.
-    ...process.platform === "darwin" ? [macLoginHelperDir()] : []
+    ...process.platform === "darwin" ? [macLoginHelperDir()] : [],
+    // MEGAcmd's macOS socket dir (runtimeDirPath): a write there could hijack the server channel.
+    ...process.platform === "darwin" ? [join6(homedir6(), "Library", "Caches", "megacmd.mac")] : []
   ];
+}
+function configWriteRoots(config2) {
+  const fixed = [
+    // Host configuration: which MCP servers, hooks and plugins run, and the MCPB settings.
+    ...hostConfigDirs(),
+    // This connector's own code: a manual or repo install sits outside any host folder.
+    ...config2.appDir ? [config2.appDir] : [],
+    ...[process.env.CLAUDE_PLUGIN_ROOT, process.env.PLUGIN_ROOT].filter((p) => !!p && p.trim() !== "")
+  ];
+  let key = null;
+  let projects = [];
+  let linkKey = null;
+  let linked = [];
+  let all = [];
+  let checkedAt = -Infinity;
+  return () => {
+    if (Date.now() - checkedAt < 1e3) return all;
+    checkedAt = Date.now();
+    const k = projectSourcesKey();
+    if (k !== key) {
+      key = k;
+      projects = projectConfigPaths();
+    }
+    const roots = [...fixed, ...projects];
+    const lk = roots.map(entryStamp).join("|");
+    if (lk !== linkKey) {
+      linkKey = lk;
+      linked = linkedOutOf(roots);
+    }
+    all = [...roots, ...linked];
+    return all;
+  };
+}
+function entryStamp(p) {
+  try {
+    const st = lstatSync2(p);
+    if (st.isSymbolicLink()) return `L:${readlinkSync(p)}:${entryStamp(linkTarget(p))}`;
+    return st.isDirectory() ? `D:${st.mtimeMs}` : "F";
+  } catch {
+    return "-";
+  }
+}
+function stamp(f) {
+  try {
+    const st = statSync2(f);
+    return `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return "-";
+  }
+}
+function codexToml() {
+  return join6(process.env.CODEX_HOME || join6(homedir6(), ".codex"), "config.toml");
+}
+function claudeProjectFiles() {
+  const dir = process.env.CLAUDE_CONFIG_DIR?.trim() ? process.env.CLAUDE_CONFIG_DIR : void 0;
+  return [.../* @__PURE__ */ new Set([join6(homedir6(), ".claude.json"), ...dir ? [join6(dir, ".claude.json")] : [], join6(dir ?? join6(homedir6(), ".claude"), ".config.json")])];
+}
+function projectSourcesKey() {
+  return [...claudeProjectFiles(), codexToml()].map(stamp).join("|") + `|${process.cwd()}`;
+}
+var lastProjects = /* @__PURE__ */ new Map();
+function projectConfigPaths() {
+  const projects = /* @__PURE__ */ new Set([process.cwd()]);
+  const read = (file, parse3) => {
+    let text;
+    try {
+      text = readFileSync2(file, "utf8");
+    } catch {
+      lastProjects.delete(file);
+      return;
+    }
+    try {
+      lastProjects.set(file, parse3(text));
+    } catch {
+    }
+    for (const p of lastProjects.get(file) ?? []) projects.add(p);
+  };
+  for (const f of claudeProjectFiles()) read(f, (t) => Object.keys(JSON.parse(t).projects ?? {}));
+  read(codexToml(), (t) => tomlStrings(t).filter((v) => isAbsolute3(v)));
+  return [...projects].filter((p) => isAbsolute3(p)).flatMap((p) => [join6(p, ".claude"), join6(p, ".mcp.json"), join6(p, ".codex")]);
+}
+function tomlStrings(text) {
+  const esc2 = { b: "\b", t: "	", n: "\n", f: "\f", r: "\r", '"': '"', "\\": "\\" };
+  const out = [];
+  for (const m of text.matchAll(/#[^\n]*|"((?:[^"\\\n]|\\.)*)"|'([^'\n]*)'/g)) {
+    if (m[1] !== void 0) {
+      out.push(m[1].replace(/\\(u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)/g, (_, e) => e.length > 1 ? String.fromCodePoint(parseInt(e.slice(1), 16)) : esc2[e] ?? e));
+    } else if (m[2] !== void 0) out.push(m[2]);
+  }
+  return out;
+}
+function linkedOutOf(roots) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const visit = (p, depth) => {
+    let st;
+    try {
+      st = lstatSync2(p);
+    } catch {
+      return;
+    }
+    if (st.isSymbolicLink()) {
+      const hops = linkHops(p);
+      out.push(...hops);
+      const target = hops[hops.length - 1];
+      if (!seen.has(target)) {
+        seen.add(target);
+        visit(target, depth);
+      }
+      return;
+    }
+    if (!st.isDirectory() || depth >= 2) return;
+    let names = [];
+    try {
+      names = readdirSync2(p);
+    } catch {
+      return;
+    }
+    for (const n of names) visit(join6(p, n), depth + 1);
+  };
+  for (const r of roots) visit(r, 0);
+  return out;
+}
+function linkHops(p) {
+  const hops = [];
+  let t = p;
+  for (let i = 0; i < 16; i++) {
+    try {
+      if (!lstatSync2(t).isSymbolicLink()) break;
+      let dir = dirname4(t);
+      try {
+        dir = realpathSync3.native(dir);
+      } catch {
+      }
+      t = resolve5(dir, readlinkSync(t));
+    } catch {
+      break;
+    }
+    hops.push(t);
+  }
+  try {
+    hops.push(realpathSync3.native(p));
+  } catch {
+  }
+  return [...new Set(hops)];
+}
+function linkTarget(p) {
+  const hops = linkHops(p);
+  return hops[hops.length - 1] ?? p;
+}
+function hostConfigDirs() {
+  const home = homedir6();
+  const dirs = [join6(home, ".claude"), join6(home, ".claude.json"), join6(home, ".codex")];
+  for (const v of [process.env.CLAUDE_CONFIG_DIR, process.env.CODEX_HOME, process.env.CLAUDE_USER_DATA_DIR]) {
+    if (!v || !v.trim()) continue;
+    dirs.push(v);
+    if (/^~(?:[/\\]|$)/.test(v)) dirs.push(join6(home, v.slice(1)));
+  }
+  const desktop = (base) => dirs.push(join6(base, "Claude"), join6(base, "Claude-3p"));
+  dirs.push(join6(home, ".local", "share", "claude"), join6(home, ".local", "bin", "claude"));
+  if (process.platform === "darwin") dirs.push("/Applications/Claude.app", join6(home, "Applications", "Claude.app"));
+  if (process.platform === "win32" && process.env.LOCALAPPDATA) dirs.push(join6(process.env.LOCALAPPDATA, "AnthropicClaude"));
+  if (process.platform === "darwin") desktop(join6(home, "Library", "Application Support"));
+  if (process.platform === "win32" && process.env.APPDATA) desktop(process.env.APPDATA);
+  if (process.platform === "win32" && process.env.LOCALAPPDATA) {
+    try {
+      for (const pkg of readdirSync2(join6(process.env.LOCALAPPDATA, "Packages")).filter((n) => /claude|anthropic/i.test(n))) {
+        desktop(join6(process.env.LOCALAPPDATA, "Packages", pkg, "LocalCache", "Roaming"));
+      }
+    } catch {
+    }
+  }
+  if (process.platform === "linux") desktop(process.env.XDG_CONFIG_HOME || join6(home, ".config"));
+  return dirs;
 }
 function createRuntime(config2, deps = {}) {
   const resolveImpl = deps.resolve ?? resolveBinaries;
   const verifyImpl = deps.verify ?? verifyResolvedBinary;
   const execImpl = deps.exec ?? execClient;
-  publishMegacmdBinDir(null, configTrustRoots(config2));
+  const writeRoots = configWriteRoots(config2);
+  publishMegacmdBinDir(null, configTrustRoots(config2), writeRoots);
   let resolvedPromise;
   let serverReady;
   const verified = /* @__PURE__ */ new WeakMap();
@@ -22919,10 +23516,11 @@ function createRuntime(config2, deps = {}) {
     const r = await getResolved();
     if (!r) return null;
     const dir = r.binDir ?? (r.source === "path" ? await resolvePathBinDir() : null);
-    publishMegacmdBinDir(dir, configTrustRoots(config2));
+    publishMegacmdBinDir(dir, configTrustRoots(config2), writeRoots);
     return dir;
   })();
-  const run = async (cmd, args, opts) => {
+  const run = async (cmd, given, opts) => {
+    const args = [...given];
     assertSafeInvocation(cmd, args);
     const resolved = await getResolved();
     if (!resolved) {
@@ -22993,27 +23591,54 @@ function err(text, structured) {
 }
 
 // src/tools/helpers.ts
-import { createHmac, randomBytes as randomBytes2 } from "node:crypto";
-import { posix } from "node:path";
-var PLAN_MAX = 200;
-function assertPlanSize(count, what) {
-  if (count > PLAN_MAX) {
-    throw new ValidationError(
-      `This would act on ${count} ${what}; at most ${PLAN_MAX} can be confirmed at once, so that every one is listed in the preview. Split it into smaller operations (a narrower pattern, or shorter lists).`
-    );
+import { createHash as createHash3, createHmac, randomBytes as randomBytes2 } from "node:crypto";
+import { readdirSync as readdirSync3, existsSync as existsSync3 } from "node:fs";
+import { posix, join as joinLocal, dirname as dirnameLocal, basename as basenameLocal, sep as sepLocal, relative as relative2 } from "node:path";
+
+// src/parsers/exportLink.ts
+function parseExportLink(raw) {
+  const mega = raw.match(/https?:\/\/mega\.nz\/\S+/i);
+  if (mega) return mega[0];
+  const any = raw.match(/https?:\/\/\S+/i);
+  return any?.[0];
+}
+function parseCreatedLink(raw, path) {
+  if (path !== void 0) {
+    const prefix = `Exported ${path.startsWith("//from/") ? path.slice("//from/".length) : path}: `;
+    const i = raw.indexOf(prefix);
+    return i === 0 || i > 0 && raw[i - 1] === "\n" ? raw.slice(i + prefix.length).split(/\s/)[0] : void 0;
   }
+  const from = raw.search(/^Exported /m);
+  if (from < 0) return void 0;
+  const head = raw.slice(from).split(/\r?\n {2,}AuthToken = /)[0];
+  const at = head.lastIndexOf(": https://");
+  return at < 0 ? void 0 : head.slice(at + 2).split(/\s/)[0];
+}
+
+// src/tools/helpers.ts
+var PLAN_MAX = 200;
+function listedLines(items, line = (i) => `  ${i}`) {
+  const shown = items.slice(0, PLAN_MAX).map(line);
+  return items.length > PLAN_MAX ? [...shown, `  ...and ${items.length - PLAN_MAX} more (all ${items.length} are included).`] : shown;
 }
 async function pcreMatchPreview(rt, pattern, max = PLAN_MAX) {
-  const r = await rt.run("find", [pattern, "--use-pcre", "--show-handles"]);
+  if (!pattern.startsWith("/")) {
+    return { ok: false, error: 'A pattern must start with "/": MEGAcmd matches each part of the path separately, so write /Docs/.*\\.pdf (not ^/Docs/...).' };
+  }
+  const r = await rt.run("find", [pattern, "--use-pcre", "--show-handles"], { maxBuffer: 128 * 1024 * 1024 });
   if (r.code !== 0) return { ok: false, error: classifyExit(r) };
-  const only = await rt.run("find", [pattern, "--use-pcre", "--print-only-handles"]);
+  const only = await rt.run("find", [pattern, "--use-pcre", "--print-only-handles"], { maxBuffer: 128 * 1024 * 1024 });
   if (only.code !== 0) return { ok: false, error: classifyExit(only) };
   const entries = [];
   for (const raw of r.stdout.split(/\r?\n/)) {
     if (!raw.trim()) continue;
     const m = raw.match(/^(.+) <(H:[A-Za-z0-9_-]+)>$/);
     if (!m) return { ok: false, error: UNLISTABLE };
-    entries.push({ path: m[1], handle: m[2] });
+    const shown2 = m[1];
+    const spelled = shown2.startsWith("/") ? shown2 : /^[^/:\s]+@[^/:\s]+:/.test(shown2) ? `//from/${shown2}` : null;
+    if (spelled === null) return { ok: false, error: UNLISTABLE };
+    const path = spelled.normalize("NFC");
+    entries.push({ path, handle: m[2] });
   }
   const authoritative = [];
   for (const raw of only.stdout.split(/\r?\n/)) {
@@ -23024,11 +23649,33 @@ async function pcreMatchPreview(rt, pattern, max = PLAN_MAX) {
   }
   if (!sameMultiset(entries.map((e) => e.handle), authoritative)) return { ok: false, error: UNLISTABLE };
   const top = topmost(entries);
+  const root = top.find((e) => /^(?:\/|\/\/(?:bin|in))\/?$/.test(e.path));
+  if (root) return { ok: false, error: `The pattern matches the root ${root.path} itself; match the items inside it instead (for example ${root.path === "/" ? "" : root.path}/.*).` };
   const handles = top.map((e) => e.handle);
   const shown = top.slice(0, max).map((e) => `${e.path} <${e.handle}>`).join("\n");
+  const hiddenBy = /* @__PURE__ */ new Map();
+  for (const e of top.slice(max)) hiddenBy.set(posix.dirname(e.path), (hiddenBy.get(posix.dirname(e.path)) ?? 0) + 1);
+  const hidden = [...hiddenBy].sort((a, b) => b[1] - a[1]);
+  const hiddenText = hidden.slice(0, 20).map(([dir, n]) => `${n} in ${dir}`).join(", ") + (hidden.length > 20 ? `, and ${hidden.length - 20} more folders` : "");
   const note = (top.length > max ? `
-...(${top.length} total; showing first ${max})` : "") + (top.length < new Set(entries.map((e) => e.handle)).size ? "\n(Matched folders are acted on as a whole, together with everything inside them.)" : "");
-  return { ok: true, count: top.length, handles, paths: entries.map((e) => e.path), topPaths: top.map((e) => e.path), text: (shown || "(no matches)") + note };
+...(${top.length} total; showing first ${max}. Not listed: ${hiddenText})` : "") + (top.length < new Set(entries.map((e) => e.handle)).size ? "\n(Matched folders are acted on as a whole, together with everything inside them.)" : "");
+  return { ok: true, count: top.length, handles, paths: entries.map((e) => e.path), topPaths: top.map((e) => e.path), text: (shown || "(no matches)") + note, allHandles: entries.map((e) => e.handle) };
+}
+async function recheckPcrePlan(rt, pattern, plan, checkPath) {
+  const now = await pcreMatchPreview(rt, pattern);
+  if (!now.ok) return now.error;
+  if (plan.contents !== void 0 && handlesDigest(now.allHandles) !== plan.contents) {
+    return "What the matched folders hold changed after the preview (an item moved in or out). Nothing was run; preview again.";
+  }
+  const pathOf = new Map(now.handles.map((h, i) => [h, now.topPaths[i]]));
+  for (let i = 0; i < plan.handles.length; i++) {
+    if (pathOf.get(plan.handles[i]) !== plan.paths[i]) {
+      return `${plan.paths[i]} changed (renamed or moved) after the preview. Nothing was run; preview again.`;
+    }
+  }
+  const tops = new Set(now.topPaths);
+  for (const p of now.paths) checkPath(p, tops.has(p));
+  return null;
 }
 var SECRET_KEY = randomBytes2(32);
 function secretBinding(secret) {
@@ -23037,14 +23684,22 @@ function secretBinding(secret) {
 }
 function localNamesOf(remotePath) {
   const base = posix.basename(remotePath.replace(/(.)\/+$/, "$1"));
-  return base.includes(":") ? [base, base.slice(base.indexOf(":") + 1)] : [base];
+  return [...new Set((base.includes(":") ? [base, base.slice(base.indexOf(":") + 1)] : [base]).flatMap(localSpellings))];
 }
 var UNLISTABLE = "A matching node has a name this preview cannot list unambiguously (for example one containing a line break). Narrow the pattern so it does not match that node, or rename it first.";
 function topmost(entries) {
   const seen = /* @__PURE__ */ new Set();
   const unique = entries.filter((e) => seen.has(e.handle) ? false : (seen.add(e.handle), true));
   const paths = unique.map((e) => e.path.replace(/\/+$/, ""));
-  return unique.filter((_, i) => !paths.some((other, j) => j !== i && (other === "" || paths[i].startsWith(`${other}/`))));
+  const matched = new Set(paths);
+  return unique.filter((_, i) => {
+    let a = paths[i];
+    for (let cut = a.lastIndexOf("/"); cut >= 0; cut = a.lastIndexOf("/")) {
+      a = a.slice(0, cut);
+      if (matched.has(a)) return false;
+    }
+    return true;
+  });
 }
 function sameMultiset(a, b) {
   if (a.length !== b.length) return false;
@@ -23052,37 +23707,51 @@ function sameMultiset(a, b) {
   const y = [...b].sort();
   return x.every((v, i) => v === y[i]);
 }
+function handlesDigest(handles) {
+  return createHash3("sha256").update([...handles].sort().join("\n")).digest("hex");
+}
 var pcrePlans = /* @__PURE__ */ new Map();
-function stashPcrePlan(token, handles, ttlMs = 12e4) {
+function stashPcrePlan(token, handles, paths, bound, contents, ttlMs = 12e4) {
   const now = Date.now();
   for (const [t, p] of pcrePlans) if (p.expires < now) pcrePlans.delete(t);
-  pcrePlans.set(token, { handles, expires: now + ttlMs });
+  pcrePlans.set(token, { handles, paths, bound, contents, expires: now + ttlMs });
 }
 function takePcrePlan(token) {
   const p = pcrePlans.get(token);
   if (!p) return null;
   pcrePlans.delete(token);
-  return p.expires < Date.now() ? null : p.handles;
+  return p.expires < Date.now() ? null : p;
 }
-async function pcreGate(rt, action, normArgs, confirm, pattern, summaryFor, checkPath) {
+async function pcreGate(rt, action, normArgs, confirm, pattern, summaryFor, checkPath, opts = {}) {
+  const extra = async (tops) => opts.extraLines ? await opts.extraLines(tops) : [];
   if (!confirm) {
     const prev = await pcreMatchPreview(rt, pattern);
     if (!prev.ok) return { proceed: false, result: err(prev.error) };
-    assertPlanSize(prev.count, "matching nodes");
     const tops = new Set(prev.topPaths);
     if (checkPath) for (const p of prev.paths) checkPath(p, tops.has(p));
-    const gate2 = checkConfirm(rt, action, normArgs, void 0, summaryFor(prev.count, prev.text).split("\n"));
+    const lines = summaryFor(prev.count, prev.text, prev.topPaths).split("\n");
+    lines.splice(1, 0, `  (pattern: ${pattern})`);
+    const added = await extra(prev.topPaths);
+    const gate2 = checkConfirm(rt, action, normArgs, void 0, [...lines, ...added]);
     const tok = gate2.structuredContent?.confirmToken;
-    if (tok) stashPcrePlan(tok, prev.handles);
+    if (tok) stashPcrePlan(tok, prev.handles, prev.topPaths, added.join("\n"), opts.bindContents ? handlesDigest(prev.allHandles) : void 0);
     return { proceed: false, result: gate2 };
   }
   const gate = checkConfirm(rt, action, normArgs, confirm, "");
   if (gate) return { proceed: false, result: gate };
-  const handles = takePcrePlan(confirm);
-  if (!handles) {
+  const plan = takePcrePlan(confirm);
+  if (!plan) {
     return { proceed: false, result: err('The PCRE preview expired. Re-run without "confirm" to get a fresh preview, then confirm.') };
   }
-  return { proceed: true, handles };
+  if (opts.recheckNames || opts.extraLines || opts.bindContents) {
+    const changed = await recheckPcrePlan(rt, pattern, plan, checkPath ?? (() => {
+    }));
+    if (changed) return { proceed: false, result: err(changed) };
+  }
+  if ((await extra(plan.paths)).join("\n") !== plan.bound) {
+    return { proceed: false, result: err("Something changed in the matched folders after the preview (an item placed in them, say). Nothing was run; preview again.") };
+  }
+  return { proceed: true, handles: plan.handles, paths: plan.paths };
 }
 async function runPerHandle(rt, cmd, handles, argvFor) {
   let done = 0;
@@ -23097,13 +23766,32 @@ async function runPerHandle(rt, cmd, handles, argvFor) {
 async function runBulk(rt, cmd, sources, trailingArgv, chunkSize = 2e3) {
   let done = 0;
   let failed = 0;
-  for (let i = 0; i < sources.length; i += chunkSize) {
-    const chunk = sources.slice(i, i + chunkSize);
-    const r = await rt.run(cmd, [...chunk, ...trailingArgv]);
-    if (r.code === 0) done += chunk.length;
+  for (const chunk of chunkArgs(sources, chunkSize, trailingArgv)) {
+    const r = await rt.run(cmd, [...chunk, ...trailingArgv]).catch((e) => {
+      if (e instanceof ValidationError) return null;
+      throw e;
+    });
+    if (r?.code === 0) done += chunk.length;
     else failed += chunk.length;
   }
   return { done, failed };
+}
+async function assertNoStoreCopyBelowMany(rt, paths) {
+  if (paths.length === 1) return assertNoStoreCopyBelow(rt, paths[0]);
+  for (const chunk of chunkArgs(paths)) {
+    const r = await rt.run("find", [...chunk, "--type=d"]);
+    if (r.code !== 0) {
+      for (const p of chunk) await assertNoStoreCopyBelow(rt, p);
+      continue;
+    }
+    const hit = r.stdout.split(/\r?\n/).map((l) => l.trim()).find((line) => storeCopyIn(line) === "name");
+    if (hit) {
+      const src = chunk.find((p) => hit === p || hit.startsWith(`${p.replace(/\/+$/, "")}/`)) ?? chunk.join(", ");
+      throw new ValidationError(
+        `${src} contains a copy of the MEGAcmd session store (${hit}), which holds this account's MASTER KEY, so it is not copied, moved, downloaded, shared or published. Delete that .megaCmd folder from the cloud first.`
+      );
+    }
+  }
 }
 async function assertNoStoreCopyBelow(rt, remotePath) {
   const r = await rt.run("find", [remotePath, "--type=d"]);
@@ -23115,20 +23803,75 @@ async function assertNoStoreCopyBelow(rt, remotePath) {
     );
   }
 }
-async function destinationNotes(rt, dst, opts = {}) {
-  if (dst.startsWith("//from/")) {
-    return [`${dst} is a folder someone else shared with you: its owner, and anyone they share it with, will see what is placed there.`];
+async function assertNoFoldTwinBelow(rt, remotePath, excludedRels) {
+  if (excludedRels.length === 0) return;
+  const r = await rt.run("find", [remotePath], { maxBuffer: 128 * 1024 * 1024 });
+  if (r.code === ExitCode.NOTFOUND || r.spawnError) return;
+  if (r.code !== 0) throw new ValidationError(`Could not check ${remotePath} for folders named like the ones this sync leaves out: ${classifyExit(r)}`);
+  const prefixes = /* @__PURE__ */ new Map();
+  for (const rel of excludedRels) {
+    const segs = rel.split("/");
+    for (let i = 1; i <= segs.length; i++) prefixes.set(foldName(segs.slice(0, i).join("/")), segs.slice(0, i).join("/"));
   }
+  const base = remotePath.replace(/(.)\/+$/, "$1");
+  const shown = base.startsWith("//from/") ? base.slice("//from/".length) : base;
+  const lead = shown === "/" ? "/" : `${shown}/`;
+  const asciiFold = (s) => s.normalize("NFC").replace(/[A-Z]/g, (c) => c.toLowerCase());
+  for (const raw of r.stdout.split(/\r?\n/)) {
+    const p = raw.trim();
+    if (!p.startsWith(lead)) continue;
+    const rel = p.slice(lead.length);
+    const exact = prefixes.get(foldName(rel));
+    if (exact !== void 0 && asciiFold(rel) !== asciiFold(exact)) {
+      throw new ValidationError(
+        `${remotePath} holds ${p}, which this computer treats as the same folder as ${exact} - a folder the sync must leave out - but MEGA's sync rules would not see it that way. Rename or remove it in the cloud before syncing.`
+      );
+    }
+  }
+}
+function sharePathOf(line) {
+  const i = Math.max(line.lastIndexOf(", shared"), line.lastIndexOf(", (still pending)"));
+  return i > 0 ? line.slice(0, i) : null;
+}
+function exportPathOf(line) {
+  const i = openingBracket(line);
+  return i > 0 && line.slice(i).includes("exported") ? line.slice(0, i).replace(/ $/, "") : null;
+}
+async function sharedBelowNotes(rt, cloudPath) {
+  const p = cloudPath.replace(/(.)\/+$/, "$1");
+  if (p.startsWith("//from/")) return [];
+  const root = (p.match(/^\/\/(?:bin|in)(?=\/|$)/) ?? ["/"])[0];
+  const shared = await listedPaths(rt, "share", root, sharePathOf);
+  const exported = await listedPaths(rt, "export", root, exportPathOf);
+  if (!shared || !exported) return [`(Could not check whether folders inside ${p} are shared or have a public link.)`];
+  const inside = (set) => [...set].filter((x) => x !== p && under(x, p)).sort();
+  return [
+    ...inside(shared).map((x) => `${x}, inside ${p}, is shared with other people: what lands there is visible to them.`),
+    ...inside(exported).map((x) => `${x}, inside ${p}, has a public link: what lands there is visible to anyone with the link.`)
+  ];
+}
+async function destinationNotes(rt, dst, opts = {}) {
   const notes = [];
+  const replaced = opts.overwrite === "delete" ? `${dst} is an existing FILE: it will be REPLACED, and it and all its older versions are deleted for good (not kept as a version, not in the Rubbish Bin).` : `${dst} is an existing FILE: it will be REPLACED (kept as an older version only while file versioning is on).`;
+  const mirror = await localMirrorOf(rt, dst);
+  if (mirror === void 0) notes.push("(Could not check whether the destination is in a synced folder.)");
+  else if (mirror) {
+    notes.push(`${dst} is in a synced folder: what is placed there is also written to this computer, at ${mirror}.`);
+    const exec = await executableDownloadNote(rt);
+    if (exec) notes.push(exec);
+    if (opts.backups !== false) {
+      for (const n of await backedUpLines(rt, mirror)) if (!notes.includes(n)) notes.push(n);
+    }
+  }
+  if (dst.startsWith("//from/")) {
+    const out = [`${dst} is a folder someone else shared with you: its owner, and anyone they share it with, will see what is placed there.`, ...notes];
+    if (opts.overwrite && await remoteKind(rt, dst) === "file") out.push(replaced);
+    return out;
+  }
+  const root = (dst.match(/^\/\/(?:bin|in)(?=\/|$)/) ?? ["/"])[0];
   const chain = ancestorsOf(dst);
-  const shared = await listedPaths(rt, "share", (line) => {
-    const i = line.lastIndexOf(", shared");
-    return i > 0 ? line.slice(0, i) : null;
-  });
-  const exported = await listedPaths(rt, "export", (line) => {
-    const i = line.lastIndexOf(" (");
-    return i > 0 && line.includes("exported") ? line.slice(0, i) : null;
-  });
+  const shared = await listedPaths(rt, "share", root, sharePathOf);
+  const exported = await listedPaths(rt, "export", root, exportPathOf);
   if (!shared || !exported) notes.push("(Could not check whether the destination is shared or has a public link.)");
   const sharedAt = shared && chain.find((p) => shared.has(p));
   const linkedAt = exported && chain.find((p) => exported.has(p));
@@ -23136,8 +23879,551 @@ async function destinationNotes(rt, dst, opts = {}) {
   const subject = (at) => at === self ? dst : `${dst} is inside ${at}, which`;
   if (sharedAt) notes.push(`${subject(sharedAt)} is shared with other people: they will be able to see what is placed there.`);
   if (linkedAt) notes.push(`${subject(linkedAt)} has a public link: anyone with the link will be able to see what is placed there.`);
-  if (opts.overwrite && await remoteKind(rt, dst) === "file") notes.push(`${dst} is an existing FILE: it will be REPLACED.`);
+  if (opts.overwrite && await remoteKind(rt, dst) === "file") notes.push(replaced);
   return notes;
+}
+async function sameNamed(rt, path) {
+  const r = await rt.run("du", [`--path-display-size=${path.length + 2}`, path]);
+  if (r.code === ExitCode.NOTFOUND) return { count: 0, lines: [] };
+  if (r.code !== 0) return { count: -1, lines: [`(Could not check how many items are named ${path}.)`] };
+  let count = 0;
+  for (const line of r.stdout.split(/\r?\n/).slice(1)) {
+    if (/^-+$/.test(line.trim())) break;
+    if (!line.trim()) continue;
+    if (!/:\s+[\d.]+(?:\s*[A-Za-z]+)?\s*$/.test(line)) return { count: -1, lines: [`(Could not check how many items are named ${path}.)`] };
+    count++;
+  }
+  return { count, lines: sameNameLines(path, count) };
+}
+function sameNameLines(path, count) {
+  return count > 1 ? [`Note: ${count} items are named ${path} - this acts on ALL of them.`] : [];
+}
+async function sameNamedMany(rt, paths) {
+  const counts = paths.map(() => null);
+  if (paths.length > 1) {
+    let at = 0;
+    for (const chunk of chunkArgs(paths)) {
+      const width = Math.max(...chunk.map((p) => p.length)) + 2;
+      const r = await rt.run("du", [`--path-display-size=${width}`, ...chunk]);
+      if (r.code === 0) {
+        const lines = r.stdout.split(/\r?\n/);
+        chunk.forEach((p, i) => {
+          const n = lines.filter((l) => l.startsWith(`${p}:`) && /^\s+[\d.]+(?:\s*[A-Za-z]+)?\s*$/.test(l.slice(p.length + 1))).length;
+          if (n > 0) counts[at + i] = n;
+        });
+      }
+      at += chunk.length;
+    }
+  }
+  const out = [];
+  for (let i = 0; i < paths.length; i++) {
+    const n = counts[i];
+    out.push(n === null || n === void 0 ? await sameNamed(rt, paths[i]) : { count: n, lines: sameNameLines(paths[i], n) });
+  }
+  return out;
+}
+async function executableDownloadNote(rt) {
+  if (process.platform === "win32") return null;
+  const r = await rt.run("permissions", ["--files"]);
+  const m = r.stdout.match(/Default files permissions:\s*([0-7]{3})/);
+  if (m && /[1357]/.test(m[1])) {
+    return `Downloaded files will be EXECUTABLE: MEGAcmd's file permissions are ${m[1]} (a file in a folder on PATH could then run in place of a program).`;
+  }
+  return null;
+}
+var SYNC_SEP = ";;MEGA-MCP;;";
+async function syncRowsIntact(rt, listed, args) {
+  const r = await rt.run("sync", [...args, `--col-separator=${SYNC_SEP}`]);
+  const lines = (t) => t.split(/\r?\n/).filter((l) => l.trim() !== "").length;
+  return r.code === 0 && lines(r.stdout) === lines(listed);
+}
+async function syncPairs(rt, unrunnable = null) {
+  const r = await rt.run("sync", ["--output-cols=LOCALPATH,REMOTEPATH,RUN_STATE", `--col-separator=${SYNC_SEP}`]);
+  if (r.spawnError) return r.spawnError === "NO_MEGACMD" ? unrunnable : null;
+  if (r.code !== 0) return r.code === ExitCode.NOTFOUND ? [] : null;
+  if (!await syncRowsIntact(rt, r.stdout, ["--output-cols=RUN_STATE"])) return null;
+  const out = [];
+  for (const line of r.stdout.split(/\r?\n/)) {
+    if (line.trim() === "" || line === `LOCALPATH${SYNC_SEP}REMOTEPATH${SYNC_SEP}RUN_STATE`) continue;
+    const parts = line.split(SYNC_SEP);
+    if (parts.length === 1) continue;
+    if (parts.length !== 3) return null;
+    const remote = parts[1].replace(/(.)\/+$/, "$1").normalize("NFC");
+    out.push({ local: parts[0], remote: remote.startsWith("/") ? remote : `//from/${remote}`, running: parts[2].trim().toLowerCase() === "running" });
+  }
+  return out;
+}
+async function syncById(rt, id) {
+  const r = await rt.run("sync", ["--show-handles", "--output-cols=ID,LOCALPATH,REMOTEHANDLE,REMOTEPATH,RUN_STATE", `--col-separator=${SYNC_SEP}`]);
+  if (r.code === ExitCode.NOTFOUND) return null;
+  if (r.code !== 0) return void 0;
+  if (!await syncRowsIntact(rt, r.stdout, ["--show-handles", "--output-cols=ID,RUN_STATE"])) return void 0;
+  let found = null;
+  for (const line of r.stdout.split(/\r?\n/)) {
+    const parts = line.split(SYNC_SEP);
+    if (parts.length === 1 || parts[0] === "ID") continue;
+    if (parts.length !== 5) return void 0;
+    const [sid, local, handle, remote, state] = parts.map((p, i) => i === 1 || i === 3 ? p : p.trim());
+    if (sid !== id && local !== id) continue;
+    if (found) return void 0;
+    const h = handle.match(/^<(H:[A-Za-z0-9_-]{8})>$/)?.[1];
+    if (!h) return void 0;
+    const rp = remote.replace(/(.)\/+$/, "$1").normalize("NFC");
+    found = { local, remote: rp.startsWith("/") ? rp : `//from/${rp}`, handle: h, running: state.toLowerCase() === "running" };
+  }
+  return found;
+}
+async function folderStillAt(rt, path, handle) {
+  if (/^(?:\/|\/\/(?:bin|in))$/.test(path)) return true;
+  const top = path.match(/^\/\/from\/[^/:]+:([^/]+)$/)?.[1];
+  const r = await rt.run("find", [path, "--type=d", "--print-only-handles", `--pattern=${top ?? posix.basename(path)}`]);
+  if (r.code !== 0) return false;
+  return r.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).pop() === handle;
+}
+async function localMirrorOf(rt, cloudPath) {
+  return mirrorIn(await syncPairs(rt), cloudPath);
+}
+function mirrorIn(pairs, cloudPath) {
+  if (!pairs) return void 0;
+  const p = cloudPath.replace(/(.)\/+$/, "$1");
+  for (const { local, remote } of pairs) {
+    if (p === remote) return local;
+    const prefix = remote === "/" ? "/" : `${remote}/`;
+    if (p.startsWith(prefix)) return localOfCloud(local, p.slice(prefix.length).split("/"));
+  }
+  return null;
+}
+function localOfCloud(root, parts) {
+  let cur = root;
+  for (const part of parts) {
+    const direct = joinLocal(cur, part);
+    if (existsSync3(direct)) {
+      cur = direct;
+      continue;
+    }
+    let match;
+    try {
+      match = readdirSync3(cur).find((e) => cloudNameOf(e) === part.normalize("NFC"));
+    } catch {
+      match = void 0;
+    }
+    cur = joinLocal(cur, match ?? part);
+  }
+  return cur;
+}
+async function syncedSourceNotes(rt, paths, what) {
+  const pairs = await syncPairs(rt, []);
+  const lines = [];
+  for (const p of paths) {
+    const mirror = mirrorIn(pairs, p);
+    if (mirror === void 0) {
+      throw new ValidationError(`Could not read MEGAcmd's list of syncs, so whether ${what === "removed" ? "removing" : "moving"} ${p} also changes a folder on this computer is unknown. Nothing was run; try again.`);
+    }
+    if (!mirror) continue;
+    if (isIgnoreFileName(posix.basename(p))) {
+      throw new ValidationError(`${p} holds the rules of a synced folder (${mirror}); it is not ${what} through this tool.`);
+    }
+    try {
+      assertDownloadTarget(dirnameLocal(mirror), basenameLocal(mirror));
+    } catch {
+      throw new ValidationError(
+        `${p} is in a synced folder: this would also change ${mirror} on this computer, which is, holds or is inside a folder MEGAcmd, this connector or the app depends on. Nothing was run.`
+      );
+    }
+    lines.push(`${p} is in a synced folder: it is also ${what} on this computer, at ${mirror}.`);
+  }
+  return listedLines(lines, (l) => l);
+}
+async function ignoreFilesBelow(rt, path) {
+  const hits = [];
+  let unchecked = false;
+  for (const pattern of [".??????????*", "%2e*"]) {
+    const r = await rt.run("find", [path, "--type=f", `--pattern=${pattern}`]);
+    if (r.spawnError === "NO_MEGACMD") return null;
+    if (r.spawnError) {
+      unchecked = true;
+      continue;
+    }
+    if (r.code === ExitCode.NOTFOUND) continue;
+    if (r.code !== 0) unchecked = true;
+    else hits.push(...r.stdout.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "" && isIgnoreFileName(posix.basename(l))));
+  }
+  return { hits, unchecked };
+}
+async function assertNoNestedIgnoreFile(rt, remotePath) {
+  const r = await ignoreFilesBelow(rt, remotePath);
+  if (!r) return;
+  if (r.unchecked) throw new ValidationError(`Could not check ${remotePath} for .megaignore files before syncing it.`);
+  const base = remotePath.replace(/(.)\/+$/, "$1");
+  const shown = base.startsWith("//from/") ? base.slice("//from/".length) : base;
+  const hit = r.hits.find((l) => posix.dirname(l) !== shown);
+  if (hit) throw new ValidationError(`${remotePath} holds ${hit}; a .megaignore below the root of a sync decides what it carries there, so remove it in the cloud before syncing.`);
+}
+async function syncRootsBelowCloud(rt, cloudPath) {
+  const pairs = await syncPairs(rt, []);
+  if (!pairs) return null;
+  const p = cloudPath.replace(/(.)\/+$/, "$1");
+  return pairs.filter((x) => x.remote !== p && under(x.remote, p)).map((x) => `${x.remote} <-> ${x.local}`);
+}
+async function syncLocalRoots(rt) {
+  const pairs = await syncPairs(rt, []);
+  return pairs ? pairs.map((p) => p.local) : null;
+}
+async function syncFollowLines(rt, sources, dst) {
+  const pairs = await syncPairs(rt);
+  const backups = await backupPairs(rt);
+  const lines = /* @__PURE__ */ new Set();
+  if (!pairs) lines.add("(Could not check whether a sync follows what is moved.)");
+  if (!backups) lines.add("(Could not check whether a periodic backup follows what is moved.)");
+  const bare = (p) => p.split("/").map((seg) => seg.trimEnd()).join("/");
+  const tree = (p) => p.match(/^\/\/from\/[^/:]+/)?.[0] ?? "/";
+  for (const raw of sources) {
+    const src = raw.replace(/(.)\/+$/, "$1");
+    for (const p of pairs ?? []) {
+      if (!under(p.remote, src)) continue;
+      if (tree(src) !== tree(dst)) {
+        lines.add(`${p.remote} is two-way synced with ${p.local} on this computer: moved into ${dst}, it is copied and the original deleted, so that sync stops.`);
+        continue;
+      }
+      lines.add(`${p.remote} is two-way synced with ${p.local} on this computer: the sync follows it into ${dst}, and what is saved there later goes there too.`);
+      const writers = await writableAround(rt, dst);
+      if (writers === null) throw new ValidationError(`Could not check who else can write into ${dst}. Nothing was run.`);
+      for (const w of writers.filter((w2) => under(dst.replace(/(.)\/+$/, "$1"), w2))) {
+        assertUnknownLandingSafe(p.local, `${w} can be written by other people, and what they add to the moved sync folder`);
+      }
+    }
+    for (const b of backups ?? []) {
+      if (b.remote !== null && under(bare(b.remote), bare(src))) lines.add(`${b.remote} receives periodic backups of ${b.local} from this computer: later backups follow it into ${dst}.`);
+    }
+  }
+  return [...lines];
+}
+async function assertSyncedLanding(rt, cloudDir, names, inside = {}) {
+  const mirror = await localMirrorOf(rt, cloudDir);
+  if (mirror === void 0) {
+    throw new ValidationError(`Could not read MEGAcmd's list of syncs, so whether ${cloudDir} is written to this computer (and where) is unknown. Nothing was run; try again.`);
+  }
+  if (!mirror) return;
+  const listedHit = (inside.listed ?? []).find((p) => isIgnoreFileName(posix.basename(p)));
+  if (listedHit) throw new ValidationError(`${listedHit} is a .megaignore, and in a two-way synced folder one decides what the sync carries, so it is not placed in ${cloudDir}.`);
+  for (const src of inside.cloud ?? []) {
+    await assertNoPendingIgnoreUpload(rt, src, `place ${src} in a synced folder`);
+    const r = await ignoreFilesBelow(rt, src);
+    if (!r || r.unchecked) throw new ValidationError(`Could not check ${src} for a .megaignore before placing it in a synced folder.`);
+    const hit = r.hits[0];
+    if (hit) throw new ValidationError(`${src} holds ${hit}, and in a two-way synced folder a .megaignore decides what the sync carries, so it is not placed in ${cloudDir}.`);
+  }
+  if (inside.local && inside.local.length > 0) {
+    const r = ignoreFilesIn(inside.local);
+    if (r.found.length > 0) throw new ValidationError(`${r.found[0]} is a .megaignore, and in a two-way synced folder one decides what the sync carries, so it is not uploaded into ${cloudDir}.`);
+    if (!r.complete) throw new ValidationError(`Too many folders to search for a .megaignore before uploading into the synced folder ${cloudDir}; upload smaller folders.`);
+  }
+  if (names === "self") {
+    assertNotIgnoreFile(mirror);
+    for (const n of localSpellings(basenameLocal(mirror))) assertDownloadTarget(dirnameLocal(mirror), n);
+  } else if (names === "unknown") {
+    assertUnknownLandingSafe(mirror, `What arrives in ${cloudDir}`);
+  } else {
+    for (const name of names.flatMap(localSpellings)) {
+      assertNotIgnoreFile(joinLocal(mirror, name));
+      assertDownloadTarget(mirror, name);
+    }
+  }
+}
+async function transfersRunning(rt) {
+  const r = await rt.run("transfers", ["--summary"]);
+  if (r.spawnError === "NO_MEGACMD") return { downloads: 0, uploads: 0 };
+  const row = r.code === 0 ? r.stdout.split(/\r?\n/)[1] ?? "" : "";
+  const num = (from, to) => /^\s*\d+\s*$/.test(row.slice(from, to)) ? Number(row.slice(from, to)) : NaN;
+  return { downloads: num(0, 16), uploads: num(53, 69) };
+}
+var expectedCloudIgnores = /* @__PURE__ */ new Set();
+var unknownUploads = /* @__PURE__ */ new Set();
+var expectedLocalIgnores = /* @__PURE__ */ new Set();
+var unknownDownloads = /* @__PURE__ */ new Set();
+function landingsOf(ld, name) {
+  return localSpellings(name).map((n) => joinLocal(ld, n));
+}
+var ignoreDownloads = /* @__PURE__ */ new Set();
+function noteUploadIgnores(files, unknownDirs) {
+  for (const f of files) expectedCloudIgnores.add(f.replace(/(.)\/+$/, "$1"));
+  for (const d of unknownDirs) unknownUploads.add(d.replace(/(.)\/+$/, "$1"));
+}
+function noteDownloadIgnores(files, unknownDirs, into = []) {
+  for (const f of files) expectedLocalIgnores.add(f);
+  if (files.length > 0) for (const d of into) ignoreDownloads.add(d);
+  for (const d of unknownDirs) {
+    unknownDownloads.add(d);
+    ignoreDownloads.add(d);
+  }
+}
+async function assertNoPendingIgnoreUpload(rt, rp, then = `sync ${rp}`) {
+  const root = rp.replace(/(.)\/+$/, "$1");
+  for (const f of [...expectedCloudIgnores]) {
+    if (!under(f, root)) continue;
+    const kind = await remoteKind(rt, f);
+    if (kind === "file") continue;
+    if (kind === "unknown" || await remoteKind(rt, posix.dirname(f)) !== "folder" || (await transfersRunning(rt)).uploads !== 0) {
+      throw new ValidationError(`An upload from this session puts ${f} (a .megaignore) into ${rp} and it may still arrive (mega_transfers); ${then} once uploads have finished.`);
+    }
+  }
+  if (unknownUploads.size > 0 && (await transfersRunning(rt)).uploads !== 0) {
+    throw new ValidationError(`An upload of this session whose contents were not all checked may still be running (mega_transfers); ${then} once it has finished.`);
+  }
+}
+var downloadedInto = /* @__PURE__ */ new Set();
+function noteDownload(localDir) {
+  downloadedInto.add(localDir);
+}
+function downloadedIntoLines(sources) {
+  if (downloadedInto.size === 0) return [];
+  const within = (a, b) => a === b || a.startsWith(b.endsWith(sepLocal) ? b : b + sepLocal);
+  const real = sources.map((lp) => onDiskSpelling(lp));
+  const hits = [...downloadedInto].filter((d) => {
+    const rd = onDiskSpelling(d);
+    return real.some((r) => within(rd, r) || within(r, rd));
+  });
+  return hits.length > 0 ? ["Downloaded into earlier in this session (what is uploaded may include it):", ...listedLines(hits.sort())] : [];
+}
+async function assertNoNestedLocalIgnoreFile(rt, lp) {
+  const near = (d) => localAtOrUnder(d, lp) || localAtOrUnder(lp, d);
+  for (const f of [...expectedLocalIgnores]) {
+    if (!localAtOrUnder(f, lp)) continue;
+    if (existsSync3(f)) {
+      throw new ValidationError(`${f} is a .megaignore a download of this session put ${localAtOrUnder(lp, dirnameLocal(f)) ? "at the root of" : "below"} ${lp}; it would decide what the sync carries. Remove it (or check it yourself) before syncing.`);
+    }
+    if (!existsSync3(dirnameLocal(f)) || (await transfersRunning(rt)).downloads !== 0) {
+      throw new ValidationError(`A download of this session puts ${f} (a .megaignore) below ${lp} and it may still arrive (mega_transfers); sync ${lp} once downloads have finished.`);
+    }
+  }
+  const pending = [...unknownDownloads].filter(near);
+  if (pending.length > 0 && (await transfersRunning(rt)).downloads !== 0) {
+    throw new ValidationError(`A download into ${pending[0]} may still be running (mega_transfers); sync ${lp} once it has finished.`);
+  }
+  const nested = (found) => found.filter((f) => relative2(lp, dirnameLocal(f)) !== "");
+  for (const d of ignoreDownloads) {
+    if (!near(d)) continue;
+    if (localAtOrUnder(lp, d) && rootIgnoreFile(lp)) {
+      throw new ValidationError(`${rootIgnoreFile(lp)} may have been downloaded earlier in this session; as the root rules of the sync it decides what is carried. Remove it (or check it yourself) before syncing ${lp}.`);
+    }
+    const where = localAtOrUnder(d, lp) ? d : lp;
+    const r = ignoreFilesIn([where]);
+    const hit2 = nested(r.found)[0] ?? (r.complete ? null : where);
+    if (hit2) throw new ValidationError(`${hit2} holds a .megaignore downloaded earlier in this session; below the root of a sync it decides what the sync carries, so ${lp} is not synced. Remove it first.`);
+  }
+  const hit = nested(ignoreFilesIn([lp]).found)[0];
+  if (hit) throw new ValidationError(`${hit} is a .megaignore below the root of ${lp}; it would decide what the sync carries there, so ${lp} is not synced. Remove it first.`);
+}
+function assertUnknownLandingSafe(local, what) {
+  let copy;
+  try {
+    assertNotInsideProtected(local);
+    assertDownloadTarget(local, null);
+    const r = storeCopiesIn(local);
+    copy = r.found[0] ? `${r.found[0]}, a copy of MEGAcmd's session store` : r.complete ? void 0 : "folders that could not all be searched for a copy of MEGAcmd's session store";
+  } catch {
+    copy = void 0;
+    throw new ValidationError(`${what} is written by a two-way sync to ${local} on this computer, which is, holds or is inside a folder MEGAcmd, this connector or the app depends on. Nothing was run.`);
+  }
+  if (copy) throw new ValidationError(`${what} is written by a two-way sync to ${local} on this computer, which holds ${copy}. Nothing was run.`);
+}
+async function writableAround(rt, cloudPath, atOrBelow = false) {
+  const p = cloudPath.replace(/(.)\/+$/, "$1");
+  const share = p.match(/^\/\/from\/[^/]+/)?.[0];
+  if (share) return [share];
+  const root = (p.match(/^\/\/(?:bin|in)(?=\/|$)/) ?? ["/"])[0];
+  const out = [];
+  const near = (w) => !atOrBelow && under(p, w) || under(w, p);
+  for (const cmd of ["share", "export"]) {
+    const r = await rt.run(cmd, cmd === "share" ? ["-p", root] : [root]);
+    if (r.spawnError === "NO_MEGACMD" || r.code === ExitCode.NOTFOUND) continue;
+    if (r.spawnError) return null;
+    if (r.code !== 0) return null;
+    for (const raw of r.stdout.split(/\r?\n/)) {
+      const line = raw.trimEnd();
+      if (!line.trim() || /^\s/.test(raw)) continue;
+      const path = cmd === "share" ? sharePathOf(line) : exportPathOf(line);
+      if (!path || !path.startsWith("/")) return null;
+      const w = path.replace(/(.)\/+$/, "$1").normalize("NFC");
+      if (!near(w)) continue;
+      const writable = cmd === "share" ? !/\(read access\)(?:\[UNVERIFIED\])?$/.test(line) : /\bAuth(?:Token|Key)\b/.test(line);
+      if (writable) out.push(w);
+    }
+  }
+  return out;
+}
+async function assertNoWritersReach(rt, rp, lp) {
+  const writers = await writableAround(rt, rp);
+  if (writers === null) throw new ValidationError(`Could not check who else can write into ${rp}. Nothing was run.`);
+  const root = rp.replace(/(.)\/+$/, "$1");
+  for (const w of writers) {
+    const local = under(root, w) ? lp : localOfCloud(lp, w.slice(root === "/" ? 1 : root.length + 1).split("/"));
+    assertUnknownLandingSafe(local, `${w} can be written by other people, and what they add there`);
+  }
+}
+function rootIgnoreFile(lp) {
+  try {
+    const n = readdirSync3(lp).find((e) => isIgnoreFileName(e));
+    return n ? joinLocal(lp, n) : null;
+  } catch {
+    return null;
+  }
+}
+async function movedIntoSyncedLines(rt, sources, d, into) {
+  const mirror = await localMirrorOf(rt, d);
+  if (mirror === void 0) return ["(Could not check whether the destination is in a synced folder.)"];
+  if (!mirror) return [];
+  const lines = [];
+  for (const raw of sources) {
+    const src = raw.replace(/(.)\/+$/, "$1");
+    const local = into ? localOfCloud(mirror, [posix.basename(src).replace(/^[^:]*:/, "")]) : mirror;
+    const writers = await writableAround(rt, src, true);
+    if (writers === null) throw new ValidationError(`Could not check who else can write into ${src}. Nothing was run.`);
+    for (const w of writers) {
+      assertUnknownLandingSafe(w === src ? local : localOfCloud(local, w.slice(src.length + 1).split("/")), `${w} can be written by other people, and moved into the synced folder, what they add`);
+    }
+    const self = await destinationNotes(rt, src);
+    const own = self.filter((n) => n.startsWith(`${src} is shared with other people`) || n.startsWith(`${src} has a public link`));
+    for (const n of [...own, ...await sharedBelowNotes(rt, src)]) {
+      lines.push(`Moved into the synced folder ${mirror}: ${n}`);
+    }
+  }
+  return lines;
+}
+async function inSyncedLocalFolder(rt, localPath) {
+  const pairs = await syncPairs(rt);
+  if (!pairs) return void 0;
+  return pairs.some(({ local }) => localAtOrUnder(localPath, local));
+}
+function chunkArgs(items, maxCount = 2e3, others) {
+  const cost = (a) => Buffer.byteLength(a) + (process.platform === "win32" ? 8 : 4);
+  const maxBytes = others ? 7600 - others.reduce((n, a) => n + cost(a), 0) : 6e3;
+  const out = [];
+  for (let i = 0; i < items.length; ) {
+    let j = i;
+    let bytes = 0;
+    while (j < items.length && j - i < maxCount && (j === i || bytes + cost(items[j]) <= maxBytes)) {
+      bytes += cost(items[j]);
+      j++;
+    }
+    out.push(items.slice(i, j));
+    i = j;
+  }
+  return out;
+}
+async function childNames(rt, dir) {
+  const r = await rt.run("ls", [dir]);
+  if (r.code !== 0) return null;
+  return new Set(r.stdout.split(/\r?\n/).filter((l) => l !== ""));
+}
+var unconfirmedWrites = [];
+var keyCopies = [];
+function noteKeyCopy(from, to, shownAs = from) {
+  const path = to.replace(/(.)\/+$/, "$1");
+  if (!isRecoveryKeyName(posix.basename(from.replace(/(.)\/+$/, "$1"))) || isRecoveryKeyName(posix.basename(path)) || keyCopies.some((k) => k.path === path)) return;
+  if (keyCopies.length >= MAX_TRACKED) {
+    trackingIncomplete = true;
+    return;
+  }
+  keyCopies.push({ path, source: shownAs });
+}
+var MAX_TRACKED = 2e4;
+var trackingIncomplete = false;
+function noteUnconfirmedWrite(entries) {
+  for (const e of entries) {
+    if (unconfirmedWrites.length >= MAX_TRACKED) {
+      trackingIncomplete = true;
+      return;
+    }
+    unconfirmedWrites.push({ path: e.path, source: e.source });
+  }
+}
+var under = (p, folder) => {
+  const f = folder.replace(/(.)\/+$/, "$1");
+  return p === f || p.startsWith(f === "/" ? "/" : `${f}/`);
+};
+function unconfirmedWritesIn(folder) {
+  const f = folder.replace(/(.)\/+$/, "$1");
+  const hits = unconfirmedWrites.filter((w) => under(w.path, f) || under(f, w.path)).map(
+    (w) => under(w.path, f) ? w.source ? `${w.path} (a copy of ${w.source})` : w.path : `${f} is inside ${w.path}${w.source ? `, a copy of ${w.source}` : ""}`
+  );
+  return [...new Set(hits)];
+}
+function carryUnconfirmedWrites(from, to, move) {
+  const f = from.replace(/(.)\/+$/, "$1");
+  for (const w of [...unconfirmedWrites]) {
+    if (!under(w.path, f)) continue;
+    const moved = to.replace(/(.)\/+$/, "$1") + w.path.slice(f.length);
+    if (move) w.path = moved;
+    else noteUnconfirmedWrite([{ path: moved, source: w.source }]);
+  }
+  for (const k of [...keyCopies]) {
+    if (!under(k.path, f)) continue;
+    const moved = to.replace(/(.)\/+$/, "$1") + k.path.slice(f.length);
+    if (move) k.path = moved;
+    else if (!keyCopies.some((x) => x.path === moved)) keyCopies.push({ path: moved, source: k.source });
+  }
+  for (const c of [...sessionChanges]) {
+    if (!under(c.path, f)) continue;
+    const moved = to.replace(/(.)\/+$/, "$1") + c.path.slice(f.length);
+    if (move) c.path = moved;
+    else noteSessionChange(moved, c.what);
+  }
+  for (const e of [...expectedCloudIgnores]) {
+    if (under(e, f)) expectedCloudIgnores.add(to.replace(/(.)\/+$/, "$1") + e.slice(f.length));
+  }
+}
+var sessionChanges = [];
+function noteSessionChange(path, what) {
+  if (sessionChanges.length >= MAX_TRACKED) {
+    trackingIncomplete = true;
+    return;
+  }
+  sessionChanges.push({ path: path.replace(/(.)\/+$/, "$1"), what });
+}
+function unconfirmedWriteLines(folders) {
+  const list = typeof folders === "string" ? [folders] : folders;
+  const hits = [...new Set(list.flatMap((f) => unconfirmedWritesIn(f)))];
+  const changed = [
+    ...new Set(
+      list.flatMap((raw) => {
+        const f = raw.replace(/(.)\/+$/, "$1");
+        return sessionChanges.filter((c) => under(c.path, f) || under(f, c.path)).map((c) => `${c.path}: ${c.what}`);
+      })
+    )
+  ];
+  return [
+    ...hits.length > 0 ? ["Placed in it earlier in this session without a confirmation:", ...listedLines(hits)] : [],
+    ...changed.length > 0 ? ["Changed in it earlier in this session:", ...listedLines(changed)] : [],
+    ...trackingIncomplete ? ["(More was placed in private folders without a confirmation than this session can track: check the contents before sharing.)"] : []
+  ];
+}
+function recoveryKeyLines(paths, found = []) {
+  const hits = new Set(found);
+  for (const raw of paths) {
+    const p = raw.replace(/(.)\/+$/, "$1");
+    if (isRecoveryKeyName(posix.basename(p))) hits.add(p);
+    for (const w of unconfirmedWrites) {
+      if (w.source && isRecoveryKeyName(posix.basename(w.source)) && (under(w.path, p) || under(p, w.path))) hits.add(`${w.path} (a copy of ${w.source})`);
+    }
+    for (const k of keyCopies) if (under(k.path, p) || under(p, k.path)) hits.add(`${k.path} (a copy of ${k.source})`);
+  }
+  return hits.size > 0 ? ["Named like MEGA's recovery key file, which holds the account's master key:", ...listedLines([...hits])] : [];
+}
+async function recoveryKeyLinesBelow(rt, paths) {
+  const found = [];
+  let unchecked = false;
+  for (const chunk of chunkArgs(paths)) {
+    for (const pattern of ["????-*", "*-????*"]) {
+      const r = await rt.run("find", [...chunk, "--type=f", `--pattern=${pattern}`], { maxBuffer: 128 * 1024 * 1024 });
+      if (r.spawnError === "NO_MEGACMD") continue;
+      if (r.spawnError || r.code !== 0 && r.code !== ExitCode.NOTFOUND) unchecked = true;
+      for (const line of r.stdout.split(/\r?\n/).map((l) => l.trim())) {
+        if (line && isRecoveryKeyName(posix.basename(line))) found.push(line.startsWith("/") ? line : `//from/${line}`);
+      }
+    }
+  }
+  return [...recoveryKeyLines(paths, found), ...unchecked ? ["(Could not check everything inside for MEGA's recovery key file.)"] : []];
 }
 async function remoteKind(rt, path) {
   const r = await rt.run("find", [path, "--type=d", "--print-only-handles"]);
@@ -23146,20 +24432,204 @@ async function remoteKind(rt, path) {
   return r.stdout.trim() ? "folder" : "file";
 }
 function ancestorsOf(p) {
-  const parts = p.replace(/\/+$/, "").split("/").filter(Boolean);
-  return ["/", ...parts.map((_, i) => `/${parts.slice(0, i + 1).join("/")}`)];
+  const special = p.match(/^(\/\/(?:bin|in))(?=\/|$)/)?.[1];
+  const base = special ?? "";
+  const parts = p.slice(base.length).replace(/\/+$/, "").split("/").filter(Boolean);
+  return [special ?? "/", ...parts.map((_, i) => `${base}/${parts.slice(0, i + 1).join("/")}`)];
 }
-async function listedPaths(rt, cmd, pathOf) {
-  const r = await rt.run(cmd, ["/"]);
+async function listedPaths(rt, cmd, root, pathOf) {
+  const r = await rt.run(cmd, cmd === "share" ? ["-p", root] : [root]);
   if (r.spawnError) return null;
   if (r.code === ExitCode.NOTFOUND) return /* @__PURE__ */ new Set();
   if (r.code !== 0) return null;
   const paths = /* @__PURE__ */ new Set();
   for (const raw of r.stdout.split(/\r?\n/)) {
-    const p = pathOf(raw.trim());
-    if (p) paths.add(p.replace(/(.)\/+$/, "$1"));
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^\s/.test(raw)) continue;
+    const p = line.startsWith("/") ? pathOf(line) : null;
+    if (!p) return null;
+    paths.add(p.replace(/(.)\/+$/, "$1").normalize("NFC"));
   }
   return paths;
+}
+function ownExportLink(stdout, path) {
+  const p = path.replace(/(.)\/+$/, "$1");
+  const shown = p.startsWith("//from/") ? p.slice("//from/".length) : p;
+  for (const raw of stdout.split(/\r?\n/)) {
+    const line = raw.trimEnd();
+    const i = openingBracket(line);
+    if (i > 0 && line.slice(0, i).replace(/ $/, "") === shown && line.slice(i).includes("exported")) return parseExportLink(line.slice(i))?.replace(/\)+$/, "") ?? null;
+  }
+  return null;
+}
+async function syncedWithinLines(rt, targets, what) {
+  const pairs = await syncPairs(rt);
+  const backups = await backupPairs(rt);
+  const list = typeof targets === "string" ? [targets] : targets;
+  const lines = /* @__PURE__ */ new Set();
+  if (!pairs) lines.add(`(Could not check whether ${list.length === 1 ? list[0] : "these"} is synced with this computer.)`);
+  if (!backups) lines.add(`(Could not check whether a periodic backup writes into ${list.length === 1 ? list[0] : "these"}.)`);
+  for (const raw of list) {
+    const t = raw.replace(/(.)\/+$/, "$1");
+    for (const p of pairs ?? []) {
+      if (under(p.remote, t) || under(t, p.remote)) lines.add(`${p.remote} is two-way synced with ${p.local} on this computer: what is saved there later is ${what} too.`);
+    }
+    const bare = (p) => p.split("/").map((seg) => seg.trimEnd()).join("/");
+    for (const b of backups ?? []) {
+      if (b.remote !== null && under(bare(b.remote), bare(t))) lines.add(`${b.remote} receives periodic backups of ${b.local} from this computer: later backups are ${what} too.`);
+    }
+  }
+  return [...lines];
+}
+async function writableShareLines(rt, targets, email2, instead = "share it read-only instead") {
+  const pairs = await syncPairs(rt);
+  if (!pairs) throw new ValidationError(`Could not read MEGAcmd's list of syncs, so whether what ${email2} adds is written to this computer is unknown. Nothing was run.`);
+  const lines = /* @__PURE__ */ new Set();
+  for (const raw of targets) {
+    const t = raw.replace(/(.)\/+$/, "$1");
+    for (const p of pairs) {
+      const local = under(p.remote, t) ? p.local : under(t, p.remote) ? mirrorIn([p], t) : null;
+      if (!local) continue;
+      assertUnknownLandingSafe(local, `What ${email2} adds to ${t} (${instead})`);
+      lines.add(`${email2} can add files to ${t}: the two-way sync writes them to ${local} on this computer.`);
+    }
+    for (const l of await backupFoldersWithinLines(rt, t, `${email2} can add items to`)) lines.add(l);
+  }
+  return [...lines];
+}
+async function backupFoldersWithinLines(rt, folder, what) {
+  const backups = await backupPairs(rt);
+  if (!backups) return [`(Could not check whether a periodic backup keeps its copies in ${folder}.)`];
+  const bare = (p) => p.replace(/(.)\/+$/, "$1").split("/").map((seg) => seg.trimEnd()).join("/").normalize("NFC");
+  return backups.filter((b) => b.remote !== null && under(bare(b.remote), bare(folder))).map((b) => `${what} ${b.remote}, where the periodic backup of ${b.local} keeps its copies: an item named like ${backupNamesOf(b.local)[0]}_bk_<date> there counts as one of them, and beyond the kept count the oldest are DELETED for good by the next backup run.`);
+}
+async function backupRotationLines(rt, parent, names) {
+  return backupRotationLinesAt(rt, names.map((n) => joinRemote(parent, n)));
+}
+function backupNamesOf(local) {
+  let aux = local;
+  let found = aux.search(/[/\\][^/\\]*$/);
+  while (aux.length > 0 && found === aux.length - 1) {
+    aux = aux.slice(0, Math.max(found - 1, 0));
+    found = aux.search(/[/\\][^/\\]*$/);
+  }
+  return [...new Set([aux.slice(found + 1), basenameLocal(local)].filter((n) => n !== "").map((n) => n.normalize("NFC")))];
+}
+async function backupRotationLinesAt(rt, paths) {
+  const named = paths.map((p) => p.replace(/(.)\/+$/, "$1")).filter((p) => posix.basename(p).includes("_bk_"));
+  if (named.length === 0) return [];
+  const backups = await backupPairs(rt);
+  if (!backups) return ["(Could not check whether the destination is a periodic backup's folder.)"];
+  const bare = (p) => p.split("/").map((seg) => seg.trimEnd()).join("/").normalize("NFC");
+  const lines = [];
+  for (const b of backups) {
+    if (b.remote === null) continue;
+    const bases = backupNamesOf(b.local);
+    for (const p of named.filter((p2) => bare(posix.dirname(p2)) === bare(b.remote) && bases.some((base) => posix.basename(p2).normalize("NFC").startsWith(base)))) {
+      lines.push(`${p} would count as a backup copy of ${b.local}: beyond the kept count, the oldest are DELETED for good by the next backup run.`);
+    }
+  }
+  return lines;
+}
+async function backupFolderLines(rt, folder) {
+  const backups = await backupPairs(rt);
+  if (!backups) return ["(Could not check whether the destination is a periodic backup's folder.)"];
+  const bare = (p) => p.replace(/(.)\/+$/, "$1").split("/").map((seg) => seg.trimEnd()).join("/").normalize("NFC");
+  return backups.filter((b) => b.remote !== null && bare(b.remote) === bare(folder)).map((b) => `${folder} is where the periodic backup of ${b.local} keeps its copies: an item named like ${backupNamesOf(b.local)[0]}_bk_<date> counts as one of them, and beyond the kept count the oldest are DELETED for good by the next backup run.`);
+}
+async function backupLocalRoots(rt) {
+  const r = await backupPairs(rt, []);
+  return r ? r.map((b) => b.local) : null;
+}
+async function syncSnapshot(rt) {
+  return JSON.stringify([await syncPairs(rt, []), await backupPairs(rt, [])]);
+}
+async function backupPairs(rt, unrunnable = null) {
+  const width = 4096;
+  const r = await rt.run("backup", [`--path-display-size=${width}`]);
+  if (r.spawnError) return r.spawnError === "NO_MEGACMD" ? unrunnable : null;
+  if (r.code !== 0) return r.code === ExitCode.NOTFOUND ? [] : null;
+  const out = [];
+  for (const line of r.stdout.split(/\r?\n/)) {
+    if (line.trim() === "" || /^\s/.test(line) || line.startsWith("TAG") || line.startsWith("BACKUP not found")) continue;
+    const cells = line.split(/ {64,}/);
+    if (cells.length !== 3 || !/^-?\d+ /.test(cells[0])) return null;
+    const local = cells[0].replace(/^-?\d+ +/, "");
+    const remote = cells[1].trimEnd();
+    if (remote === "INVALIDPATH") {
+      out.push({ local, remote: null });
+      continue;
+    }
+    if (!remote.startsWith("/") && !remote.includes(":")) return null;
+    out.push({ local, remote: (remote.startsWith("/") ? remote : `//from/${remote}`).normalize("NFC") });
+  }
+  return out;
+}
+async function contentDigest(rt, path) {
+  const r = await rt.run("find", [path, "--print-only-handles"], { maxBuffer: 128 * 1024 * 1024 });
+  if (r.code === ExitCode.NOTFOUND) return "missing";
+  if (r.spawnError === "NO_MEGACMD") return "unavailable";
+  if (r.code !== 0) throw new ValidationError(`Could not list what ${path} holds: ${classifyExit(r)}. Nothing was run.`);
+  const handles = r.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).sort();
+  return createHash3("sha256").update(handles.join("\n")).digest("hex");
+}
+async function syncedLocalLines(rt, localPath) {
+  return [...await twoWaySyncedLines(rt, localPath), ...await backedUpLines(rt, localPath)];
+}
+async function twoWaySyncedLines(rt, localPath) {
+  const pairs = await syncPairs(rt);
+  if (!pairs) return [`(Could not check whether ${localPath} is in a two-way synced folder.)`];
+  const pair = pairs.find((p) => localAtOrUnder(localPath, p.local));
+  if (!pair) return [];
+  const rel = relativeWithin(onDiskSpelling(pair.local), onDiskSpelling(localPath));
+  if (rel === null) {
+    throw new ValidationError(`${localPath} is in the two-way synced folder ${pair.local}, but where in it could not be worked out, so where the sync uploads it is unknown. Use the usual spelling of the folder.`);
+  }
+  const cloud = rel ? joinRemote(pair.remote, rel.split("/").map(cloudNameOf).join("/")) : pair.remote;
+  const notes = (await destinationNotes(rt, cloud)).filter((n) => !n.includes(" is in a synced folder: "));
+  return [`${localPath} is in a two-way synced folder: what is downloaded there is also uploaded to ${cloud}.`, ...notes, ...await sharedBelowNotes(rt, cloud)];
+}
+async function backedUpLines(rt, localPath) {
+  const backups = await backupPairs(rt);
+  if (!backups) return [`(Could not check whether ${localPath} is backed up periodically.)`];
+  const lines = [];
+  const bare = (p) => p.split(/([\\/])/).map((seg) => seg.trimEnd()).join("");
+  for (const b of backups.filter((b2) => localAtOrUnder(localPath, b2.local) || localAtOrUnder(bare(localPath), b2.local))) {
+    if (b.remote === null) continue;
+    lines.push(`${localPath} is backed up periodically to ${b.remote}: the next backup uploads what arrives there.`);
+    const notes = await remoteKind(rt, b.remote) === "missing" ? [`(Could not check whether ${b.remote} - as MEGAcmd lists it - is shared or has a public link.)`] : await destinationNotes(rt, b.remote, { backups: false });
+    for (const n of notes) if (!lines.includes(n)) lines.push(n);
+  }
+  return lines;
+}
+async function contentDigestMany(rt, paths) {
+  if (paths.length === 1) return contentDigest(rt, paths[0]);
+  const handles = [];
+  for (const chunk of chunkArgs(paths)) {
+    const r = await rt.run("find", [...chunk, "--print-only-handles"], { maxBuffer: 128 * 1024 * 1024 });
+    if (r.code !== 0) return (await Promise.all(paths.map((p) => contentDigest(rt, p)))).join(",");
+    handles.push(...r.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean));
+  }
+  return createHash3("sha256").update(handles.sort().join("\n")).digest("hex");
+}
+var writeChain = Promise.resolve();
+function withWriteLock(fn) {
+  const run = writeChain.then(fn, fn);
+  writeChain = run.then(
+    () => void 0,
+    () => void 0
+  );
+  return run;
+}
+function openingBracket(line) {
+  if (!line.endsWith(")")) return -1;
+  let depth = 0;
+  for (let i = line.length - 1; i >= 0; i--) {
+    if (line[i] === ")") depth++;
+    else if (line[i] === "(" && --depth === 0) return i;
+  }
+  return -1;
 }
 async function ensureRemoteFolder(rt, path) {
   if (path.startsWith("//")) return "error";
@@ -23193,7 +24663,10 @@ var CONTROL_ESCAPES = {
   "\x1B": "\\e"
 };
 function previewSafe(v) {
-  return v.replace(/[\x00-\x1f\x7f]/g, (c) => CONTROL_ESCAPES[c] ?? `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
+  return v.replace(/[\x00-\x1f\x7f-\x9f\u2028\u2029\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, (c) => {
+    const code = c.codePointAt(0);
+    return CONTROL_ESCAPES[c] ?? (code <= 255 ? `\\x${code.toString(16).padStart(2, "0")}` : code <= 65535 ? `\\u${code.toString(16).padStart(4, "0")}` : `\\u{${code.toString(16)}}`);
+  });
 }
 function checkConfirm(rt, action, normArgs, confirm, rawSummary) {
   const summary = Array.isArray(rawSummary) ? rawSummary.map(previewSafe).join("\n") : previewSafe(rawSummary);
@@ -23237,15 +24710,22 @@ function registerSetup(server, rt) {
       }
       rt.invalidateResolved();
       const resolved = await rt.getResolved();
-      if (resolved) {
-        const auth2 = await rt.ensureReady();
-        const state2 = auth2.loggedIn ? `You are logged in as ${auth2.email ?? "(unknown)"}.` : auth2.reason === "not_logged_in" ? "It is not logged in yet \u2014 use mega_whoami for the exact login command." : `Status: ${auth2.reason}.`;
+      const found = resolved ? await rt.ensureReady() : null;
+      if (found?.reason === "integrity_failed") {
+        return err(found.detail ?? "MEGAcmd failed its signature check, so it was not run.", { ok: false, ready: false, reason: "integrity_failed" });
+      }
+      if (resolved && found) {
+        const state2 = found.loggedIn ? `You are logged in as ${found.email ?? "(unknown)"}.` : found.reason === "not_logged_in" ? "It is not logged in yet \u2014 use mega_whoami for the exact login command." : `Status: ${found.reason}.`;
         return ok(`MEGAcmd is installed and available. ${state2}`.trim(), {
           ok: true,
           ready: true,
-          loggedIn: auth2.loggedIn,
-          email: auth2.email
+          loggedIn: found.loggedIn,
+          email: found.email
         });
+      }
+      if (process.platform === "linux") {
+        const r = await acquireMegacmd(rt.config);
+        return err(r.detail ?? "Install MEGAcmd with your package manager, then retry.", { ok: false, reason: r.reason });
       }
       if (!inFlight) {
         const { url, version: version2, sha256Allow } = rt.config.download;
@@ -23298,10 +24778,10 @@ function registerSetup(server, rt) {
 
 // src/tools/whoami.ts
 import { join as join7 } from "node:path";
-import { realpathSync as realpathSync3 } from "node:fs";
+import { realpathSync as realpathSync4 } from "node:fs";
 function realDir(dir) {
   try {
-    return realpathSync3.native(dir).replace(/^\\\\\?\\/, "");
+    return realpathSync4.native(dir).replace(/^\\\\\?\\/, "");
   } catch {
     return dir;
   }
@@ -23349,6 +24829,9 @@ function registerWhoami(server, rt) {
           loggedIn: true,
           email: state.email
         });
+      }
+      if (state.reason === "integrity_failed") {
+        return err(state.detail ?? "MEGAcmd failed its signature check, so it was not run.", { loggedIn: false, reason: "integrity_failed" });
       }
       if (state.reason === "no_megacmd") {
         return err(
@@ -23536,7 +25019,7 @@ function registerAccountDetails(server, rt) {
     "mega_sessions",
     {
       title: "MEGA: active sessions",
-      description: "List the active login sessions on this account (IP, country, device, timestamps). Read-only. Session IDs are not shown: they allow account actions, so they never enter the conversation. To close one specific session the user provides its ID; otherwise mega_killsession closes all other sessions.",
+      description: "List the active login sessions on this account (session ID, IP, country, device, timestamps). Read-only. Pass a session ID to mega_killsession to close that one session.",
       inputSchema: {},
       annotations: { title: "MEGA: active sessions", ...RO }
     },
@@ -23585,12 +25068,13 @@ function hideNodeSecrets(stdout) {
 }
 function hideUserSecrets(stdout) {
   let hidden = 0;
+  let dropping = false;
   const kept = stdout.split(/\r?\n/).filter((line) => {
     const m = line.match(/\(([^()]*)\)\s*=/);
-    if (!m) return true;
-    if (/^[A-Za-z]+$/.test(m[1])) return true;
-    hidden++;
-    return false;
+    if (!m) return !dropping;
+    dropping = !/^[A-Za-z]+$/.test(m[1]);
+    if (dropping) hidden++;
+    return !dropping;
   });
   return { text: kept.join("\n").trimEnd(), hidden };
 }
@@ -23845,8 +25329,8 @@ function registerReadOnly(server, rt) {
 }
 
 // src/tools/mutate.ts
-import { basename as basename4, dirname as dirname4 } from "node:path";
-import { statSync as statSync2, existsSync as existsSync3, mkdirSync as mkdirSync3 } from "node:fs";
+import { posix as posix2, basename as basename4, dirname as dirname5, join as joinLocal2, relative as relative3, sep as sep3 } from "node:path";
+import { statSync as statSync3, lstatSync as lstatSync3, existsSync as existsSync4, mkdirSync as mkdirSync3, openSync, readSync, closeSync, readdirSync as readdirSync4 } from "node:fs";
 var PUT_CHUNK = 200;
 function assertPublicLink(link) {
   if (!isPublicLink(link)) {
@@ -23856,25 +25340,163 @@ function assertPublicLink(link) {
 }
 function uploadName(name, lps, rp) {
   if (lps.length !== 1) throw new ValidationError("name works with a single item only.");
-  const n = assertNoFlag(name, "name");
-  if (n === "" || n === "." || n === ".." || /[\\/]/.test(n) || /#\d{10}$/.test(n)) {
+  const n = assertNoFlag(name, "name").normalize("NFC");
+  if (n === "" || n === "." || n === ".." || /[\\/]/.test(n) || /#\d{10}$/.test(n) || /^H:[A-Za-z0-9_-]{8}$/.test(n)) {
     throw new ValidationError('name must be a plain file or folder name, without "/".');
   }
+  if (decodeLocalName(n) !== n.normalize("NFC")) throw new ValidationError("name may not contain %-escapes such as %2e.");
   assertNotStoreCopy(`${rp.replace(/\/+$/, "")}/${n}`);
   return n;
+}
+async function versionTarget(rt, src, d) {
+  if (posix2.dirname(src).split("/").some((seg) => /#\d{10}$/.test(seg))) {
+    throw new ValidationError("src may name a file version only in its last part.");
+  }
+  const plain = versionPlainName(posix2.basename(src)) ?? void 0;
+  if (plain === void 0) return d;
+  if (/#\d{10}$/.test(plain)) throw new ValidationError("src names a version of a name that itself reads as a version.");
+  const kind = await remoteKind(rt, d);
+  if (kind === "unknown") throw new ValidationError(`Could not check what ${d} is; nothing was copied.`);
+  const target = kind === "folder" ? joinRemote(d, plain.normalize("NFC")) : d.replace(/(.)\/+$/, "$1");
+  if (await remoteKind(rt, target) === "folder") {
+    throw new ValidationError(`${target} is a folder: a file version is copied or moved onto a file name. Choose another dst.`);
+  }
+  if (target === joinRemote(posix2.dirname(src), plain.normalize("NFC"))) {
+    throw new ValidationError(`${target} is the file this version belongs to: copying onto it would delete it and all its versions for good. Copy the version to another name (or folder) instead.`);
+  }
+  return target;
+}
+async function assertOneDestination(rt, d) {
+  assertNoWildcard(d, "dst");
+  const same = await sameNamed(rt, d);
+  if (same.count > 1) {
+    throw new ValidationError(`${same.count} items are named ${d} (there, or in a same-named folder above it); MEGAcmd would write to the first one only. Rename or move one first.`);
+  }
+  if (same.count < 0) throw new ValidationError(`Could not check how many items are named ${d}; nothing was run.`);
+}
+function versionPlainName(name) {
+  const m = name.match(/^(.+)#\d{10}$/);
+  return m && Buffer.byteLength(name) > 12 ? m[1] : null;
+}
+function isLocalDir(p) {
+  try {
+    return statSync3(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function isSymlink(p) {
+  try {
+    return lstatSync3(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+function treeOf(p) {
+  return p.match(/^\/\/from\/[^/:]+/)?.[0] ?? "/";
+}
+async function crossTreeCollisions(rt, sources, d, dKind) {
+  const cross = sources.filter((s) => treeOf(s) !== treeOf(d));
+  if (cross.length === 0) return [];
+  if (dKind !== "folder") {
+    throw new ValidationError(`${cross[0]} and ${d} are in different trees (your drive and a share to you): such a move cannot rename or replace. Move it into an existing folder, then rename it there.`);
+  }
+  const listed = await childNames(rt, d);
+  if (!listed) return [`(Could not check what is in ${d}.)`];
+  const here = new Set([...listed].map((n) => n.normalize("NFC")));
+  const lines = [];
+  for (const s of cross) {
+    const n = posix2.basename(s).normalize("NFC");
+    if (here.has(n) && (await remoteKind(rt, joinRemote(d, n)) !== "folder" || await fileNamedIn(rt, d, n))) {
+      lines.push(`${joinRemote(d, n)} already exists: the moved item becomes its new version (the current one is kept as an older version only while file versioning is on); if the two have the same content, nothing is copied and ${s} is deleted for good together with all its older versions.`);
+    }
+  }
+  return lines;
+}
+async function fileNamedIn(rt, d, n) {
+  const r = await rt.run("find", [d, `--pattern=${n}`, "--type=f"]);
+  if (r.code !== 0) return r.code !== ExitCode.NOTFOUND;
+  return r.stdout.split(/\r?\n/).some((l) => {
+    const shown = l.trim() === "" ? "" : l;
+    const p = shown.startsWith("/") || shown === "" ? shown : `//from/${shown}`;
+    return p !== "" && posix2.dirname(p) === d.replace(/(.)\/+$/, "$1") && posix2.basename(p).normalize("NFC") === n;
+  });
+}
+function assertImageFile(path) {
+  const head = Buffer.alloc(12);
+  let n = 0;
+  try {
+    if (!statSync3(path).isFile()) throw new ValidationError(`${path} is not a regular file, so it is not used as a thumbnail.`);
+  } catch (e) {
+    if (e instanceof ValidationError) throw e;
+    throw new ValidationError(`${path} cannot be read, so it is not used as a thumbnail.`);
+  }
+  try {
+    const fd = openSync(path, "r");
+    try {
+      n = readSync(fd, head, 0, 12, 0);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    throw new ValidationError(`${path} cannot be read, so it is not used as a thumbnail.`);
+  }
+  const b = head.subarray(0, n);
+  const isImage = b[0] === 255 && b[1] === 216 && b[2] === 255 || b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) || b.subarray(0, 4).toString("latin1") === "GIF8" || b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP";
+  if (!isImage) throw new ValidationError(`${path} is not a JPEG, PNG, GIF or WebP image, so it is not used as a thumbnail.`);
+}
+function assertNoRepeats(list) {
+  const seen = /* @__PURE__ */ new Set();
+  for (const p of list) {
+    if (seen.has(p)) throw new ValidationError(`${p} is listed more than once in srcs; list each item once.`);
+    seen.add(p);
+  }
+}
+async function putChunk(rt, args) {
+  try {
+    return (await rt.run("put", args)).code;
+  } catch (e) {
+    if (e instanceof ValidationError) return null;
+    throw e;
+  }
+}
+async function putChunked(rt, putOpts, lps, dest, background) {
+  const chunks = chunkArgs(lps, 2e3, [...putOpts, dest]);
+  if (chunks.length === 1) {
+    return runToResult(rt, "put", [...putOpts, ...lps, dest], () => ok(`Uploaded ${lps.length} item(s) -> ${dest}.`, { localPaths: lps, remotePath: dest, background }));
+  }
+  let failed = 0;
+  for (const chunk of chunks) if (await putChunk(rt, [...putOpts, ...chunk, dest]) !== 0) failed += chunk.length;
+  return (failed ? err : ok)(`Uploaded ${lps.length - failed}/${lps.length} item(s) -> ${dest}${failed ? `; ${failed} in batches that reported an error (some of those may have been uploaded)` : ""}.`, { localPaths: lps, remotePath: dest, background, failed });
 }
 function registerMutate(server, rt) {
   server.registerTool(
     "mega_mkdir",
     {
       title: "MEGA: make folder",
-      description: "Create a MEGA cloud folder (parents created as needed).",
-      inputSchema: { remotePath: external_exports.string().describe("Absolute MEGA path to create.") },
+      description: "Create a MEGA cloud folder (parents created as needed). Asks for confirmation only when the new folder's place is shared, publicly linked or invited to, someone else's shared folder, in a two-way synced folder (the preview names where it is written on this computer), or cannot be checked; otherwise it runs at once.",
+      inputSchema: {
+        remotePath: external_exports.string().describe("Absolute MEGA path to create."),
+        confirm: external_exports.string().optional().describe("Confirmation token, when the first call asked for one.")
+      },
       annotations: { title: "MEGA: make folder", destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
-    async ({ remotePath }) => guardRun(async () => {
-      const rp = assertRemotePath(remotePath);
+    async ({ remotePath, confirm }) => guardRun(async () => {
+      const rp = assertNoHandleName(assertRemotePath(remotePath));
+      if (/^\/\/(?:in|from)(?:\/|$)/.test(rp) || rp === "//bin") {
+        throw new ValidationError("mega_mkdir cannot create folders under //in or //from (MEGAcmd would create them in the Cloud Drive instead).");
+      }
       if (storeCopyIn(rp) === "name") assertNotStoreCopy(rp);
+      await assertSyncedLanding(rt, rp, "self");
+      const made = [];
+      for (let p = rp; p !== "/" && p !== "//bin" && p !== posix2.dirname(p); p = posix2.dirname(p)) made.push(p);
+      const notes = [...await destinationNotes(rt, rp), ...await backupRotationLinesAt(rt, made)];
+      if (notes.length > 0) {
+        const gate = checkConfirm(rt, "mega_mkdir", { remotePath: rp, notes }, confirm, [`This will create the folder ${rp}.`, ...notes]);
+        if (gate) return gate;
+      } else {
+        noteUnconfirmedWrite([{ path: rp, source: null }]);
+      }
       return runToResult(rt, "mkdir", ["-p", rp], () => ok(`Created folder ${rp}.`, { remotePath: rp }));
     })
   );
@@ -23882,25 +25504,121 @@ function registerMutate(server, rt) {
     "mega_cp",
     {
       title: "MEGA: copy",
-      description: "Copy a MEGA cloud node to another cloud path. A copy onto an existing file replaces it, and a copy into a shared or publicly linked folder becomes visible to its viewers; the preview says which. Requires confirmation.",
+      description: `Copy MEGA cloud node(s) to another cloud path. Bulk-capable: pass "srcs" (a list) or "src"+usePcre (a pattern) to copy many nodes in one call - do NOT loop this tool per file; several items need an existing destination folder. Asks for confirmation only when the destination is shared, publicly linked or invited to, someone else's shared folder, in a two-way synced folder (the preview names where it is written on this computer), or cannot be checked, or when the copy would replace a file or become the new version of a same-named file; the preview says which. Otherwise the copy runs at once.`,
       inputSchema: {
-        src: external_exports.string().describe("Source absolute MEGA path."),
-        dst: external_exports.string().describe("Destination absolute MEGA path."),
-        confirm: external_exports.string().optional().describe("Confirmation token from the first call.")
+        src: external_exports.string().optional().describe('A single source path; OR a PCRE pattern (with usePcre). Native "*"/"?" wildcards are not accepted - use usePcre.'),
+        srcs: external_exports.array(external_exports.string()).optional().describe("An explicit list of source paths to copy together."),
+        dst: external_exports.string().describe("Destination: an existing folder to copy into, or (single src) the new name."),
+        usePcre: external_exports.boolean().default(false).describe('Interpret "src" as a PCRE pattern and copy EVERY match. It starts with "/" and each part of the path is matched on its own, e.g. /Docs/.*\\.pdf$.'),
+        confirm: external_exports.string().optional().describe("Confirmation token, when the first call asked for one.")
       },
       // Destructive: a copy onto an existing file REPLACES it (MEGAcmd copies, then
-      // removes the old target).
+      // removes the old target) - that case always asks first.
       annotations: { title: "MEGA: copy", destructiveHint: true, openWorldHint: true }
     },
-    async ({ src, dst, confirm }) => guardRun(async () => {
-      const s = assertNotStoreCopy(assertNoWildcard(assertRemotePath(src, "src"), "src"), "src");
-      const d = assertRemotePath(dst, "dst");
-      if (!confirm) await assertNoStoreCopyBelow(rt, s);
-      const notes = confirm ? [] : await destinationNotes(rt, d, { overwrite: true });
-      const gate = checkConfirm(rt, "mega_cp", { src: s, dst: d }, confirm, [`This will copy ${s} to ${d}.`, ...notes]);
-      if (gate) return gate;
-      await assertNoStoreCopyBelow(rt, s);
-      return runToResult(rt, "cp", [s, d], () => ok(`Copied ${s} -> ${d}.`, { src: s, dst: d }));
+    async ({ src, srcs, dst, usePcre, confirm }) => guardRun(async () => {
+      let d = assertRemoteDest(dst, "dst");
+      let list = null;
+      let single = null;
+      let pattern = null;
+      let matches = null;
+      const check2 = (p) => assertNotStoreCopy(p, "A matched node");
+      if (srcs && srcs.length > 0) {
+        list = srcs.map((s, i) => assertNotStoreCopy(assertNoVersionName(assertNoWildcard(assertRemotePath(s, `srcs[${i}]`), `srcs[${i}]`), `srcs[${i}]`), `srcs[${i}]`));
+        assertNoRepeats(list);
+        await assertNoStoreCopyBelowMany(rt, list);
+      } else if (usePcre) {
+        if (!src) throw new ValidationError('usePcre requires "src" (the PCRE pattern).');
+        pattern = assertNoFlag(src, "src");
+        const prev = await pcreMatchPreview(rt, pattern);
+        if (!prev.ok) return err(prev.error);
+        for (const p of prev.paths) check2(p);
+        matches = { handles: prev.handles, topPaths: prev.topPaths, paths: prev.paths };
+      } else {
+        if (!src) throw new ValidationError('Provide "src" (a path or pattern) or "srcs" (a list).');
+        single = assertNotStoreCopy(assertNoWildcard(assertRemotePath(src, "src"), "src"), "src");
+        await assertNoStoreCopyBelow(rt, single);
+        d = await versionTarget(rt, single, d);
+      }
+      const sources = list ?? (matches ? matches.topPaths : [single]);
+      await assertOneDestination(rt, d);
+      const landName = (p) => {
+        const b = posix2.basename(p);
+        return posix2.dirname(p) === "//from" && b.includes(":") ? b.slice(b.indexOf(":") + 1) : b;
+      };
+      const names = sources.map((p) => landName(p).normalize("NFC"));
+      const kind = await remoteKind(rt, d);
+      if (sources.length > 1 && kind !== "folder") {
+        throw new ValidationError(`Copying several items needs an existing destination folder; ${d} is ${kind === "file" ? "a file" : kind === "missing" ? "missing" : "not known to be a folder"}.`);
+      }
+      const replaces = kind === "file";
+      const listed = kind === "folder" ? await childNames(rt, d) : /* @__PURE__ */ new Set();
+      const existing = listed && new Set([...listed].map((n) => n.normalize("NFC")));
+      const collisions = [];
+      if (existing) {
+        for (const n of names) if (existing.has(n) && (await remoteKind(rt, joinRemote(d, n)) !== "folder" || await fileNamedIn(rt, d, n))) collisions.push(n);
+      }
+      await assertSyncedLanding(rt, d, kind === "folder" ? names : "self", matches ? { listed: matches.paths } : { cloud: sources });
+      const only = sources.length === 1 ? sources[0] : null;
+      const interim = kind !== "folder" && only !== null && posix2.dirname(only) !== posix2.dirname(d) && await remoteKind(rt, matches ? matches.handles[0] ?? only : only) !== "file";
+      if (interim) await assertSyncedLanding(rt, posix2.dirname(d), names);
+      const notes = [
+        ...await destinationNotes(rt, d),
+        // A name a periodic backup's rotation counts as one of its copies (and may delete).
+        ...kind === "folder" ? await backupRotationLines(rt, d, names) : await backupRotationLinesAt(rt, [d]),
+        // Copying the recovery key file (or a copy of it) asks first, wherever it goes.
+        ...matches ? recoveryKeyLines(matches.paths) : await recoveryKeyLinesBelow(rt, sources),
+        ...kind === "unknown" ? [`(Could not check what is at ${d}: a file there would be REPLACED, with all its versions deleted for good.)`] : !existing ? [`(Could not check what is in ${d}.)`] : [],
+        ...replaces ? [`${d} is an existing FILE: it will be REPLACED, and it and all its older versions are deleted for good (not kept as a version, not in the Rubbish Bin).`] : [],
+        ...collisions.map((n) => `${joinRemote(d, n)} already exists: the copy becomes its new version (the current one is kept as an older version only while file versioning is on).`)
+      ];
+      const risky = notes.length > 0;
+      const destOf = (p) => kind === "folder" ? joinRemote(d, landName(p)) : d;
+      let handles = null;
+      if (risky) {
+        if (pattern !== null) {
+          const g = await pcreGate(
+            rt,
+            "mega_cp",
+            { src: pattern, usePcre: true, dst: d, notes },
+            confirm,
+            pattern,
+            (n, t) => [`This will copy ${n} node(s) matching the pattern to ${d}:`, t, ...notes].join("\n"),
+            check2,
+            // By handle under the checked names; unconfirmed writes in matched folders are named.
+            { recheckNames: true, extraLines: (tops) => unconfirmedWriteLines(tops), bindContents: true }
+          );
+          if (!g.proceed) return g.result;
+          handles = g.handles;
+        } else {
+          const same = list ? await sameNamedMany(rt, list) : [await sameNamed(rt, single)];
+          const placed = unconfirmedWriteLines(sources);
+          const summary = list ? [`This will copy ${list.length} item(s) to ${d}:`, ...notes, ...listedLines(list), ...same.flatMap((x) => x.lines), ...placed] : [`This will copy ${single} to ${d}.`, ...same.flatMap((x) => x.lines), ...notes, ...placed];
+          const contents = await contentDigestMany(rt, sources);
+          const gate = checkConfirm(rt, "mega_cp", { srcs: list, src: single, dst: d, items: same.map((x) => x.count), notes, placed, contents }, confirm, summary);
+          if (gate) return gate;
+        }
+      } else {
+        handles = matches ? matches.handles : null;
+        noteUnconfirmedWrite(sources.map((p) => ({ path: destOf(p), source: p })));
+      }
+      for (const p of sources) {
+        carryUnconfirmedWrites(p, destOf(p), false);
+        noteKeyCopy(p, destOf(p));
+      }
+      if (interim && only !== null) carryUnconfirmedWrites(only, joinRemote(posix2.dirname(d), names[0]), false);
+      const failNote = (failed) => failed ? `; ${failed} in batches that reported an error (some of those may have been copied)` : "";
+      if (pattern !== null) {
+        const hs = handles ?? [];
+        if (hs.length === 0) return ok("No matching nodes to copy.", { dst: d, copied: 0 });
+        const { done, failed } = await runBulk(rt, "cp", hs, [d]);
+        return ok(`Copied ${done}/${hs.length} node(s) to ${d}${failNote(failed)}.`, { dst: d, copied: done, failed });
+      }
+      if (list) {
+        const { done, failed } = await runBulk(rt, "cp", list, [d]);
+        return ok(`Copied ${done}/${list.length} item(s) to ${d}${failNote(failed)}.`, { dst: d, copied: done, failed });
+      }
+      return runToResult(rt, "cp", [single, d], () => ok(`Copied ${single} -> ${d}.`, { src: single, dst: d }));
     })
   );
   server.registerTool(
@@ -23912,51 +25630,137 @@ function registerMutate(server, rt) {
         src: external_exports.string().optional().describe('A single source path; OR a PCRE pattern (with usePcre). Native "*"/"?" wildcards are not accepted - use usePcre, which lists the matches before you confirm.'),
         srcs: external_exports.array(external_exports.string()).optional().describe("An explicit list of source paths to move together in one confirmed operation. Use for arbitrary selections that are not a single pattern."),
         dst: external_exports.string().describe("Destination: an existing folder to move into, or (single src) the new name."),
-        usePcre: external_exports.boolean().default(false).describe('Interpret "src" as a PCRE pattern and move EVERY match.'),
+        usePcre: external_exports.boolean().default(false).describe('Interpret "src" as a PCRE pattern and move EVERY match. It starts with "/" and each part of the path is matched on its own, e.g. /Docs/.*\\.pdf$.'),
         confirm: external_exports.string().optional().describe("Confirmation token from the first call.")
       },
       annotations: { title: "MEGA: move/rename", destructiveHint: true, openWorldHint: true }
     },
     async ({ src, dst, srcs, usePcre, confirm }) => guardRun(async () => {
-      const d = assertRemotePath(dst, "dst");
+      let d = assertRemoteDest(dst, "dst");
       if (srcs && srcs.length > 0) {
-        assertPlanSize(srcs.length, "items");
-        const list = srcs.map((s2, i) => assertNotStoreCopy(assertNoWildcard(assertRemotePath(s2, `srcs[${i}]`), `srcs[${i}]`), `srcs[${i}]`));
-        if (!confirm) for (const p of list) await assertNoStoreCopyBelow(rt, p);
-        const notes2 = confirm ? [] : await destinationNotes(rt, d);
-        const summary = [`This will move ${list.length} item(s) to ${d}:`, ...list.map((p) => `  ${p}`), ...notes2];
-        const gate2 = checkConfirm(rt, "mega_mv", { srcs: list, dst: d }, confirm, summary);
+        const list = srcs.map((s2, i) => assertNotStoreCopy(assertNoVersionName(assertNoWildcard(assertRemotePath(s2, `srcs[${i}]`), `srcs[${i}]`), `srcs[${i}]`), `srcs[${i}]`));
+        assertNoRepeats(list);
+        if (!confirm) await assertNoStoreCopyBelowMany(rt, list);
+        await assertOneDestination(rt, d);
+        const dKind = await remoteKind(rt, d);
+        if (list.length > 1 && dKind !== "folder") throw new ValidationError(`Moving several items needs an existing destination folder; ${d} is ${dKind === "file" ? "a file" : dKind === "missing" ? "missing" : "not known to be a folder"}.`);
+        await assertSyncedLanding(rt, d, dKind === "folder" ? list.map((p) => posix2.basename(p)) : "self", { cloud: list });
+        if (dKind !== "folder" && list.some((p) => posix2.dirname(p) !== posix2.dirname(d))) await assertSyncedLanding(rt, posix2.dirname(d), list.map((p) => posix2.basename(p)));
+        const notes2 = await destinationNotes(rt, d, { overwrite: list.length === 1 ? "delete" : void 0 });
+        const same2 = await sameNamedMany(rt, list);
+        const local2 = [
+          ...await syncedSourceNotes(rt, list, "moved"),
+          ...await syncFollowLines(rt, list, d),
+          ...await crossTreeCollisions(rt, list, d, dKind),
+          ...await movedIntoSyncedLines(rt, list, d, dKind === "folder"),
+          ...await recoveryKeyLinesBelow(rt, list),
+          ...dKind === "folder" ? await backupRotationLines(rt, d, list.map((p) => posix2.basename(p))) : await backupRotationLines(rt, posix2.dirname(d), [posix2.basename(d)]),
+          ...dKind === "unknown" ? [`(Could not check what is at ${d}: a file there would be REPLACED, with all its versions deleted for good.)`] : []
+        ];
+        const placed2 = unconfirmedWriteLines(list);
+        const summary = [`This will move ${list.length} item(s) to ${d}:`, ...notes2, ...listedLines(list), ...same2.flatMap((x) => x.lines), ...local2, ...placed2];
+        const replaces2 = list.length === 1 && await remoteKind(rt, d) === "file";
+        const contents2 = await contentDigestMany(rt, list);
+        const gate2 = checkConfirm(rt, "mega_mv", { srcs: list, dst: d, items: same2.map((x) => x.count), replaces: replaces2, local: local2, placed: placed2, notes: notes2, contents: contents2 }, confirm, summary);
         if (gate2) return gate2;
-        for (const p of list) await assertNoStoreCopyBelow(rt, p);
+        await assertNoStoreCopyBelowMany(rt, list);
         const { done, failed } = await runBulk(rt, "mv", list, [d]);
+        for (const p of list) {
+          const to = dKind === "folder" ? joinRemote(d, posix2.basename(p)) : d;
+          carryUnconfirmedWrites(p, to, failed === 0);
+          noteKeyCopy(p, to);
+          if (failed && dKind !== "folder" && posix2.dirname(p) !== posix2.dirname(d)) carryUnconfirmedWrites(p, joinRemote(posix2.dirname(d), posix2.basename(p)), false);
+        }
         return ok(`Moved ${done}/${list.length} item(s) to ${d}${failed ? `; ${failed} failed` : ""}.`, { dst: d, moved: done, failed });
       }
       if (usePcre) {
         if (!src) throw new ValidationError('usePcre requires "src" (the PCRE pattern).');
         const pattern = assertNoFlag(src, "src");
-        const pcreNotes = confirm ? [] : await destinationNotes(rt, d);
+        await assertOneDestination(rt, d);
+        const pcreNotes = await destinationNotes(rt, d);
+        const dKind = await remoteKind(rt, d);
+        const dstIsFile = !confirm && dKind === "file";
+        const listedAll = [];
         const g = await pcreGate(
           rt,
           "mega_mv",
-          { src: pattern, usePcre: true, dst: d },
+          { src: pattern, usePcre: true, dst: d, notes: pcreNotes, dKind },
           confirm,
           pattern,
-          (n, t) => [`This will move ${n} node(s) matching the pattern to ${d}:`, t, ...pcreNotes].join("\n"),
-          (p) => assertNotStoreCopy(p, "A matched node")
+          (n, t) => {
+            if (n > 1 && dKind !== "folder") throw new ValidationError(`Moving several items needs an existing destination folder; ${d} is ${dKind === "file" ? "a file" : dKind === "missing" ? "missing" : "not known to be a folder"}.`);
+            return [`This will move ${n} node(s) matching the pattern to ${d}:`, t, ...pcreNotes, ...n === 1 && dstIsFile ? [`${d} is an existing FILE: it will be REPLACED, and it and all its older versions are deleted for good (not kept as a version, not in the Rubbish Bin).`] : []].join("\n");
+          },
+          (p, topmost2) => {
+            assertNotStoreCopy(p, "A matched node");
+            listedAll.push(p);
+            if (topmost2 && isIgnoreFileName(posix2.basename(p))) {
+              throw new ValidationError(`${p} is a .megaignore file (the rules of a sync); it is not moved by pattern.`);
+            }
+          },
+          {
+            // Moved by handle under the names checked here; what they hold is bound.
+            recheckNames: true,
+            bindContents: true,
+            extraLines: async (tops) => [
+              ...await syncedSourceNotes(rt, tops, "moved"),
+              ...await syncFollowLines(rt, tops, d),
+              ...await crossTreeCollisions(rt, tops, d, dKind),
+              ...await movedIntoSyncedLines(rt, tops, d, dKind === "folder"),
+              ...recoveryKeyLines(listedAll),
+              ...dKind === "folder" ? await backupRotationLines(rt, d, tops.map((p) => posix2.basename(p))) : await backupRotationLines(rt, posix2.dirname(d), [posix2.basename(d)]),
+              ...dKind === "unknown" ? [`(Could not check what is at ${d}: a file there would be REPLACED, with all its versions deleted for good.)`] : [],
+              ...unconfirmedWriteLines(tops)
+            ]
+          }
         );
         if (!g.proceed) return g.result;
+        if (g.handles.length > 1 && dKind !== "folder") throw new ValidationError(`Moving several items needs an existing destination folder; ${d} is not one.`);
+        await assertSyncedLanding(rt, d, dKind === "folder" ? g.paths.map((p) => posix2.basename(p)) : "self", { listed: listedAll });
+        if (dKind !== "folder" && g.paths.some((p) => posix2.dirname(p) !== posix2.dirname(d))) await assertSyncedLanding(rt, posix2.dirname(d), g.paths.map((p) => posix2.basename(p)));
         if (g.handles.length === 0) return ok("No matching nodes to move.", { dst: d, moved: 0 });
         const { done, failed } = await runBulk(rt, "mv", g.handles, [d]);
+        for (const p of g.paths) {
+          const to = dKind === "folder" ? joinRemote(d, posix2.basename(p)) : d;
+          carryUnconfirmedWrites(p, to, failed === 0);
+          noteKeyCopy(p, to);
+          if (failed && dKind !== "folder" && posix2.dirname(p) !== posix2.dirname(d)) carryUnconfirmedWrites(p, joinRemote(posix2.dirname(d), posix2.basename(p)), false);
+        }
         return ok(`Moved ${done}/${g.handles.length} node(s) to ${d}${failed ? `; ${failed} failed` : ""}.`, { dst: d, moved: done, failed });
       }
       if (!src) throw new ValidationError('Provide "src" (a path or pattern) or "srcs" (a list).');
       const s = assertNotStoreCopy(assertNoWildcard(assertRemotePath(src, "src"), "src"), "src");
+      if (s.split("/").some((seg) => /#\d{10}$/.test(seg))) {
+        throw new ValidationError("An older file version cannot be moved; copy it with mega_cp instead (it lands under the file's name).");
+      }
       if (!confirm) await assertNoStoreCopyBelow(rt, s);
-      const notes = confirm ? [] : await destinationNotes(rt, d, { overwrite: true });
-      const gate = checkConfirm(rt, "mega_mv", { src: s, dst: d }, confirm, [`This will move/rename ${s} to ${d}.`, ...notes]);
+      await assertOneDestination(rt, d);
+      const notes = await destinationNotes(rt, d, { overwrite: "delete" });
+      const same = await sameNamed(rt, s);
+      const dKindSingle = await remoteKind(rt, d);
+      const replaces = dKindSingle === "file";
+      await assertSyncedLanding(rt, d, dKindSingle === "folder" ? [posix2.basename(s)] : "self", { cloud: [s] });
+      if (dKindSingle !== "folder" && posix2.dirname(s) !== posix2.dirname(d)) await assertSyncedLanding(rt, posix2.dirname(d), [posix2.basename(s)]);
+      const local = [
+        ...await syncedSourceNotes(rt, [s], "moved"),
+        ...await syncFollowLines(rt, [s], d),
+        ...await crossTreeCollisions(rt, [s], d, dKindSingle),
+        ...await movedIntoSyncedLines(rt, [s], d, dKindSingle === "folder"),
+        ...await recoveryKeyLinesBelow(rt, [s]),
+        ...dKindSingle === "folder" ? await backupRotationLines(rt, d, [posix2.basename(s)]) : await backupRotationLines(rt, posix2.dirname(d), [posix2.basename(d)]),
+        ...dKindSingle === "unknown" ? [`(Could not check what is at ${d}: a file there would be REPLACED, with all its versions deleted for good.)`] : []
+      ];
+      const placed = unconfirmedWriteLines(s);
+      const contents = await contentDigest(rt, s);
+      const gate = checkConfirm(rt, "mega_mv", { src: s, dst: d, items: same.count, replaces, local, placed, notes, into: dKindSingle === "folder", contents }, confirm, [`This will move/rename ${s} to ${d}.`, ...same.lines, ...notes, ...local, ...placed]);
       if (gate) return gate;
       await assertNoStoreCopyBelow(rt, s);
-      return runToResult(rt, "mv", [s, d], () => ok(`Moved ${s} -> ${d}.`, { src: s, dst: d }));
+      const moved = await rt.run("mv", [s, d]);
+      carryUnconfirmedWrites(s, dKindSingle === "folder" ? joinRemote(d, posix2.basename(s)) : d, moved.code === 0);
+      noteKeyCopy(s, dKindSingle === "folder" ? joinRemote(d, posix2.basename(s)) : d);
+      if (moved.code !== 0 && dKindSingle !== "folder" && posix2.dirname(s) !== posix2.dirname(d)) carryUnconfirmedWrites(s, joinRemote(posix2.dirname(d), posix2.basename(s)), false);
+      if (moved.code !== 0) return err(classifyExit(moved), { ok: false, code: moved.code });
+      return ok(`Moved ${s} -> ${d}.`, { src: s, dst: d });
     })
   );
   server.registerTool(
@@ -23977,18 +25781,34 @@ function registerMutate(server, rt) {
     async ({ localPath, localPaths, remotePath, name, background, confirm }) => guardRun(async () => {
       const raw = [...localPaths ?? [], ...localPath ? [localPath] : []];
       if (raw.length === 0) throw new ValidationError("Provide localPath or localPaths.");
-      assertPlanSize(raw.length, "items");
       const lps = raw.map((p) => assertNoLocalGlob(assertLocalPath(p)));
-      const rp = assertNotStoreCopy(assertRemotePath(remotePath));
+      const rp = assertNotStoreCopy(assertNoWildcard(assertRemoteDest(remotePath), "remotePath"));
       const as = name === void 0 ? void 0 : uploadName(name, lps, rp);
-      const cloudPath = (lp) => `${rp.replace(/\/+$/, "")}/${as ?? basename4(lp)}`;
+      if (rp.startsWith("//") && await remoteKind(rt, rp) !== "folder") {
+        throw new ValidationError(`${rp} is not an existing folder; under //from, //in or //bin, upload into an existing folder only.`);
+      }
+      const cloudName = (lp) => {
+        const n = cloudNameOf(basename4(lp));
+        if (n === "." || n === ".." || n.includes("/")) throw new ValidationError(`${lp} would be uploaded under the name "${n}"; rename it first.`);
+        return n;
+      };
+      const cloudPath = (lp) => `${rp.replace(/\/+$/, "")}/${as ?? cloudName(lp)}`;
+      const landNames = (lp) => {
+        const n = as ?? cloudName(lp);
+        if (n !== "") return [n];
+        try {
+          return readdirSync4(lp).map((e) => cloudNameOf(e));
+        } catch {
+          throw new ValidationError(`Could not list ${lp} to check where its contents land.`);
+        }
+      };
       let replaces = false;
       if (as !== void 0) {
         const target2 = cloudPath(lps[0]);
         const kind = await remoteKind(rt, target2);
         let isDir = false;
         try {
-          isDir = statSync2(lps[0]).isDirectory();
+          isDir = statSync3(lps[0]).isDirectory();
         } catch {
         }
         if (kind === "unknown") return err(`Could not check what is at ${target2}.`, { remotePath: target2 });
@@ -23998,25 +25818,84 @@ function registerMutate(server, rt) {
         replaces = kind === "file";
       }
       const plan = planUpload(lps, rp, await rt.getBinDir(), as);
-      const notes = confirm ? [] : await destinationNotes(rt, as === void 0 ? rp : cloudPath(lps[0]), { overwrite: true });
+      await assertSyncedLanding(rt, rp, lps.map((p) => as ?? cloudName(p)), { local: lps });
+      if (isIgnoreFileName(posix2.basename(rp))) await assertSyncedLanding(rt, posix2.dirname(rp), [posix2.basename(rp)]);
+      const notes = await destinationNotes(rt, as === void 0 ? rp : cloudPath(lps[0]), { overwrite: "version" });
+      const landing = [];
+      if (as === void 0) {
+        const near = await syncRootsBelowCloud(rt, rp);
+        if (near === null) throw new ValidationError(`Could not read MEGAcmd's list of syncs, so whether uploading into ${rp} reaches a synced folder is unknown.`);
+        for (const lp of lps.filter((p) => isLocalDir(p) && near.length > 0)) {
+          const t = joinRemote(rp, cloudName(lp));
+          const roots = await syncRootsBelowCloud(rt, t);
+          if (roots === null) throw new ValidationError(`Could not read MEGAcmd's list of syncs, so whether uploading into ${t} reaches a synced folder is unknown.`);
+          if (roots.length > 0) throw new ValidationError(`${t} holds the cloud side of a two-way sync (${roots[0]}): the upload would be merged into it and written to this computer. Upload into that synced folder directly, or elsewhere.`);
+          let inside;
+          try {
+            inside = readdirSync4(lp).map((e) => cloudNameOf(e));
+          } catch {
+            throw new ValidationError(`Could not list ${lp} to check where its contents land.`);
+          }
+          await assertSyncedLanding(rt, t, inside, { local: [lp] });
+        }
+        const here = await childNames(rt, rp);
+        if (!here && await remoteKind(rt, rp) !== "missing") landing.push(`(Could not check what is already in ${rp}.)`);
+        for (const n of lps.flatMap(landNames)) {
+          if (!here?.has(n)) continue;
+          const t = joinRemote(rp, n);
+          const kind = /[\\*?]/.test(n) ? "unknown" : await remoteKind(rt, t);
+          const isFolder = kind !== "file";
+          landing.push(kind === "folder" ? `${t} already exists: the upload is merged INTO that folder.` : kind === "file" ? `${t} already exists: the upload becomes its new version (the current one is kept as an older version only while file versioning is on).` : `${t} already exists (could not check whether it is a file or a folder).`);
+          const deep = isFolder ? [...await sharedBelowNotes(rt, t), ...await backupFoldersWithinLines(rt, t, "The upload is merged into")] : [];
+          for (const x of [...await destinationNotes(rt, t), ...deep]) if (!landing.includes(x)) landing.push(x);
+        }
+      }
+      const downloaded = downloadedIntoLines(lps);
+      const keyNamed = lps.filter((lp) => isRecoveryKeyName(basename4(lp)));
+      const made = [];
+      for (let p = rp.replace(/(.)\/+$/, "$1"); !/^(?:\/|\/\/(?:bin|in|from))$/.test(p) && p !== posix2.dirname(p); p = posix2.dirname(p)) made.push(p);
+      const rebuilt = plan.steps.filter((st) => st.dest !== rp).flatMap((st) => st.sources.map((src) => joinRemote(st.dest, cloudNameOf(basename4(src)))));
+      const rotation = await backupRotationLinesAt(rt, [...lps.flatMap(landNames).map((n) => joinRemote(rp, n)), ...made, ...rebuilt]);
+      const keyLines = keyNamed.length > 0 ? ["Named like MEGA's recovery key file, which holds the account's master key:", ...listedLines(keyNamed)] : [];
       const summary = [
         ...notes,
+        ...landing.filter((x) => !notes.includes(x)),
+        ...downloaded,
+        ...keyLines,
+        ...rotation,
         `This will upload ${lps.length} item(s) into the folder ${rp} (created if missing)${background ? ", in the background" : ""}:`,
-        ...lps.map((p) => `  ${p}  ->  ${cloudPath(p)}`),
+        ...listedLines(lps, (p) => `  ${p}  ->  ${cloudPath(p)}`),
         ...plan.excluded.length > 0 ? [
           "",
           "Left out: the MEGAcmd session store, which holds this account's MASTER KEY:",
           ...plan.excluded.map((p) => `  ${p}`)
-        ] : []
+        ] : [],
+        ...plan.unchecked.length > 0 ? ["", `(Could not search completely - too many subfolders, or folders that cannot be read - for other copies of a MEGAcmd session store (.megaCmd): ${plan.unchecked.join(", ")}.)`] : [],
+        ...plan.links.length > 0 ? ["", "Not uploaded: symbolic links inside the folders rebuilt around it (a whole-folder upload skips them too):", ...listedLines(plan.links, (p) => `  ${p}`)] : []
       ];
-      const gate = checkConfirm(rt, "mega_put", { localPaths: lps, remotePath: rp, name: as ?? null, replaces, background }, confirm, summary);
+      const gate = checkConfirm(rt, "mega_put", { localPaths: lps, remotePath: rp, name: as ?? null, replaces, background, landing, notes, excluded: plan.excluded, unchecked: plan.unchecked, links: plan.links, steps: plan.steps.map((st) => st.dest), downloaded, keyNamed, rotation }, confirm, summary);
       if (gate) return gate;
+      for (const lp of keyNamed) noteKeyCopy(`/${basename4(lp)}`, cloudPath(lp), lp);
+      noteSessionChange(as === void 0 ? rp : cloudPath(lps[0]), `an upload of ${lps.length} item(s) from this computer (it may still be running)`);
+      const expectIgnores = [];
+      const uncheckedUploads = [];
+      for (const lp of lps) {
+        const t = cloudPath(lp);
+        if (!isLocalDir(lp)) {
+          if (isIgnoreFileName(posix2.basename(t))) expectIgnores.push(t);
+          continue;
+        }
+        const found = ignoreFilesIn([lp]);
+        for (const f of found.found) expectIgnores.push(joinRemote(t, relative3(lp, f).split(sep3).map(cloudNameOf).join("/")));
+        if (!found.complete) uncheckedUploads.push(t);
+      }
+      noteUploadIgnores(expectIgnores, uncheckedUploads);
       const putOpts = ["-c", ...background ? ["-q"] : []];
       const untouched = plan.excluded.length === 0 && plan.steps.length === 1 && plan.steps[0].dest === rp;
       const dest = as === void 0 ? rp : cloudPath(lps[0]);
       if (rp.startsWith("//")) {
         if (!untouched) return err(`Cannot rebuild folders under ${rp}; upload into a regular folder, or upload a subfolder that does not contain the session store.`, { remotePath: rp });
-        return runToResult(rt, "put", [...putOpts, ...lps, dest], () => ok(`Uploaded ${lps.length} item(s) -> ${dest}.`, { localPaths: lps, remotePath: dest, background }));
+        return putChunked(rt, putOpts, lps, dest, background);
       }
       const target = await ensureRemoteFolder(rt, rp);
       if (target === "error") return err(`Could not create the destination folder ${rp}.`, { remotePath: rp });
@@ -24026,7 +25905,7 @@ function registerMutate(server, rt) {
         return runToResult(rt, "put", [...putOpts, ...lps, rp], () => ok(`Uploaded ${lps.length} item(s) -> ${rp}.`, { localPaths: lps, remotePath: rp, background }));
       }
       if (untouched) {
-        return runToResult(rt, "put", [...putOpts, ...lps, dest], () => ok(`Uploaded ${lps.length} item(s) -> ${dest}.`, { localPaths: lps, remotePath: dest, background }));
+        return putChunked(rt, putOpts, lps, dest, background);
       }
       let failed = 0;
       for (const step of plan.steps) {
@@ -24034,10 +25913,8 @@ function registerMutate(server, rt) {
           failed += Math.max(step.sources.length, 1);
           continue;
         }
-        for (let i = 0; i < step.sources.length; i += PUT_CHUNK) {
-          const chunk = step.sources.slice(i, i + PUT_CHUNK);
-          const r = await rt.run("put", [...putOpts, ...chunk, step.dest]);
-          if (r.code !== 0) failed += chunk.length;
+        for (const chunk of chunkArgs(step.sources, PUT_CHUNK, [...putOpts, step.dest])) {
+          if (await putChunk(rt, [...putOpts, ...chunk, step.dest]) !== 0) failed += chunk.length;
         }
       }
       return (failed ? err : ok)(
@@ -24050,7 +25927,7 @@ function registerMutate(server, rt) {
     "mega_get",
     {
       title: "MEGA: download",
-      description: "Download a MEGA cloud file/folder (by path or by public link) to a local directory. Requires confirmation.",
+      description: "Download a MEGA cloud file/folder (by path or by public link) to a local directory. A previous file version (`name#<10 digits>`, as mega_ls showVersions lists it) is saved as <localDir>/<name>. Requires confirmation.",
       inputSchema: {
         remotePath: external_exports.string().optional().describe("Absolute MEGA path to download (a PCRE pattern when usePcre=true)."),
         link: external_exports.string().optional().describe("A MEGA public link to download (instead of remotePath)."),
@@ -24058,8 +25935,8 @@ function registerMutate(server, rt) {
         password: external_exports.string().optional().describe("Password for a password-protected link."),
         background: external_exports.boolean().default(false).describe("Queue the download in the background."),
         ignoreQuotaWarn: external_exports.boolean().default(false).describe("Proceed despite a transfer-quota warning."),
-        merge: external_exports.boolean().default(false).describe("Download a folder's CONTENTS straight into localDir, next to what is already there, instead of into a new <localDir>/<folder name> (or a numbered copy if that exists)."),
-        usePcre: external_exports.boolean().default(false).describe("Interpret remotePath as a PCRE pattern (downloads every match)."),
+        merge: external_exports.boolean().default(false).describe("Download a folder's CONTENTS straight into localDir, next to what is already there, instead of into <localDir>/<folder name> (an existing folder of that name is downloaded into)."),
+        usePcre: external_exports.boolean().default(false).describe('Interpret remotePath as a PCRE pattern (downloads every match). It starts with "/" and each part of the path is matched on its own, e.g. /Docs/.*\\.pdf$.'),
         confirm: external_exports.string().optional().describe("Confirmation token from the first call.")
       },
       annotations: { title: "MEGA: download", destructiveHint: true, openWorldHint: true }
@@ -24073,56 +25950,200 @@ function registerMutate(server, rt) {
         ...merge2 ? ["-m"] : [],
         ...ignoreQuotaWarn ? ["--ignore-quota-warn"] : []
       ];
-      const ldMissing = !existsSync3(ld);
+      const ldMissing = !existsSync4(ld);
+      const snapshot = ldMissing ? "" : await syncSnapshot(rt);
+      const syncRoots = ldMissing ? [] : await syncLocalRoots(rt);
+      if (syncRoots === null) throw new ValidationError(`Could not read MEGAcmd's list of syncs, so whether downloading into ${ld} reaches a synced folder is unknown.`);
+      const backupRoots = ldMissing ? [] : await backupLocalRoots(rt);
+      if (backupRoots === null) throw new ValidationError(`Could not read MEGAcmd's list of backups, so whether downloading into ${ld} reaches a backed-up folder is unknown.`);
+      const watched = [...syncRoots, ...backupRoots];
+      const roots = watched.filter((r) => localAtOrUnder(r, ld) && !localAtOrUnder(ld, r));
+      const assertSyncsUnchanged = async (synced2) => {
+        if (ldMissing && existsSync4(ld)) throw new ValidationError(`${ld} was created since the preview. Nothing was run; preview again.`);
+        if (!ldMissing && await syncSnapshot(rt) !== snapshot) throw new ValidationError("The syncs or backups on this computer changed since the preview. Nothing was run; preview again.");
+        if (JSON.stringify(await syncedLocalLines(rt, ld)) !== JSON.stringify(synced2)) {
+          throw new ValidationError(`Who can see where ${ld} is uploaded changed since the preview. Nothing was run; preview again.`);
+        }
+      };
+      const assertNoSyncRootAt = (name) => {
+        const at = name === null ? ld : joinLocal2(ld, name);
+        const linkAt = name !== null && isSymlink(at) ? [{ link: at, real: onDiskSpelling(at) }] : [];
+        const viaLink = () => watched.length > 0 && existsSync4(at) ? [...linkAt, ...linksBelow(at)].find(({ link: link2, real }) => !(link2 !== at && localAtOrUnder(real, at)) && watched.some((r) => localAtOrUnder(real, r) || localAtOrUnder(r, real))) : void 0;
+        const hit = roots.find((r) => name === null || localAtOrUnder(r, at)) ?? viaLink()?.link;
+        if (hit) throw new ValidationError(`${at} is, holds or links to ${hit}, which MEGAcmd syncs or backs up: the download could land in it and be uploaded. Download into a folder without one.`);
+      };
+      if (!ldMissing && !statSync3(ld).isDirectory()) throw new ValidationError(`localDir ${ld} is a file, not a folder.`);
+      const ignoreFileCheck = (name, ldSynced2) => {
+        if (isIgnoreFileName(name) && ldSynced2 !== false) assertNotIgnoreFile(joinLocal2(ld, name));
+      };
       const created = ldMissing ? " (created)" : "";
       const makeLd = () => {
-        if (ldMissing && !existsSync3(ld)) mkdirSync3(ld, { recursive: true });
+        if (ldMissing && !existsSync4(ld)) mkdirSync3(ld, { recursive: true });
       };
       if (usePcre && !isLink) {
         if (remotePath === void 0 || remotePath === "") {
           throw new ValidationError("Provide remotePath (a PCRE pattern) when usePcre=true.");
         }
         const rp = assertNoFlag(remotePath, "remotePath");
-        const g = await pcreGate(
-          rt,
-          "mega_get",
-          { remotePath: rp, localDir: ld, usePcre: true, background, ignoreQuotaWarn, merge: merge2 },
-          confirm,
-          rp,
-          (n, t) => `This will download ${n} node(s) matching the pattern into ${ld}${created}${merge2 ? ", each folder's contents straight into it (merged with what is there)" : ""}${background ? ", in the background" : ""}${ignoreQuotaWarn ? ", ignoring a transfer-quota warning" : ""}:
-${t}`,
-          (p, topmost2) => {
-            assertNotStoreCopy(p, "A matched node");
-            if (!topmost2) return;
-            if (ldMissing) assertDownloadTarget(dirname4(ld), basename4(ld));
-            else if (merge2) assertDownloadTarget(ld, null);
-            else for (const name of localNamesOf(p)) assertDownloadTarget(ld, name);
+        const ldSynced2 = await inSyncedLocalFolder(rt, ld);
+        const execNote2 = await executableDownloadNote(rt);
+        const synced2 = await syncedLocalLines(rt, ld);
+        let carriesIgnoreFile = false;
+        const matched = [];
+        const gateAndRun2 = async () => {
+          const g = await pcreGate(
+            rt,
+            "mega_get",
+            { remotePath: rp, localDir: ld, usePcre: true, background, ignoreQuotaWarn, merge: merge2, exec: execNote2, synced: synced2 },
+            confirm,
+            rp,
+            (n, t) => `This will download ${n} node(s) matching the pattern into ${ld}${created}${merge2 ? ", each folder's contents straight into it (merged with what is there)" : ""}${background ? ", in the background" : ""}${ignoreQuotaWarn ? ", ignoring a transfer-quota warning" : ""}:
+${t}${execNote2 ? `
+${execNote2}` : ""}${synced2.map((l) => `
+${previewSafe(l)}`).join("")}`,
+            (p, topmost2) => {
+              assertNotStoreCopy(p, "A matched node");
+              matched.push(p);
+              if (isIgnoreFileName(posix2.basename(p))) carriesIgnoreFile = true;
+              if (!topmost2) {
+                ignoreFileCheck(posix2.basename(p), ldSynced2);
+                return;
+              }
+              if (ldMissing) assertDownloadTarget(dirname5(ld), basename4(ld));
+              else if (merge2) assertDownloadTarget(ld, null);
+              else for (const name of localNamesOf(p)) assertDownloadTarget(ld, name);
+              if (merge2) assertNoSyncRootAt(null);
+              else for (const name of localNamesOf(p)) assertNoSyncRootAt(name);
+              for (const name of localNamesOf(p)) ignoreFileCheck(name, ldSynced2);
+            },
+            // Each node lands under its CURRENT name, so names are checked again.
+            // What was placed in the matches unconfirmed (a renamed copy, say) is named and bound.
+            { recheckNames: true, bindContents: true, extraLines: (tops) => [...unconfirmedWriteLines(tops), ...recoveryKeyLines(matched)] }
+          );
+          if (!g.proceed) return g.result;
+          if (g.handles.length === 0) return ok("No matching nodes to download.", { downloaded: 0, localDir: ld });
+          if (merge2) {
+            for (const [i, t] of g.paths.entries()) if (await remoteKind(rt, g.handles[i] ?? t) !== "folder") throw new ValidationError(`${t} is not a folder; merge applies to folders, so download files without merge.`);
           }
-        );
-        if (!g.proceed) return g.result;
-        if (g.handles.length === 0) return ok("No matching nodes to download.", { downloaded: 0, localDir: ld });
-        makeLd();
-        const { done, failed } = await runPerHandle(rt, "get", g.handles, (h) => [...transferOpts, h, ld]);
-        return ok(`Downloaded ${done} node(s)${failed ? `; ${failed} failed` : ""} into ${ld}.`, { downloaded: done, failed, localDir: ld });
+          await assertSyncsUnchanged(synced2);
+          makeLd();
+          const expect = [];
+          const into = /* @__PURE__ */ new Set();
+          for (const p of matched.filter((x) => isIgnoreFileName(posix2.basename(x)))) {
+            const top = g.paths.find((t) => p === t || p.startsWith(`${t}/`)) ?? p;
+            const rel = p === top ? [] : p.slice(top.length + 1).split("/");
+            const topName = posix2.dirname(top) === "//from" ? posix2.basename(top).replace(/^[^:]*:/, "") : posix2.basename(top);
+            expect.push(merge2 && p !== top ? joinLocal2(ld, ...rel) : joinLocal2(ld, topName, ...rel));
+            if (p !== top) for (const d of merge2 ? [ld] : landingsOf(ld, topName)) into.add(d);
+          }
+          noteDownloadIgnores(expect, carriesIgnoreFile && expect.length === 0 ? [ld] : [], [...into]);
+          noteDownload(ld);
+          const ldArg = onDiskSpelling(ld);
+          const { done, failed } = await runPerHandle(rt, "get", g.handles, (h) => [...transferOpts, h, ldArg]);
+          return ok(`Downloaded ${done} node(s)${failed ? `; ${failed} failed` : ""} into ${ld}.`, { downloaded: done, failed, localDir: ld });
+        };
+        return confirm ? withWriteLock(gateAndRun2) : gateAndRun2();
       }
       const source = isLink ? assertPublicLink(assertNoFlag(link, "link")) : remotePath !== void 0 && remotePath !== "" ? assertNotStoreCopy(assertNoWildcard(assertRemotePath(remotePath), "remotePath")) : "";
       if (!source) throw new ValidationError("Provide remotePath or link.");
-      if (ldMissing) assertDownloadTarget(dirname4(ld), basename4(ld));
+      if (!isLink && /^(?:\/|\/\/(?:bin|in))\/?$/.test(source)) throw new ValidationError(`${source} is a root; download the folders inside it instead.`);
+      const versionOf = isLink ? null : versionPlainName(posix2.basename(source));
+      if (!isLink && posix2.dirname(source).split("/").some((seg) => /#\d{10}$/.test(seg))) {
+        throw new ValidationError("remotePath may name a file version only in its last part.");
+      }
+      if (versionOf !== null && merge2) throw new ValidationError("merge applies to folders; a file version is downloaded as a file.");
+      if (merge2 && !isLink && await remoteKind(rt, source) !== "folder") throw new ValidationError("merge applies to folders; download a file without merge (or the source could not be checked).");
+      if (merge2 && isLink && /\/file\/|#!/.test(source)) throw new ValidationError("merge applies to folder links; download a file link without merge.");
+      const versionTarget2 = versionOf === null ? null : joinLocal2(ld, versionOf);
+      if (versionTarget2 && existsSync4(versionTarget2) && statSync3(versionTarget2).isDirectory()) {
+        throw new ValidationError(`${versionTarget2} is a folder; download the version into another localDir.`);
+      }
+      if (ldMissing) assertDownloadTarget(dirname5(ld), basename4(ld));
       else if (isLink || merge2) assertDownloadTarget(ld, null);
       else for (const name of localNamesOf(source)) assertDownloadTarget(ld, name);
+      const landingNames = versionOf === null ? localNamesOf(source) : [versionOf];
+      if (isLink || merge2) assertNoSyncRootAt(null);
+      else for (const name of landingNames) assertNoSyncRootAt(name);
+      const ldSynced = isLink ? false : await inSyncedLocalFolder(rt, ld);
+      let innerHits = [];
+      let innerUnchecked = false;
+      const innerIgnoreFiles = async () => {
+        const r = await ignoreFilesBelow(rt, source);
+        innerUnchecked = r?.unchecked ?? false;
+        if (innerUnchecked && ldSynced !== false) throw new ValidationError(`Could not check ${source} for .megaignore files before downloading it into a synced folder.`);
+        innerHits = r?.hits ?? [];
+        if (innerHits.length > 0 && ldSynced !== false) {
+          throw new ValidationError(`Refusing to download ${source} into ${ld}: it holds ${innerHits[0]}${innerHits.length > 1 ? ` and ${innerHits.length - 1} more` : ""}, and in a synced folder a .megaignore decides what the sync carries.`);
+        }
+      };
+      if (!isLink) {
+        for (const name of landingNames) ignoreFileCheck(name, ldSynced);
+        if (versionOf === null) await innerIgnoreFiles();
+      }
       if (!isLink && !confirm) await assertNoStoreCopyBelow(rt, source);
-      const gate = checkConfirm(
-        rt,
-        "mega_get",
-        { source, localDir: ld, isLink, background, ignoreQuotaWarn, merge: merge2, password: secretBinding(password) },
-        confirm,
-        `This will download ${isLink ? `the link ${source}` : source} into ${ld}${created}${merge2 ? " - its contents straight into that folder, merged with what is already there" : ""}${background ? ", in the background" : ""}${ignoreQuotaWarn ? ", ignoring a transfer-quota warning" : ""}.`
-      );
-      if (gate) return gate;
-      if (!isLink) await assertNoStoreCopyBelow(rt, source);
-      makeLd();
-      const args = [...transferOpts, ...password ? [`--password=${password}`] : [], source, ld];
-      return runToResult(rt, "get", args, () => ok(`Downloaded into ${ld}.`, { source, localDir: ld, isLink }));
+      const execNote = await executableDownloadNote(rt);
+      const synced = await syncedLocalLines(rt, ld);
+      const copies = isLink && synced.length > 0 ? storeCopiesIn(ld) : { found: [], complete: true };
+      if (copies.found.length > 0 || !copies.complete) {
+        throw new ValidationError(`${ld} is in a synced folder and ${copies.found[0] ? `holds ${copies.found[0]}, a copy of MEGAcmd's session store` : "could not be searched completely for copies of MEGAcmd's session store"}; what a link holds is not known before it arrives, so it is not downloaded there.`);
+      }
+      const gateAndRun = async () => {
+        const placed = isLink ? [] : [...unconfirmedWriteLines(source), ...await recoveryKeyLinesBelow(rt, [source])];
+        const same = isLink ? { count: 1, lines: [] } : await sameNamed(rt, source);
+        const gate = checkConfirm(
+          rt,
+          "mega_get",
+          {
+            source,
+            localDir: ld,
+            isLink,
+            background,
+            ignoreQuotaWarn,
+            merge: merge2,
+            password: secretBinding(password),
+            items: same.count,
+            exec: execNote,
+            synced,
+            // Downloaded into a sync, it is uploaded again: bound like a copy to that place.
+            contents: synced.length > 0 && !isLink ? await contentDigest(rt, source) : null,
+            placed
+          },
+          confirm,
+          [
+            ...placed,
+            `This will download ${isLink ? `the link ${source}` : source} into ${ld}${created}${versionTarget2 ? `, saved as ${versionTarget2}` : ""}${merge2 ? " - its contents straight into that folder, merged with what is already there" : ""}${background ? ", in the background" : ""}${ignoreQuotaWarn ? ", ignoring a transfer-quota warning" : ""}.`,
+            ...same.lines,
+            ...execNote ? [execNote] : [],
+            ...synced
+          ]
+        );
+        if (gate) return gate;
+        await assertSyncsUnchanged(synced);
+        if (!isLink) await assertNoStoreCopyBelow(rt, source);
+        if (synced.length > 0 && !isLink && versionOf === null) await innerIgnoreFiles();
+        makeLd();
+        if (isLink || innerUnchecked) noteDownloadIgnores([], [ld]);
+        else {
+          const shown = source.replace(/(.)\/+$/, "$1");
+          const name = versionTarget2 ? null : posix2.dirname(shown) === "//from" ? posix2.basename(shown).replace(/^[^:]*:/, "") : posix2.basename(shown);
+          const inside = (h) => (h.startsWith("/") ? h : `//from/${h}`).slice(shown.length + 1).split("/");
+          noteDownloadIgnores(
+            [
+              ...versionTarget2 && isIgnoreFileName(posix2.basename(versionTarget2)) ? [versionTarget2] : [],
+              ...name && isIgnoreFileName(name) ? [joinLocal2(ld, name)] : [],
+              ...innerHits.filter((h) => h !== shown).map((h) => merge2 || !name ? joinLocal2(ld, ...inside(h)) : joinLocal2(ld, name, ...inside(h)))
+            ],
+            [],
+            // The folder holding ones inside it is searched before a sync too (ld itself when merged).
+            innerHits.some((h) => h !== shown) ? merge2 || !name ? [ld] : landingsOf(ld, name) : []
+          );
+        }
+        noteDownload(ld);
+        const ldArg = onDiskSpelling(ld);
+        const args = [...transferOpts, ...password ? [`--password=${password}`] : [], source, versionTarget2 ? joinLocal2(ldArg, basename4(versionTarget2)) : ldArg];
+        return runToResult(rt, "get", args, () => ok(`Downloaded into ${ld}.`, { source, localDir: ld, isLink }));
+      };
+      return confirm ? withWriteLock(gateAndRun) : gateAndRun();
     })
   );
   server.registerTool(
@@ -24141,9 +26162,20 @@ ${t}`,
     async ({ remotePath, localPath, action, confirm }) => guardRun(async () => {
       const rp = assertNoWildcard(assertRemotePath(remotePath), "remotePath");
       const lp = assertLocalPath(localPath);
-      const summary = action === "set" ? `This will set the thumbnail of ${rp} from ${lp}.` : `This will write the thumbnail of ${rp} to ${lp}.`;
-      const gate = checkConfirm(rt, "mega_thumbnail", { remotePath: rp, localPath: lp, action }, confirm, summary);
+      if (action !== "set") {
+        assertDownloadTarget(dirname5(lp), basename4(lp));
+        assertNotIgnoreFile(lp);
+      }
+      const replaces = action !== "set" && (existsSync4(lp) || isSymlink(lp));
+      if (action === "set") assertImageFile(lp);
+      const notes = action === "set" ? await destinationNotes(rt, rp) : [];
+      const execNote = action !== "set" ? await executableDownloadNote(rt) : null;
+      const synced = action !== "set" ? await syncedLocalLines(rt, dirname5(lp)) : [];
+      const summary = action === "set" ? [`This will set the thumbnail of ${rp} from ${lp}.`, ...notes] : [`This will write the thumbnail of ${rp} to ${lp}${replaces ? " - REPLACING the file that is there now" : ""}.`, ...execNote ? [execNote] : [], ...synced];
+      const gate = checkConfirm(rt, "mega_thumbnail", { remotePath: rp, localPath: lp, action, replaces, exec: execNote, notes, synced }, confirm, summary);
       if (gate) return gate;
+      if (action === "set") noteSessionChange(rp, `its thumbnail was set from ${lp}`);
+      else noteDownload(dirname5(lp));
       const args = action === "set" ? ["-s", rp, lp] : [rp, lp];
       return runToResult(
         rt,
@@ -24155,29 +26187,50 @@ ${t}`,
   );
 }
 
-// src/parsers/exportLink.ts
-function parseExportLink(raw) {
-  const mega = raw.match(/https?:\/\/mega\.nz\/\S+/i);
-  if (mega) return mega[0];
-  const any = raw.match(/https?:\/\/\S+/i);
-  return any?.[0];
-}
-
 // src/tools/dangerous.ts
+import { posix as posix3 } from "node:path";
 var SHARE_LEVEL = { read: "0", readwrite: "1", full: "2", owner: "3" };
 function isSessionHandle(id) {
   if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return false;
   const bytes = Buffer.from(id, "base64url");
-  return bytes.length === 8 && !bytes.every((b) => b === 255);
+  return bytes.length === 8 && !bytes.every((b) => b === 255) && bytes.toString("base64url") === id;
+}
+async function currentSessionId(rt) {
+  const r = await rt.run("whoami", ["-l"]);
+  if (r.code !== 0) return null;
+  const lines = r.stdout.split(/\r?\n/);
+  const ids = /* @__PURE__ */ new Set();
+  lines.forEach((line, i) => {
+    if (!/^\s*\* Current Session\s*$/.test(line)) return;
+    const m = (lines[i + 1] ?? "").match(/^\s*Session ID:\s*([A-Za-z0-9_-]{11})\s*$/);
+    ids.add(m ? m[1] : "");
+  });
+  return ids.size === 1 && !ids.has("") ? [...ids][0] : null;
+}
+function withoutKey(link) {
+  const modern = link.match(/^(.*\/(?:file|folder)\/[^#/]+)#/);
+  if (modern) return modern[1];
+  const legacy = link.match(/^(.*#F?![^!]+)!/);
+  if (legacy) return legacy[1];
+  return link.replace(/#.*$/, "");
 }
 function isPasswordProtected(link) {
   return !!link && link.includes("#P!");
+}
+function describeExpiry(expire) {
+  if (!/^(?:\d{1,6}[ymdhMs])+$/.test(expire)) {
+    throw new ValidationError('expire must be numbers each followed by a unit: y (years), m (months), d (days), h (hours), M (minutes) or s (seconds), e.g. "7d" or "1m2d".');
+  }
+  const units = [["y", "year"], ["m", "month"], ["d", "day"], ["h", "hour"], ["M", "minute"], ["s", "second"]];
+  const value = /* @__PURE__ */ new Map();
+  for (const [, n, u] of expire.matchAll(/(\d+)([ymdhMs])/g)) value.set(u, Number(n));
+  return units.filter(([u]) => value.has(u)).map(([u, word]) => `${value.get(u)} ${word}${value.get(u) === 1 ? "" : "s"}`).join(" ");
 }
 function exportOptionLines(megaHosted, password, expire) {
   return [
     ...megaHosted ? ["The folder key will also be shared with MEGA (MEGA-hosted / S4)."] : [],
     ...password ? ["The link will be password-protected."] : [],
-    ...expire ? [`The link will expire after ${expire}.`] : []
+    ...expire ? [`The link will expire after ${describeExpiry(expire)} ("${expire}").`] : []
   ];
 }
 function registerDangerous(server, rt) {
@@ -24200,9 +26253,9 @@ function registerDangerous(server, rt) {
     "mega_killsession",
     {
       title: "MEGA: close other sessions",
-      description: "Close other MEGA login sessions on this account (the current session is kept). By default closes ALL other sessions; optionally pass a specific sessionId. Requires confirmation.",
+      description: "Close other MEGA login sessions on this account (the current session is kept). By default closes ALL other sessions; optionally pass a specific sessionId (not this computer's own session - mega_logout does that). Requires confirmation.",
       inputSchema: {
-        sessionId: external_exports.string().optional().describe("A specific session ID to close, only if the user gave it (no tool reveals session IDs). Omit to close all other sessions."),
+        sessionId: external_exports.string().optional().describe("A specific session ID to close (from mega_sessions when account details are enabled, or from the user). Omit to close all other sessions."),
         confirm: external_exports.string().optional().describe("Confirmation token from the first call.")
       },
       annotations: { title: "MEGA: close other sessions", destructiveHint: true, openWorldHint: true }
@@ -24215,8 +26268,12 @@ function registerDangerous(server, rt) {
       if (sid !== void 0 && !isSessionHandle(sid)) {
         throw new ValidationError("sessionId must be a session handle (11 characters, as listed by MEGA). To close all other sessions, omit sessionId.");
       }
-      const summary = sid ? `This will close MEGA session ${sid} (the current session is kept).` : "This will close ALL other MEGA login sessions on this account (the current session is kept).";
-      const gate = checkConfirm(rt, "mega_killsession", { sessionId: sid ?? null }, confirm, summary);
+      const current = sid ? await currentSessionId(rt) : null;
+      if (sid && current === sid) {
+        throw new ValidationError(`Session ${sid} is this computer's own session; closing it would log MEGAcmd out here. Use mega_logout for that.`);
+      }
+      const summary = sid ? current ? `This will close MEGA session ${sid} (not this computer's own session, which is kept).` : `This will close MEGA session ${sid}. (Could not check whether it is this computer's own session - if it is, MEGAcmd is logged out here and its syncs stop.)` : "This will close ALL other MEGA login sessions on this account (the current session is kept).";
+      const gate = checkConfirm(rt, "mega_killsession", { sessionId: sid ?? null, current }, confirm, summary);
       if (gate) return gate;
       const args = sid ? [sid] : ["-a"];
       return runToResult(
@@ -24234,7 +26291,7 @@ function registerDangerous(server, rt) {
       description: "Permanently delete a MEGA cloud node (recursive). Requires confirmation.",
       inputSchema: {
         remotePath: external_exports.string().describe("Absolute MEGA path to delete (a PCRE pattern when usePcre=true)."),
-        usePcre: external_exports.boolean().default(false).describe("Interpret remotePath as a PCRE pattern and delete EVERY match."),
+        usePcre: external_exports.boolean().default(false).describe('Interpret remotePath as a PCRE pattern and delete EVERY match. It starts with "/" and each part of the path is matched on its own, e.g. /Docs/.*\\.pdf$.'),
         confirm: external_exports.string().optional().describe("Confirmation token from the first call.")
       },
       annotations: { title: "MEGA: delete", destructiveHint: true, openWorldHint: true }
@@ -24249,7 +26306,10 @@ function registerDangerous(server, rt) {
           confirm,
           rp2,
           (n, t) => `This will PERMANENTLY delete ${n} node(s) matching the pattern, AND ALL THEIR CONTENTS (recursive):
-${t}`
+${t}`,
+          void 0,
+          // A match in a two-way synced folder is deleted on this computer too.
+          { extraLines: (tops) => syncedSourceNotes(rt, tops, "removed"), bindContents: true }
         );
         if (!g.proceed) return g.result;
         if (g.handles.length === 0) return ok("No matching nodes to delete.", { deleted: 0 });
@@ -24257,7 +26317,39 @@ ${t}`
         return ok(`Deleted ${done} node(s)${failed ? `; ${failed} failed` : ""}.`, { deleted: done, failed });
       }
       const rp = assertNoWildcard(assertRemotePath(remotePath), "remotePath");
-      const gate = checkConfirm(rt, "mega_rm", { remotePath: rp }, confirm, `This will PERMANENTLY delete ${rp} and all its contents.`);
+      if (posix3.dirname(rp).split("/").some((seg) => /#\d{10}$/.test(seg))) {
+        throw new ValidationError("remotePath may name a file version only in its last part.");
+      }
+      const ver = posix3.basename(rp).match(/^(.+)#(\d{10})$/);
+      if (ver) {
+        const file = joinRemote(posix3.dirname(rp), ver[1]);
+        if ((await sameNamed(rt, file)).count !== 1 || await remoteKind(rt, file) !== "file") {
+          throw new ValidationError(`Deleting one version needs exactly one FILE named ${file}.`);
+        }
+        const ls = await rt.run("ls", ["-l", "--versions", "--show-handles", file]);
+        if (ls.code !== 0) throw new ValidationError(`Could not list the versions of ${file}: ${classifyExit(ls)}`);
+        const lines = ls.stdout.split(/\r?\n/);
+        const from = lines.findIndex((l) => l.startsWith("Versions of "));
+        const own = from < 0 ? [] : lines.slice(from + 1);
+        const end = own.findIndex((l) => l.trim() === "" || l.startsWith("Versions of "));
+        const versions = (end < 0 ? own : own.slice(0, end)).map((l) => l.match(/\s(H:[A-Za-z0-9_-]+)\s.*#(\d{10})\s*$/)).filter((m) => m !== null).map((m) => ({ handle: m[1], time: m[2] }));
+        const hits = versions.map((v, i) => ({ ...v, current: i === 0 })).filter((v) => v.time === ver[2]);
+        if (hits.length !== 1 || hits[0].current) {
+          throw new ValidationError(
+            hits.some((h) => h.current) ? `${rp} has the time of the CURRENT ${file} (a restored version keeps its time), so it cannot be deleted on its own here. Use the MEGA app, or delete the file with its plain path.` : `${rp} is not one older version of ${file}.`
+          );
+        }
+        const handle = hits[0].handle;
+        const vgate = checkConfirm(rt, "mega_rm", { remotePath: rp, olderVersion: handle }, confirm, [
+          `This will PERMANENTLY delete one older version of ${file} (${rp}); the current file and its other versions stay.`
+        ]);
+        if (vgate) return vgate;
+        return runToResult(rt, "rm", ["-f", handle], () => ok(`Deleted the older version ${rp}.`, { remotePath: rp, deleted: true }));
+      }
+      const same = await sameNamed(rt, rp);
+      const local = await syncedSourceNotes(rt, [rp], "removed");
+      const contents = await contentDigest(rt, rp);
+      const gate = checkConfirm(rt, "mega_rm", { remotePath: rp, items: same.count, local, contents }, confirm, [`This will PERMANENTLY delete ${rp} and all its contents.`, ...same.lines, ...local]);
       if (gate) return gate;
       return runToResult(rt, "rm", ["-r", "-f", rp], () => ok(`Deleted ${rp}.`, { remotePath: rp, deleted: true }));
     })
@@ -24276,10 +26368,12 @@ ${t}`
     },
     async ({ remotePath, all, confirm }) => guardRun(async () => {
       const rp = assertOptionalRemotePath(remotePath);
-      if (rp) assertNoWildcard(rp, "remotePath");
+      if (rp) assertNoVersionName(assertNoWildcard(rp, "remotePath"));
       if (!all && !rp) throw new ValidationError("Provide a remotePath, or set all=true to clear the whole account.");
-      const summary = all ? "This will delete ALL prior file versions across the entire account." : `This will delete prior file versions of ${rp}.`;
-      const gate = checkConfirm(rt, "mega_deleteversions", { remotePath: rp ?? null, all }, confirm, summary);
+      const summary = all ? "This will delete ALL prior file versions across the entire account." : `This will delete prior file versions of ${rp} (of every file inside it, if it is a folder).`;
+      const same = rp && !all ? await sameNamed(rt, rp) : { count: 0, lines: [] };
+      const contents = rp && !all ? await contentDigest(rt, rp) : null;
+      const gate = checkConfirm(rt, "mega_deleteversions", { remotePath: rp ?? null, all, items: same.count, contents }, confirm, [summary, ...same.lines]);
       if (gate) return gate;
       const args = all ? ["-f", "--all"] : ["-f", rp];
       return runToResult(rt, "deleteversions", args, () => ok(summary.replace(/^This will /, "Done: "), { all, remotePath: rp }));
@@ -24292,12 +26386,12 @@ ${t}`
       description: 'Manage a public link for a MEGA node. action="create" makes a public link (confirm), "delete" removes it (confirm), "status" shows current state (read-only). Create options: writable (anyone with the link can upload), megaHosted (S4), password, expire.',
       inputSchema: {
         remotePath: external_exports.string().describe("Absolute MEGA path."),
-        action: external_exports.enum(["create", "delete", "status"]).describe("What to do with the public link."),
+        action: external_exports.enum(["create", "delete", "status"]).describe('What to do with the public link. "status" says whether there is one, without its key; "create" (asks first) returns the full link, also an existing one.'),
         writable: external_exports.boolean().default(false).describe("Create a WRITABLE folder link \u2014 anyone with the link can upload into the folder."),
         megaHosted: external_exports.boolean().default(false).describe("Share the folder share-key with MEGA (for S4 access)."),
         password: external_exports.string().optional().describe("Password-protect the link."),
-        expire: external_exports.string().optional().describe('Expiry delay, e.g. "1d", "2w", "1m".'),
-        usePcre: external_exports.boolean().default(false).describe("Interpret remotePath as a PCRE pattern (affects every match)."),
+        expire: external_exports.string().optional().describe('Expiry delay: numbers each followed by a unit - y (years), m (MONTHS), d (days), h (hours), M (minutes), s (seconds). E.g. "7d", "1m" (one month), "30M" (30 minutes).'),
+        usePcre: external_exports.boolean().default(false).describe('Interpret remotePath as a PCRE pattern (affects every match). It starts with "/" and each part of the path is matched on its own, e.g. /Docs/.*\\.pdf$.'),
         confirm: external_exports.string().optional().describe("Confirmation token (create/delete only).")
       },
       annotations: { title: "MEGA: public link", destructiveHint: true, openWorldHint: true }
@@ -24305,23 +26399,46 @@ ${t}`
     async ({ remotePath, action, writable, megaHosted, password, expire, usePcre, confirm }) => guardRun(async () => {
       if (action === "status") {
         const rp2 = usePcre ? assertNoFlag(remotePath, "remotePath") : assertRemotePath(remotePath);
-        return runToResult(rt, "export", [...usePcre ? ["--use-pcre"] : [], rp2], (r) => {
-          const link = parseExportLink(r.stdout);
-          return ok(link ? `Public link for ${rp2}:
-${link}` : `No public link for ${rp2}.`, { remotePath: rp2, link });
-        });
+        const r = await rt.run("export", [...usePcre ? ["--use-pcre"] : [], rp2]);
+        if (r.code !== 0) return err(classifyExit(r), { ok: false, code: r.code });
+        const link = usePcre ? parseExportLink(r.stdout)?.replace(/\)+$/, "") ?? null : ownExportLink(r.stdout, rp2);
+        if (!link) return ok(`No public link for ${rp2}.`, { remotePath: rp2, link: null });
+        try {
+          if (usePcre) {
+            const m = await pcreMatchPreview(rt, rp2);
+            if (!m.ok) return err(m.error, { remotePath: rp2 });
+            for (const p of m.paths) assertNotStoreCopy(p, "A matched node");
+          } else {
+            assertNotStoreCopy(rp2);
+            await assertNoStoreCopyBelow(rt, rp2);
+          }
+        } catch (e) {
+          if (!(e instanceof ValidationError)) throw e;
+          return err(
+            `${rp2} has a public link, but it is (or holds) a copy of the MEGAcmd session store, which carries this account's login, so the link is not shown. Remove it with action "delete". (${e.message})`,
+            { remotePath: rp2, link: null, withheld: true }
+          );
+        }
+        const shown = withoutKey(link);
+        return ok(
+          `${rp2} has a public link: ${shown}#... (its key is not shown here - with it, the link opens even where a password was set on it elsewhere). To get the full link, use action "create", which asks the user first and returns the existing link.`,
+          { remotePath: rp2, link: shown, keyHidden: true }
+        );
       }
       if (action === "create") {
         if (password !== void 0) assertSecret(password, "password");
         const exp = expire === void 0 ? void 0 : assertFlagValue(expire, "expire");
+        if (exp !== void 0) describeExpiry(exp);
         const note = writable ? " These are WRITABLE links \u2014 anyone with the URL can UPLOAD into the folder." : "";
-        const publish = async (node) => {
+        const publish = async (node, path) => {
           const r2 = await rt.run("export", createArgs(node));
-          if (r2.code !== 0) return "failed";
-          if (password && !isPasswordProtected(parseExportLink(r2.stdout))) {
-            await rt.run("export", ["-d", node]);
-            return "unprotected";
-          }
+          if (r2.code === ExitCode.EXISTS) return "failed";
+          const withdraw = async () => {
+            const c = (await rt.run("export", ["-d", node])).code;
+            return c === 0 ? "unprotected" : c === ExitCode.INVALIDSTATE ? "failed" : "still-public";
+          };
+          if (r2.code !== 0) return password || exp ? withdraw() : "failed";
+          if (password && !isPasswordProtected(parseCreatedLink(r2.stdout, path))) return withdraw();
           return "ok";
         };
         const createArgs = (node) => [
@@ -24335,50 +26452,105 @@ ${link}` : `No public link for ${rp2}.`, { remotePath: rp2, link });
         ];
         if (usePcre) {
           const rp3 = assertNoFlag(remotePath, "remotePath");
+          const listedAll = [];
           const g = await pcreGate(
             rt,
             "mega_export:create",
             { remotePath: rp3, writable, megaHosted, password: secretBinding(password), expire: expire ?? null, usePcre: true },
             confirm,
             rp3,
-            (n, t) => [`This will create PUBLIC links for ${n} node(s) that anyone with the URL can access.${note}`, ...exportOptionLines(megaHosted, password, exp), t].join("\n"),
-            (p) => assertNotStoreCopy(p, "A matched node")
+            (n, t) => [`This will create PUBLIC links for ${n} node(s) that anyone with the URL can access.${note}`, ...exportOptionLines(megaHosted, password, exp).map(previewSafe), t].join("\n"),
+            (p) => {
+              assertNotStoreCopy(p, "A matched node");
+              listedAll.push(p);
+            },
+            {
+              extraLines: async (tops) => [
+                ...unconfirmedWriteLines(tops),
+                ...recoveryKeyLines(listedAll),
+                ...await syncedWithinLines(rt, tops, "published"),
+                ...writable ? await writableShareLines(rt, tops, "anyone with the writable link", "make a read-only link instead") : []
+              ],
+              bindContents: true
+            }
           );
           if (!g.proceed) return g.result;
           if (g.handles.length === 0) return ok("No matching nodes.", { created: 0 });
           let done = 0;
           let failed = 0;
           let unprotected = 0;
-          for (const h of g.handles) {
-            const outcome = await publish(h);
+          const stillPublic = [];
+          for (const [i, h] of g.handles.entries()) {
+            const outcome = await publish(h, g.paths[i] ?? "");
             if (outcome === "ok") done++;
             else if (outcome === "unprotected") unprotected++;
+            else if (outcome === "still-public") stillPublic.push(h);
             else failed++;
           }
-          return (failed || unprotected ? err : ok)(
-            `Created ${done} public link(s)${failed ? `; ${failed} failed` : ""}${unprotected ? `; ${unprotected} withdrawn because MEGA would not password-protect them (that needs a Pro account)` : ""}.`,
-            { created: done, failed, unprotected }
+          return (failed || unprotected || stillPublic.length ? err : ok)(
+            `Created ${done} public link(s)${failed ? `; ${failed} failed` : ""}${unprotected ? `; ${unprotected} withdrawn because MEGA would not apply the password or expiry (that needs a Pro account)` : ""}${stillPublic.length ? `; ${stillPublic.length} could NOT be withdrawn and are public WITHOUT a password (${stillPublic.join(", ")}) - remove them with action "delete"` : ""}.`,
+            { created: done, failed, unprotected, stillPublic }
           );
         }
-        const rp2 = assertNotStoreCopy(assertNoWildcard(assertRemotePath(remotePath), "remotePath"));
+        const rp2 = assertNotStoreCopy(assertNoVersionName(assertNoWildcard(assertRemotePath(remotePath), "remotePath")));
         if (!confirm) await assertNoStoreCopyBelow(rt, rp2);
+        const same2 = await sameNamed(rt, rp2);
+        if (password && same2.count > 1) {
+          throw new ValidationError(`${same2.count} items are named ${rp2}; a password-protected link is made for one item at a time. Use usePcre to pick them.`);
+        }
+        const placed = [
+          ...unconfirmedWriteLines(rp2),
+          ...await recoveryKeyLinesBelow(rt, [rp2]),
+          ...await syncedWithinLines(rt, rp2, "published"),
+          // An upload key lets anyone with the link add files: a sync brings them to this computer.
+          ...writable ? await writableShareLines(rt, [rp2], "anyone with the writable link", "make a read-only link instead") : []
+        ];
+        const contents = await contentDigest(rt, rp2);
+        const existing = same2.count <= 1 ? ownExportLink((await rt.run("export", [rp2])).stdout, rp2) : null;
+        if (existing && (password || exp || writable || megaHosted)) {
+          throw new ValidationError(`${rp2} already has a public link, and MEGA cannot add options to it. Remove it (action "delete") and create it again with those options.`);
+        }
         const gate2 = checkConfirm(
           rt,
           "mega_export:create",
-          { remotePath: rp2, writable, megaHosted, password: secretBinding(password), expire: expire ?? null },
+          { remotePath: rp2, writable, megaHosted, password: secretBinding(password), expire: expire ?? null, items: same2.count, placed, existing: existing !== null, contents },
           confirm,
-          [
+          existing ? [
+            `${rp2} already has a public link. Confirming shows it in full, with its key: anyone who gets it can open ${rp2} (also where a password was set on the link elsewhere).`,
+            ...placed
+          ] : [
             `This will create a PUBLIC link for ${rp2} that anyone with the URL can access.${writable ? " This is a WRITABLE link \u2014 anyone with the URL can UPLOAD into the folder." : ""}`,
-            ...exportOptionLines(megaHosted, password, exp)
+            ...exportOptionLines(megaHosted, password, exp),
+            ...same2.lines,
+            ...placed
           ]
         );
         if (gate2) return gate2;
         await assertNoStoreCopyBelow(rt, rp2);
+        if (existing) {
+          const now = ownExportLink((await rt.run("export", [rp2])).stdout, rp2);
+          if (!now) return err(`${rp2} no longer has a public link.`, { remotePath: rp2 });
+          return ok(`Public link for ${rp2}:
+${now}`, { remotePath: rp2, link: now, existing: true });
+        }
         const r = await rt.run("export", createArgs(rp2));
-        if (r.code !== 0) return err(classifyExit(r), { ok: false, code: r.code });
-        const link = parseExportLink(r.stdout);
+        if (r.code !== 0) {
+          const made = exp || password ? ownExportLink((await rt.run("export", [rp2])).stdout, rp2) : null;
+          if (made && (exp || !isPasswordProtected(made))) {
+            const gone = (await rt.run("export", ["-d", rp2])).code === 0;
+            const what = exp ? "without the expiry" : "without the password";
+            return err(`${classifyExit(r)} ${gone ? `The link MEGA made ${what} was removed again.` : `The link MEGA made ${what} could NOT be removed: ${rp2} is public now. Remove it with action "delete".`}`, { ok: false, code: r.code, withdrawn: gone });
+          }
+          return err(classifyExit(r), { ok: false, code: r.code });
+        }
+        const link = parseCreatedLink(r.stdout);
         if (password && !isPasswordProtected(link)) {
-          await rt.run("export", ["-d", rp2]);
+          if ((await rt.run("export", ["-d", rp2])).code !== 0) {
+            return err(
+              `MEGA created the link for ${rp2} WITHOUT a password (password-protected links need a Pro account), and removing it again FAILED: ${rp2} is public now, without a password. Remove the link with action "delete".`,
+              { remotePath: rp2, unprotected: true, withdrawn: false }
+            );
+          }
           return err(
             `MEGA created the link for ${rp2} WITHOUT a password (password-protected links need a Pro account), so it was removed again. Nothing is published.`,
             { remotePath: rp2, unprotected: true }
@@ -24397,7 +26569,8 @@ ${t}`);
         return ok(`Removed ${done} public link(s)${failed ? `; ${failed} failed` : ""}.`, { removed: done, failed });
       }
       const rp = assertNoWildcard(assertRemotePath(remotePath), "remotePath");
-      const gate = checkConfirm(rt, "mega_export:delete", { remotePath: rp }, confirm, `This will remove the public link for ${rp}.`);
+      const same = await sameNamed(rt, rp);
+      const gate = checkConfirm(rt, "mega_export:delete", { remotePath: rp, items: same.count }, confirm, [`This will remove the public link for ${rp}.`, ...same.lines]);
       if (gate) return gate;
       return runToResult(rt, "export", ["-d", rp], () => ok(`Public link removed for ${rp}.`, { remotePath: rp }));
     })
@@ -24413,7 +26586,7 @@ ${t}`);
         withEmail: external_exports.string().email().optional().describe("User email (required for add/remove)."),
         level: external_exports.enum(["read", "readwrite", "full", "owner"]).optional().describe('Access level for add (default read). "owner" gives full owner access.'),
         pending: external_exports.boolean().default(false).describe("When listing, also show pending shares."),
-        usePcre: external_exports.boolean().default(false).describe("Interpret remotePath as a PCRE pattern (affects every match)."),
+        usePcre: external_exports.boolean().default(false).describe('Interpret remotePath as a PCRE pattern (affects every match). It starts with "/" and each part of the path is matched on its own, e.g. /Docs/.*\\.pdf$.'),
         confirm: external_exports.string().optional().describe("Confirmation token (add/remove only).")
       },
       annotations: { title: "MEGA: share", destructiveHint: true, openWorldHint: true }
@@ -24430,6 +26603,7 @@ ${t}`);
         const addArgs = (node) => ["-a", `--with=${withEmail}`, `--level=${lvl}`, node];
         if (usePcre) {
           const rp3 = assertNoFlag(remotePath ?? "", "remotePath");
+          const listedAll = [];
           const g = await pcreGate(
             rt,
             "mega_share:add",
@@ -24438,16 +26612,26 @@ ${t}`);
             rp3,
             (n, t) => `This will share ${n} node(s) with ${withEmail} (${level ?? "read"} access):
 ${t}`,
-            (p) => assertNotStoreCopy(p, "A matched node")
+            (p) => {
+              assertNotStoreCopy(p, "A matched node");
+              listedAll.push(p);
+            },
+            {
+              extraLines: async (tops) => [...unconfirmedWriteLines(tops), ...recoveryKeyLines(listedAll), ...await syncedWithinLines(rt, tops, "shared"), ...lvl === "0" ? [] : await writableShareLines(rt, tops, withEmail)],
+              bindContents: true
+            }
           );
           if (!g.proceed) return g.result;
           if (g.handles.length === 0) return ok("No matching nodes.", { shared: 0 });
           const { done, failed } = await runPerHandle(rt, "share", g.handles, addArgs);
           return ok(`Shared ${done} node(s) with ${withEmail}${failed ? `; ${failed} failed` : ""}.`, { withEmail, shared: done, failed });
         }
-        const rp2 = assertNotStoreCopy(assertNoWildcard(assertRemotePath(remotePath ?? "", "remotePath"), "remotePath"));
+        const rp2 = assertNotStoreCopy(assertNoVersionName(assertNoWildcard(assertRemotePath(remotePath ?? "", "remotePath"), "remotePath")));
         if (!confirm) await assertNoStoreCopyBelow(rt, rp2);
-        const gate2 = checkConfirm(rt, "mega_share:add", { remotePath: rp2, withEmail, level: level ?? "read" }, confirm, `This will share ${rp2} with ${withEmail} (${level ?? "read"} access).`);
+        const same2 = await sameNamed(rt, rp2);
+        const placed = [...unconfirmedWriteLines(rp2), ...await recoveryKeyLinesBelow(rt, [rp2]), ...await syncedWithinLines(rt, rp2, "shared"), ...lvl === "0" ? [] : await writableShareLines(rt, [rp2], withEmail)];
+        const contents = await contentDigest(rt, rp2);
+        const gate2 = checkConfirm(rt, "mega_share:add", { remotePath: rp2, withEmail, level: level ?? "read", items: same2.count, placed, contents }, confirm, [`This will share ${rp2} with ${withEmail} (${level ?? "read"} access).`, ...same2.lines, ...placed]);
         if (gate2) return gate2;
         await assertNoStoreCopyBelow(rt, rp2);
         return runToResult(rt, "share", addArgs(rp2), () => ok(`Shared ${rp2} with ${withEmail} (${level ?? "read"}).`, { remotePath: rp2, withEmail, level: level ?? "read" }));
@@ -24463,7 +26647,8 @@ ${t}`);
         return ok(`Revoked ${withEmail}'s access to ${done} node(s)${failed ? `; ${failed} failed` : ""}.`, { withEmail, revoked: done, failed });
       }
       const rp = assertNoWildcard(assertRemotePath(remotePath ?? "", "remotePath"), "remotePath");
-      const gate = checkConfirm(rt, "mega_share:remove", { remotePath: rp, withEmail }, confirm, `This will revoke ${withEmail}'s access to ${rp}.`);
+      const same = await sameNamed(rt, rp);
+      const gate = checkConfirm(rt, "mega_share:remove", { remotePath: rp, withEmail, items: same.count }, confirm, [`This will revoke ${withEmail}'s access to ${rp}.`, ...same.lines]);
       if (gate) return gate;
       return runToResult(rt, "share", rmArgs(rp), () => ok(`Revoked ${withEmail}'s access to ${rp}.`, { remotePath: rp, withEmail }));
     })
@@ -24535,6 +26720,12 @@ function registerContacts(server, rt) {
 // src/tools/manage.ts
 var TRANSFER_FLAG = { pause: "-p", resume: "-r", cancel: "-c" };
 var IPC_FLAG = { accept: "-a", deny: "-d", ignore: "-i" };
+var KNOWN_ATTRS = {
+  "^!dv": (v) => [
+    v === "1" ? "This turns file VERSIONING OFF for the whole account: from then on a replaced file is deleted, not kept as an older version." : 'This sets whether file versioning is off ("1") or on ("0") for the whole account.'
+  ],
+  "^!rubbishtime": (v) => [`This sets how many days the Rubbish Bin keeps deleted items before they are removed for good (${v}).`]
+};
 function registerManage(server, rt) {
   server.registerTool(
     "mega_attr_set",
@@ -24551,15 +26742,19 @@ function registerManage(server, rt) {
       annotations: { title: "MEGA: set node attribute", destructiveHint: true, openWorldHint: true }
     },
     async ({ remotePath, attribute, action, value, confirm }) => guardRun(async () => {
-      const rp = assertNoWildcard(assertRemotePath(remotePath), "remotePath");
+      const rp = assertNoVersionName(assertNoWildcard(assertRemotePath(remotePath), "remotePath"));
       const attr = assertNoFlag(attribute, "attribute");
+      if (attr.toLowerCase() === "s4") throw new ValidationError("The s4 attribute (S4 storage configuration) is not changed through this tool.");
+      if (attr.toUpperCase() === "BACKST") throw new ValidationError("The BACKST attribute (the state of a periodic backup's copy) is not changed through this tool.");
       if (action === "set" && (value === void 0 || value.trim() === "")) {
         throw new ValidationError('value is required for action="set".');
       }
       const val = action === "set" ? assertNoFlag(value, "value") : null;
       const summary = action === "set" ? `This will set attribute "${attr}" to "${val}" on ${rp}.` : `This will delete attribute "${attr}" from ${rp}.`;
-      const gate = checkConfirm(rt, "mega_attr_set", { remotePath: rp, attribute: attr, action, value: val }, confirm, summary);
+      const notes = action === "set" ? await destinationNotes(rt, rp) : [];
+      const gate = checkConfirm(rt, "mega_attr_set", { remotePath: rp, attribute: attr, action, value: val, notes }, confirm, [summary, ...notes]);
       if (gate) return gate;
+      noteSessionChange(rp, `attribute "${attr}" ${action === "set" ? "set" : "removed"}`);
       const args = action === "set" ? [rp, "-s", attr, val] : [rp, "-d", attr];
       return runToResult(rt, "attr", args, () => ok(summary.replace(/^This will /, "Done: "), { remotePath: rp, attribute: attr, action }));
     })
@@ -24579,7 +26774,7 @@ function registerManage(server, rt) {
     async ({ attribute, value, confirm }) => guardRun(async () => {
       const attr = assertNoFlag(attribute, "attribute");
       const val = assertNoFlag(value, "value");
-      const summary = `This will set your profile attribute "${attr}" to "${val}".`;
+      const summary = [`This will set your profile attribute "${attr}" to "${val}".`, ...KNOWN_ATTRS[attr]?.(val) ?? []];
       const gate = checkConfirm(rt, "mega_userattr_set", { attribute: attr, value: val }, confirm, summary);
       if (gate) return gate;
       return runToResult(rt, "userattr", ["-s", attr, val], () => ok(`Set profile attribute "${attr}".`, { attribute: attr }));
@@ -24695,10 +26890,17 @@ function registerManage(server, rt) {
         throw new ValidationError("link must be a MEGA public link (https://mega.nz/file/... or /folder/...).");
       }
       const pw = password === void 0 ? void 0 : assertSecret(password, "password");
-      const rp = assertRemotePath(remotePath);
-      const notes = confirm ? [] : await destinationNotes(rt, rp);
-      const summary = [`This will import the contents of the link ${lk} into ${rp}.`, ...notes];
-      const gate = checkConfirm(rt, "mega_import", { link: lk, remotePath: rp, password: secretBinding(password) }, confirm, summary);
+      const rp = assertNoWildcard(assertRemoteDest(remotePath), "remotePath");
+      await assertSyncedLanding(rt, rp, "unknown");
+      const notes = [...await destinationNotes(rt, rp), ...await backupFolderLines(rt, rp)];
+      const bareFolder = /^https:\/\/(?:mega\.nz|mega\.co\.nz|mega\.app)\/(?:folder\/[A-Za-z0-9_-]+#[A-Za-z0-9_-]+|#F![A-Za-z0-9_-]+![A-Za-z0-9_-]+)$/.test(lk);
+      const fileLink = !bareFolder;
+      const summary = [
+        `This will import the contents of the link ${lk} into ${rp}.`,
+        ...fileLink ? [`If ${rp} already holds a file with the linked file's name, that file is REPLACED (kept only as an older version, if file versioning is on).`] : [],
+        ...notes
+      ];
+      const gate = checkConfirm(rt, "mega_import", { link: lk, remotePath: rp, password: secretBinding(password), notes }, confirm, summary);
       if (gate) return gate;
       const args = [lk, ...pw ? [`--password=${pw}`] : [], rp];
       return runToResult(rt, "import", args, () => ok(`Imported the link into ${rp}.`, { remotePath: rp }));
@@ -24782,6 +26984,9 @@ function registerConfig(server, rt) {
           break;
         case "permissions":
           if (!target) throw new ValidationError('permissions requires target ("files" or "folders") when setting a value.');
+          if (target === "files" && /[1357]/.test(v)) {
+            throw new ValidationError('File permissions cannot include execute bits (use e.g. "600" or "644").');
+          }
           args = [`--${target}`, "-s", v];
           break;
         default:
@@ -24801,9 +27006,95 @@ function registerConfig(server, rt) {
 }
 
 // src/tools/sync.ts
+import { existsSync as existsSync5, lstatSync as lstatSync4, readFileSync as readFileSync3, realpathSync as realpathSync5, writeFileSync as writeFileSync2 } from "node:fs";
+import { join as join8, basename as basename5 } from "node:path";
 var RO4 = { readOnlyHint: true, openWorldHint: true };
 var SYNC_CTRL = { pause: "-p", resume: "-e", delete: "-d" };
+async function addIgnoreRules(rt, lp, rules) {
+  const file = join8(lp, ".megaignore");
+  const block = [IGNORE_HEADER, ...rules, "-sync:.megaignore"].join("\n") + "\n";
+  if (existsSync5(file) || isSymlink2(file)) {
+    if (lstatSync4(file).isSymbolicLink() || !lstatSync4(file).isFile()) {
+      throw new ValidationError(`${file} is not a regular file; not writing exclusion rules through it. Nothing was synced.`);
+    }
+    const content = readFileSync3(file, "utf8");
+    if (content.endsWith(block)) return;
+    writeFileSync2(file, `${content}${content === "" || content.endsWith("\n") ? "" : "\n"}${block}`);
+    return;
+  }
+  const d = await rt.run("sync-ignore", ["--show", "DEFAULT"]);
+  const shown = d.code === 0 ? d.stdout.trim() : "";
+  const defaults = shown ? `${shown}
+` : `${SDK_DEFAULT_EXCLUSIONS.map((n) => `-:${n}`).join("\n")}
+`;
+  writeFileSync2(file, `${defaults}${block}`, { flag: "wx" });
+}
+var SDK_DEFAULT_EXCLUSIONS = ["Thumbs.db", "desktop.ini", "~*", ".*", "*~.*", "*.crdownload", "*.sb-????????-??????", "*.tmp"];
+function rootRulesLines(lp) {
+  const f = rootIgnoreFile(lp);
+  return f ? [`${f} already exists: its own rules decide what else is synced (MEGA's default exclusions apply only if it lists them).`] : [];
+}
+var IGNORE_HEADER = "# Added by MEGA Cloud MCP: never sync MEGAcmd's session store or these app folders.";
+function isSymlink2(p) {
+  try {
+    return lstatSync4(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+function excludesStore(rule) {
+  const m = rule.match(/^-([adfs]?)([Nnp]?)([GgRr]?):(.*)$/);
+  if (!m) return false;
+  if (m[1] === "f" || m[1] === "s") return false;
+  if (m[3] === "R" || m[3] === "r") return true;
+  return m[4].split("/").some((seg) => seg.toLowerCase() === ".megacmd" || /[*?]/.test(seg) && globCanMatchStoreName(seg));
+}
+function assertFiltersKeepExclusions(action, filters) {
+  for (const f of filters) {
+    const rule = action === "add-exclusion" || action === "remove-exclusion" ? `-${f.replace(/^-/, "")}` : f;
+    if (action.startsWith("add") && rule.startsWith("+")) {
+      throw new ValidationError(`Include filters ("${f}") are not added through this tool: one could re-include MEGAcmd's session store or a protected folder. Edit the .megaignore file yourself if you need it.`);
+    }
+    if (action.startsWith("remove") && (/megacmd/i.test(rule) || /^-ap[gr]:/i.test(rule) || /sync:\.megaignore/i.test(rule) || excludesStore(rule))) {
+      throw new ValidationError(`"${f}" keeps MEGAcmd's session store, a protected folder or the sync's own rules out of the sync; it is not removed through this tool.`);
+    }
+  }
+}
 function registerSync(server, rt) {
+  const resumeSync = async (sid, confirm, done) => {
+    const row = await syncById(rt, sid);
+    if (row === void 0) throw new ValidationError(`Could not read MEGAcmd's list of syncs, so what resuming sync ${sid} would carry is unknown. Nothing was run.`);
+    if (row === null) throw new ValidationError(`There is no sync ${sid}; mega_sync_list shows the ids.`);
+    const lp = assertLocalPath(row.local);
+    if (lp !== row.local) throw new ValidationError(`Sync ${sid}'s local folder "${row.local}" cannot be checked under that spelling; resume it yourself in MEGAcmd if intended.`);
+    const rp = row.remote;
+    if (!await folderStillAt(rt, rp, row.handle)) {
+      throw new ValidationError(`Sync ${sid}'s cloud folder is no longer at ${rp} (moved or renamed while paused), so what resuming it would carry cannot be checked. Delete this sync and add it again with mega_sync_add.`);
+    }
+    const exclusions = syncExclusions(lp, await rt.getBinDir());
+    await assertNoStoreCopyBelow(rt, rp);
+    await assertNoFoldTwinBelow(rt, rp, exclusions.filter((e) => e.rel !== "").map((e) => e.rel));
+    await assertNoNestedIgnoreFile(rt, rp);
+    await assertNoNestedLocalIgnoreFile(rt, lp);
+    await assertNoWritersReach(rt, rp, lp);
+    await assertNoPendingIgnoreUpload(rt, rp);
+    const execNote = await executableDownloadNote(rt);
+    const notes = [...await destinationNotes(rt, rp), ...await sharedBelowNotes(rt, rp)];
+    const downloaded = downloadedIntoLines([lp]);
+    const summary = [
+      `This will resume sync ${sid}: a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. What changed on either side while it was paused (including deletions) propagates to the other, and so does every later change.`,
+      ...exclusions.length > 0 ? ["", `Never synced, in either direction (rules in ${join8(lp, ".megaignore")}):`, ...exclusions.map((e) => `  ${e.label}`)] : [],
+      ...rootRulesLines(lp),
+      ...execNote ? [execNote] : [],
+      ...notes,
+      ...downloaded
+    ];
+    const gate = checkConfirm(rt, "mega_sync_control", { action: "resume", id: sid, localPath: lp, remotePath: rp, handle: row.handle, exclusions: exclusions.map((e) => e.rule), root: rootRulesLines(lp), exec: execNote, notes, downloaded }, confirm, summary);
+    if (gate) return gate;
+    await assertNoStoreCopyBelow(rt, rp);
+    if (exclusions.length > 0) await addIgnoreRules(rt, lp, exclusions.map((e) => e.rule));
+    return runToResult(rt, "sync", [SYNC_CTRL.resume, sid], done);
+  };
   server.registerTool(
     "mega_sync_list",
     {
@@ -24833,16 +27124,30 @@ function registerSync(server, rt) {
     },
     async ({ localPath, remotePath, confirm }) => guardRun(async () => {
       const lp = assertLocalPath(localPath);
-      const rp = assertNotStoreCopy(assertRemotePath(remotePath));
-      assertNoStoreWithin(lp, "sync", await rt.getBinDir());
-      assertNoProtectedWithin(lp, "sync");
-      if (!confirm) await assertNoStoreCopyBelow(rt, rp);
-      const notes = confirm ? [] : await destinationNotes(rt, rp);
-      const summary = [`This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`, ...notes];
-      const gate = checkConfirm(rt, "mega_sync_add", { localPath: lp, remotePath: rp }, confirm, summary);
+      const rp = assertNotStoreCopy(assertNoWildcard(assertRemoteDest(remotePath), "remotePath"));
+      const exclusions = syncExclusions(lp, await rt.getBinDir());
+      await assertNoStoreCopyBelow(rt, rp);
+      await assertNoFoldTwinBelow(rt, rp, exclusions.filter((e) => e.rel !== "").map((e) => e.rel));
+      await assertNoNestedIgnoreFile(rt, rp);
+      await assertNoNestedLocalIgnoreFile(rt, lp);
+      await assertNoWritersReach(rt, rp, lp);
+      await assertNoPendingIgnoreUpload(rt, rp);
+      const execNote = await executableDownloadNote(rt);
+      const notes = [...await destinationNotes(rt, rp), ...await sharedBelowNotes(rt, rp)];
+      const downloaded = downloadedIntoLines([lp]);
+      const summary = [
+        `This will start a CONTINUOUS TWO-WAY sync between ${lp} and ${rp}. From now on, changes (including deletions) on either side propagate to the other.`,
+        ...exclusions.length > 0 ? ["", `Never synced, in either direction (rules added to ${join8(lp, ".megaignore")}):`, ...exclusions.map((e) => `  ${e.label}`)] : [],
+        ...rootRulesLines(lp),
+        ...execNote ? [execNote] : [],
+        ...notes,
+        ...downloaded
+      ];
+      const gate = checkConfirm(rt, "mega_sync_add", { localPath: lp, remotePath: rp, exclusions: exclusions.map((e) => e.rule), root: rootRulesLines(lp), exec: execNote, notes, downloaded }, confirm, summary);
       if (gate) return gate;
       await assertNoStoreCopyBelow(rt, rp);
-      return runToResult(rt, "sync", [lp, rp], () => ok(`Started sync ${lp} <-> ${rp}.`, { localPath: lp, remotePath: rp }));
+      if (exclusions.length > 0) await addIgnoreRules(rt, lp, exclusions.map((e) => e.rule));
+      return runToResult(rt, "sync", [lp, rp], () => ok(`Started sync ${lp} <-> ${rp}.`, { localPath: lp, remotePath: rp, excluded: exclusions.map((e) => e.label) }));
     })
   );
   server.registerTool(
@@ -24859,10 +27164,12 @@ function registerSync(server, rt) {
     },
     async ({ action, id, confirm }) => guardRun(async () => {
       const sid = assertNoFlag(id, "id");
+      const done = () => ok(`Done: ${action} sync ${sid}.`, { action, id: sid });
+      if (action === "resume") return resumeSync(sid, confirm, done);
       const summary = action === "delete" ? `This will delete sync ${sid} (stops mirroring; does not delete files).` : `This will ${action} sync ${sid}.`;
       const gate = checkConfirm(rt, "mega_sync_control", { action, id: sid }, confirm, summary);
       if (gate) return gate;
-      return runToResult(rt, "sync", [SYNC_CTRL[action], sid], () => ok(summary.replace(/^This will /, "Done: "), { action, id: sid }));
+      return runToResult(rt, "sync", [SYNC_CTRL[action], sid], done);
     })
   );
   server.registerTool(
@@ -24897,12 +27204,27 @@ function registerSync(server, rt) {
     },
     async ({ localPath, remotePath, period, numBackups, confirm }) => guardRun(async () => {
       const lp = assertLocalPath(localPath);
-      const rp = assertRemotePath(remotePath);
+      const rp = assertNoWildcard(assertRemoteDest(remotePath), "remotePath");
       const per = assertFlagValue(period, "period");
-      assertNoStoreWithin(lp, "back up", await rt.getBinDir());
-      const notes = confirm ? [] : await destinationNotes(rt, rp);
-      const summary = [`This will configure a periodic backup of ${lp} into ${rp} (period "${per}", keep ${numBackups}).`, ...notes];
-      const gate = checkConfirm(rt, "mega_backup_add", { localPath: lp, remotePath: rp, period: per, numBackups }, confirm, summary);
+      const walkNote = assertNoStoreWithin(lp, "back up", await rt.getBinDir());
+      await assertSyncedLanding(rt, rp, "unknown", { local: [lp] });
+      let real = lp;
+      try {
+        real = realpathSync5.native(lp);
+      } catch {
+      }
+      const bases = [.../* @__PURE__ */ new Set([...backupNamesOf(lp), ...backupNamesOf(real)])];
+      const name = bases[0] ?? basename5(lp);
+      const here = await childNames(rt, rp);
+      const older = here ? [...here].filter((n) => bases.some((b) => n.normalize("NFC").startsWith(b)) && n.includes("_bk_")) : [];
+      const notes = [
+        ...walkNote,
+        ...await destinationNotes(rt, rp),
+        ...older.length > 0 ? [`${rp} already holds ${older.length} folder(s) that MEGA counts as backups of a folder named ${name}: beyond ${numBackups} copies the oldest are DELETED, whoever made them:`, ...listedLines(older)] : []
+      ];
+      const downloaded = downloadedIntoLines([lp]);
+      const summary = [`This will configure a periodic backup of ${lp} into ${rp} (period "${per}", keep ${numBackups}).`, ...notes, ...downloaded];
+      const gate = checkConfirm(rt, "mega_backup_add", { localPath: lp, remotePath: rp, period: per, numBackups, notes, downloaded }, confirm, summary);
       if (gate) return gate;
       const args = [lp, rp, `--period=${per}`, `--num-backups=${numBackups}`];
       return runToResult(rt, "backup", args, () => ok(`Configured backup ${lp} -> ${rp}.`, { localPath: lp, remotePath: rp }));
@@ -24965,11 +27287,11 @@ function registerSync(server, rt) {
     "mega_sync_ignore",
     {
       title: "MEGA: sync ignore filters",
-      description: 'View or modify the ignore filters of a sync (use target="DEFAULT" for the defaults applied to new syncs). action="show" is read-only; add/remove change what is synced and require confirmation.',
+      description: `View or modify the ignore filters of a sync (use target="DEFAULT" for the defaults applied to new syncs). action="show" is read-only; the others change what is synced and require confirmation. Use add-exclusion / remove-exclusion with the filter WITHOUT its leading "-" (e.g. ":*.tmp", "d:node_modules"). Include filters ("+...") are not added through this tool, and the rules that keep MEGAcmd's session store and protected folders out (including MEGA's default ":.*") are not removed.`,
       inputSchema: {
         action: external_exports.enum(["show", "add", "add-exclusion", "remove", "remove-exclusion"]).describe("Operation on the filters."),
         target: external_exports.string().describe('Sync ID, local path, or "DEFAULT".'),
-        filters: external_exports.array(external_exports.string()).optional().describe("Filter patterns (required for add/remove actions)."),
+        filters: external_exports.array(external_exports.string()).optional().describe(`Filters in MEGA's <CLASS><TARGET><TYPE><STRATEGY>:<PATTERN> form (for the *-exclusion actions, without the leading "-").`),
         confirm: external_exports.string().optional().describe("Confirmation token from the first call.")
       },
       // Destructive: removing an exclusion starts uploading what it kept out.
@@ -24979,15 +27301,32 @@ function registerSync(server, rt) {
       const tgt = assertNoFlag(target, "target");
       if (action === "show") {
         return runToResult(rt, "sync-ignore", ["--show", tgt], (r) => {
-          const { text, total, truncated } = capLines(r.stdout, rt.config.maxListLines);
-          return ok(text || "(no filters)", { target: tgt, filterCount: total, truncated });
+          const lines = r.stdout.split(/\r?\n/).filter((l) => l.trim() !== "");
+          const rules = lines.filter((l) => /^[-+](?:[adfs]?[Nnp]?[GgRr]?|sync):.+$|^exclude-(?:larger|smaller):\s*\d+[kKmMgGtT]?\s*$/.test(l.trim()));
+          const other = lines.length - rules.length;
+          const { text, total, truncated } = capLines(rules.join("\n"), rt.config.maxListLines);
+          return ok(`${text || "(no filters)"}${other ? `
+(${other} other line(s) that are not filter rules are not shown.)` : ""}`, { target: tgt, filterCount: total, truncated, hidden: other });
         });
       }
       const fs = (filters ?? []).map((f) => assertNoFlag(f, "filter"));
       if (fs.length === 0) throw new ValidationError("Provide at least one filter for add/remove.");
-      assertPlanSize(fs.length, "filters");
-      const summary = [`This will ${action} ${fs.length} filter(s) on sync ${tgt} (changes what gets synced):`, ...fs.map((f) => `  ${f}`)];
-      const gate = checkConfirm(rt, "mega_sync_ignore", { action, target: tgt, filters: fs }, confirm, summary);
+      assertFiltersKeepExclusions(action, fs);
+      let where = ["(DEFAULT: the filters new syncs start with; existing syncs keep theirs.)"];
+      if (tgt.toLowerCase() !== "default") {
+        const row = await syncById(rt, tgt);
+        if (row === void 0) throw new ValidationError(`Could not read MEGAcmd's list of syncs, so which folders sync ${tgt} covers is unknown. Nothing was run.`);
+        if (row === null) throw new ValidationError(`There is no sync ${tgt}; mega_sync_list shows the ids.`);
+        where = [
+          `Sync ${tgt} is between ${row.local} and ${row.remote}.`,
+          ...action.startsWith("remove") ? [`What these rules kept out is synced from then on: uploaded to ${row.remote} and downloaded to ${row.local}.`] : [],
+          ...await destinationNotes(rt, row.remote),
+          // Newly included files go into every folder of the sync, shared or linked ones too.
+          ...action.startsWith("remove") ? await sharedBelowNotes(rt, row.remote) : []
+        ];
+      }
+      const summary = [`This will ${action} ${fs.length} filter(s) on sync ${tgt} (changes what gets synced):`, ...listedLines(fs), ...where];
+      const gate = checkConfirm(rt, "mega_sync_ignore", { action, target: tgt, filters: fs, where }, confirm, summary);
       if (gate) return gate;
       return runToResult(rt, "sync-ignore", [`--${action}`, ...fs, tgt], () => ok(`Done: ${action} ${fs.length} filter(s) on sync ${tgt}.`, { action, target: tgt }));
     })
@@ -24995,6 +27334,7 @@ function registerSync(server, rt) {
 }
 
 // src/tools/cat.ts
+import { posix as posix4 } from "node:path";
 var DEFAULT_MAX = 1048576;
 var HARD_MAX = 10485760;
 var NUL = String.fromCharCode(0);
@@ -25014,6 +27354,10 @@ function looksBinary(s) {
   }
   return nonText / sample.length > 0.05;
 }
+function looksLikeRecoveryKey(line) {
+  return /^[A-Za-z0-9_-]{22}$/.test(line) && /[a-z]/.test(line) && /[A-Z]/.test(line);
+}
+var RECOVERY_KEY_REFUSAL = "This looks like the account's MEGA recovery key, which is its master key: it is not read into the conversation.";
 function registerCat(server, rt, allowed) {
   const tool = server.registerTool(
     "mega_cat",
@@ -25027,13 +27371,33 @@ function registerCat(server, rt, allowed) {
       annotations: { title: "MEGA: read file", readOnlyHint: true, openWorldHint: true }
     },
     async ({ remotePath, maxBytes }) => guardRun(async () => {
-      if (allowed && !allowed()) {
+      const refused = () => {
+        if (!allowed || allowed()) return null;
         tool.disable();
         return err("Reading file contents was turned off. Ask the user, then call mega_file_reading to turn it on again.");
+      };
+      const off = refused();
+      if (off) return off;
+      const rp = assertNoWildcard(assertNotStoreCopy(assertRemotePath(remotePath)), "remotePath");
+      if (isRecoveryKeyName(posix4.basename(rp))) {
+        return err(RECOVERY_KEY_REFUSAL, { remotePath: rp });
       }
-      const rp = assertNotStoreCopy(assertRemotePath(remotePath));
+      const { same, r } = await withWriteLock(async () => {
+        const same2 = await sameNamed(rt, rp);
+        if (same2.count < 0 || same2.count > 1 || refused()) return { same: same2, r: null };
+        return { same: same2, r: await rt.run("cat", [rp], { maxBuffer: Math.min(maxBytes ?? DEFAULT_MAX, HARD_MAX) }) };
+      });
+      const late2 = refused();
+      if (late2) return late2;
+      if (same.count === -1) return err(`Could not check how many files are named ${rp}; nothing was read.`, { remotePath: rp });
+      if (same.count > 1) {
+        return err(
+          `${same.count} files are named ${rp} (or match it as a pattern); MEGAcmd would print all of them as one text. List them with mega_find or mega_ls and read each one by its own path (files that share one exact name need one renamed first).`,
+          { remotePath: rp }
+        );
+      }
       const cap = Math.min(maxBytes ?? DEFAULT_MAX, HARD_MAX);
-      const r = await rt.run("cat", [rp], { maxBuffer: cap });
+      if (!r) return err(`Could not read ${rp}.`, { remotePath: rp });
       if (r.maxBufferExceeded) {
         return err(
           `File exceeds the ${Math.floor(cap / 1024)} KB read cap. Raise maxBytes (up to 10 MB), or the file is too large to read inline \u2014 download it with mega_get instead.`,
@@ -25048,6 +27412,8 @@ function registerCat(server, rt, allowed) {
           bytes: r.stdout.length
         });
       }
+      if (r.stdout.split(/\r?\n/).some((l) => looksLikeRecoveryKey(l.trim()))) return err(RECOVERY_KEY_REFUSAL, { remotePath: rp });
+      if (/^[A-Za-z0-9_-]{22}$/.test(r.stdout.trim())) return err(RECOVERY_KEY_REFUSAL, { remotePath: rp });
       return { content: [{ type: "text", text: r.stdout.length ? r.stdout : "(empty file)" }] };
     })
   );
@@ -25104,7 +27470,17 @@ function registerFileReading(server, rt, cat, grant = {}) {
 var isPluginBuild = true;
 
 // src/tools/index.ts
-function registerAll(server, rt) {
+var SERIALIZED = /* @__PURE__ */ new Set(["mega_cp", "mega_mkdir", "mega_mv", "mega_put", "mega_share", "mega_export", "mega_import", "mega_sync_add", "mega_sync_control", "mega_sync_ignore", "mega_backup_add", "mega_backup_control", "mega_thumbnail", "mega_attr_set", "mega_rm", "mega_deleteversions", "mega_user_remove"]);
+function serializeWrites(server) {
+  return new Proxy(server, {
+    get(target, prop, receiver) {
+      if (prop !== "registerTool") return Reflect.get(target, prop, receiver);
+      return (name, config2, cb) => target.registerTool.call(target, name, config2, SERIALIZED.has(name) ? (...args) => withWriteLock(() => cb(...args)) : cb);
+    }
+  });
+}
+function registerAll(mcp, rt) {
+  const server = serializeWrites(mcp);
   registerSetup(server, rt);
   registerWhoami(server, rt);
   registerAccount(server, rt);
@@ -25128,7 +27504,8 @@ function registerFileTools(server, rt) {
 function registerPluginFileTools(server, rt) {
   if (rt.config.fileContentsForcedOff) return;
   const grant = {};
-  const allowed = () => rt.config.exposeFileContents || readRemembered(rt.config) || grant.gen !== void 0 && readGeneration(rt.config) === grant.gen;
+  const startGen = readGeneration(rt.config) ?? 0;
+  const allowed = () => rt.config.exposeFileContents && (readGeneration(rt.config) ?? 0) <= startGen || readRemembered(rt.config) || grant.gen !== void 0 && readGeneration(rt.config) === grant.gen;
   const cat = registerCat(server, rt, allowed);
   if (!(rt.config.exposeFileContents || readRemembered(rt.config))) cat.disable();
   registerFileReading(server, rt, cat, grant);
@@ -25136,10 +27513,10 @@ function registerPluginFileTools(server, rt) {
 
 // src/index.ts
 function resolveVersion() {
-  const here = dirname5(fileURLToPath3(import.meta.url));
+  const here = dirname6(fileURLToPath3(import.meta.url));
   for (const rel of ["../manifest.json", "../package.json", "../.claude-plugin/plugin.json"]) {
     try {
-      const v = JSON.parse(readFileSync2(join8(here, rel), "utf8")).version;
+      const v = JSON.parse(readFileSync4(join9(here, rel), "utf8")).version;
       if (typeof v === "string" && v) return v;
     } catch {
     }
@@ -25155,15 +27532,17 @@ async function main() {
       version: resolveVersion()
     },
     {
+      // A guard against oversized arguments (validated before any tool runs), far above any real list.
+      maxToolInputElements: 1e5,
       instructions: [
         "This server operates the user's MEGA cloud account via the MEGAcmd CLI.",
         "",
         "Setup & login (handle proactively):",
-        '- If any tool reports "MEGAcmd is not available", call `megacmd_setup` to download and verify the MEGAcmd engine. It is confirm-gated and does NOT log in: the first call returns a preview + confirmToken (no download); relay the preview to the user and only call again with that token once they approve.',
+        '- If any tool reports "MEGAcmd is not available", call `megacmd_setup` to download and verify the MEGAcmd engine. It is confirm-gated and does NOT log in: the first call returns a preview + confirmToken (no download); relay the preview to the user and only call again with that token once they approve. On Linux, and when a MEGAcmd is found but fails its signature check, it instead returns what the user has to install or reinstall - relay that.',
         '- Login is OUT-OF-BAND and the user\'s job. There is no login tool by design. NEVER ask for, accept, or pass a MEGA password (or any credential) through any tool or argument. When a tool reports "Not logged in", relay the login instructions from that message VERBATIM \u2014 they tell the user to open the MEGAcmd interactive shell and run `login <email>`, entering the password at a hidden prompt (on macOS, by double-clicking the provided "Login to MEGA.command" file). Do NOT suggest the one-shot `mega-login email password` form (it would put the password in argv/shell history).',
         "- `mega_whoami` reports the current login state (email only).",
         "",
-        "Safety \u2014 these tools use a two-call confirmation protocol: mega_cp, mega_rm, mega_deleteversions, mega_export (create/delete), mega_share (add/remove), mega_mv, mega_put, mega_get, mega_thumbnail, mega_logout, mega_killsession, mega_attr_set, mega_userattr_set, mega_user_remove, mega_user_verify, mega_transfer_control, mega_invite, mega_ipc, mega_import, mega_config (when changing a value or running reload/debug), mega_sync_add, mega_sync_control, mega_sync_ignore (add/remove), mega_backup_add, mega_backup_control. The first call (no `confirm`) returns a preview + `confirmToken` and does NOT execute; relay the preview and only call again with `confirm` set to that token after the user explicitly approves.",
+        "Safety \u2014 these tools use a two-call confirmation protocol: mega_rm, mega_deleteversions, mega_export (create/delete), mega_share (add/remove), mega_mv, mega_put, mega_get, mega_thumbnail, mega_logout, mega_killsession, mega_attr_set, mega_userattr_set, mega_user_remove, mega_user_verify, mega_transfer_control, mega_invite, mega_ipc, mega_import, mega_config (when changing a value or running reload/debug), mega_sync_add, mega_sync_control, mega_sync_ignore (add/remove), mega_backup_add, mega_backup_control, and mega_cp / mega_mkdir only when the destination is shared, publicly linked or invited to, someone else's shared folder, in a two-way synced folder, or cannot be checked, or (cp) would replace a file or make a new version of one - otherwise they run at once. mega_cp and mega_mv take a list (srcs) or a pattern (usePcre) to act on many nodes in one call: do not loop them per file. The first call (no `confirm`) returns a preview + `confirmToken` and does NOT execute; relay the preview and only call again with `confirm` set to that token after the user explicitly approves.",
         "",
         'All cloud paths are absolute MEGA paths starting with "/". Listings are capped.',
         ...isPluginBuild && !config2.fileContentsForcedOff && !config2.exposeFileContents ? [

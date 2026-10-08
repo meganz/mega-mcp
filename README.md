@@ -14,29 +14,39 @@ configuration.
   link). You authenticate **out-of-band** in the MEGAcmd interactive shell
   (`login <email>`, hidden password prompt); this server only issues
   already-authenticated `mega-*` commands.
-- **No session/credential material is ever returned or logged.** `mega_whoami`
+- **The login session and credentials are never returned or logged.** `mega_whoami`
   surfaces only your account email. `mega_account` does run `whoami -l` to read
   the plan tier, but a fail-closed allowlist parser returns only plan + storage —
   the raw `session` id, master/recovery key, and payment data are never returned.
 - Destructive and data-moving actions (`rm`, `deleteversions`, `export`, `share`,
-  `get`, `put`, `cp`, `mv`) are **confirm-gated** via a two-call token protocol: the first
-  call returns a preview plus a single-use token and executes nothing; only a second
-  call carrying that token runs.
+  `get`, `put`, `mv`; `cp` and `mkdir` when others would see the result or it would
+  reach your computer) are **confirm-gated** via a two-call token protocol: the
+  first call returns a preview plus a single-use token and executes nothing; only a
+  second call carrying that token runs.
 - **The session store is off-limits to every tool.** MEGAcmd's `session` file holds
   material from which the account **master key** can be recovered, and unlike a
   session id the master key cannot be rotated. No local path that resolves to that
   store — under `$HOME`, beside the MEGAcmd executable on Windows, or through any
   spelling the OS folds to the same object — can be read or written. Uploading a
   folder that *contains* it (such as your home folder) uploads everything else and
-  leaves the store out; a sync or backup of such a folder is refused, because it
-  cannot leave the store out reliably. A copy already in your cloud drive (from an
-  older version or another app) is refused as well: no tool reads, copies, moves,
-  shares or publishes a `.megaCmd` folder, or a wildcard that could match one.
-  Transfers into the MEGAcmd program directory are refused too, since a file dropped
-  there would be loaded by the MEGAcmd process itself, and so are transfers into
-  the connector's own data directory, which holds your saved "don't ask again"
-  answer for file reading, and into the folder of the macOS login helper. A download or two-way sync that would land *above* any of
-  these — and could therefore create or merge files inside them — is refused as well.
+  leaves the store out. A two-way sync of such a folder leaves it out too, with
+  `.megaignore` rules written before the sync starts - only the store and the
+  folders listed below, by their own paths; everything else (`~/Library` too) is
+  synced. A periodic backup of such a folder is refused, because MEGA's scheduled
+  copies cannot leave anything out (use a two-way sync or an upload instead). A
+  copy already in your cloud drive (from an older version or another app) is
+  refused as well: no tool reads, copies, moves, shares or publishes a `.megaCmd`
+  folder (or anything named starting with `.megaCmd`, such as a `.megaCmd.bak`
+  copy kept aside), or a wildcard that could match one.
+  Transfers into these folders are refused too: the MEGAcmd program (on macOS the
+  whole `MEGAcmd.app`), its cache and socket folders, the connector's own folder and
+  data directory (which holds your saved "don't ask again" answer for file
+  reading), the macOS login helper, the apps' configuration (`~/.claude`,
+  `~/.claude.json`, `~/.codex`, Claude Desktop's settings folders) and the apps
+  themselves (Claude Code's native install, Claude Desktop). A download that
+  would land *above* any of them - and could therefore create or merge files inside
+  them - is refused as well, and a sync leaves them out. Uploading *from* the apps'
+  configuration and the connector's folder is allowed.
 
 > [!NOTE]
 > **What the confirmation protocol is and is not.** MCP has no native confirm
@@ -83,10 +93,12 @@ What this extension does with your data:
   as part of the conversation — e.g. a
   folder you list, a path you act on, or a public link you create. The extension
   deliberately returns only the requested operation's result (listings are
-  capped) and never local file contents or session data.
-- **MEGAcmd download.** On first use the extension downloads MEGAcmd from MEGA's
-  own servers (`https://mega.nz`) and verifies it before running; no telemetry is
-  collected by the extension.
+  capped) and never local file contents without your permission, nor the login
+  session, master key or payment details.
+- **MEGAcmd download.** On first use on macOS and Windows the extension downloads
+  MEGAcmd from MEGA's own servers (`https://mega.nz`) and verifies it before running
+  (on Linux you install MEGA's package yourself); no telemetry is collected by the
+  extension.
 - **Retention/sharing.** This extension stores nothing beyond MEGAcmd's local
   cache/session on your device and shares data with no third party. Data sent to
   your AI provider is handled per that provider's terms.
@@ -201,8 +213,8 @@ Then, in any client:
 ## Requirements
 
 - Node.js >= 18
-- MEGAcmd — acquired automatically on first use (see below). No separate install
-  is required.
+- MEGAcmd — acquired automatically on first use on macOS and Windows (see below).
+  On Linux, install MEGA's `megacmd` package (https://mega.io/cmd).
 
 ## How MEGAcmd is obtained
 
@@ -215,9 +227,11 @@ locates the MEGAcmd binaries in this order:
 4. the per-user **cache** (fallback when the standard location isn't writable)
 5. the system `PATH`
 
-`megacmd_setup` installs MEGAcmd for you on first use, **verifying it before
-running anything**. It is confirm-gated (you approve the one-time download) and
-never logs you in. It installs to the **standard location** so the OS's MEGAcmd
+`megacmd_setup` installs MEGAcmd for you on first use on macOS and Windows,
+**verifying it before running anything**. It is confirm-gated (you approve the
+one-time download) and never logs you in. On Linux it explains how to install the
+package; if a MEGAcmd is found but fails its signature check, it says so and asks
+you to reinstall it. It installs to the **standard location** so the OS's MEGAcmd
 client auto-spawns the server natively.
 
 Per-platform status:
@@ -329,27 +343,37 @@ Don't push to `release` directly or force-push it.
 - Read-only (auto), sync/backup status: `mega_sync_list`, `mega_backup_list`,
   `mega_sync_issues`, `mega_sync_config`
 - Read-only matching options: `ls`/`find` accept `usePcre` (Perl regex) and native
-  `*`/`?` wildcards. The destructive/exfiltration ops (`rm`/`export`/`share`/`get`)
-  also accept `usePcre`, but first show the matched node set in their confirmation
-  preview and then act on exactly those nodes.
+  `*`/`?` wildcards. The destructive/exfiltration ops (`rm`/`export`/`share`/`get`/
+  `mv`/`cp`) also accept `usePcre`, but first show the matched node set (and the
+  pattern) in their confirmation preview and then act on exactly those nodes;
+  `mv` and `cp` also take a list (`srcs`).
 - **Matching many nodes destructively requires `usePcre`.** Since 1.0.2 the
   destructive and link-creating tools no longer accept native `*`/`?` in a path.
   MEGAcmd expands those **server-side, after you approve**, so the preview could
   name one node while several were affected — `usePcre: true` lists the matches
   before you confirm and operates on exactly those.
-- **Every target is listed before you confirm.** One confirmed operation acts on
-  at most 200 items (PCRE matches, `mega_mv` lists, `mega_put` sources, sync
-  filters), and the preview names each one; a larger set is refused, to be split
-  into smaller operations.
-- Mutating (auto): `mega_mkdir`
+- **Every target is bound to your confirmation.** A confirmed operation acts on
+  exactly the items it was previewed with (PCRE matches are pinned by handle);
+  the preview lists the first 200 and says how many there are in total.
+- Mutating (auto): `mega_mkdir`, `mega_cp`. Both ask first when the destination is
+  shared, publicly linked or invited to, someone else's shared folder, in a two-way
+  synced folder (the preview names where it is written on this computer), or
+  cannot be checked, or when the new name is one a periodic backup would count as
+  one of its copies (MEGA deletes the oldest of those for good); `mega_cp` also
+  before it replaces a file or makes a new version of one. Several items need an existing destination
+  folder. Sharing, publishing, copying or moving a folder later names what was
+  placed in it this way during the session.
 - Settings: `mega_config` (show is auto; changing a value, including turning
   HTTPS off, is confirm-gated)
-- Confirm-gated: `mega_cp`, `mega_mv`, `mega_put`, `mega_get`, `mega_thumbnail`, `mega_rm`,
+- Confirm-gated: `mega_mv`, `mega_put`, `mega_get`, `mega_thumbnail`, `mega_rm`,
   `mega_deleteversions`, `mega_export` (create/delete), `mega_share` (add/remove),
   `mega_logout`, `mega_killsession`, `mega_attr_set`, `mega_userattr_set`,
   `mega_user_remove`, `mega_user_verify`, `mega_transfer_control`, `mega_invite`,
   `mega_ipc`, `mega_import`, `mega_sync_add`, `mega_sync_control`,
-  `mega_sync_ignore` (add/remove), `mega_backup_add`, `mega_backup_control`
+  `mega_sync_ignore` (add/remove: exclusions only - include rules, and removing the
+  rules that keep the session store and protected folders out, are refused; show
+  lists rule lines only),
+  `mega_backup_add`, `mega_backup_control`
 - Opt-in only (`expose_contacts`, off by default): `mega_users`, `mega_showpcr`,
   `mega_userattr`. Email addresses are not hidden anywhere: `mega_mount`,
   `mega_share` list and the transfer/sync listings show sharers and recipients as

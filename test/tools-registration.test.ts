@@ -1,7 +1,8 @@
+import { previewSafe } from '../src/tools/helpers.js';
 import { describe, it, expect } from 'vitest';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve, dirname, basename } from 'node:path';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { registerAll } from '../src/tools/index.js';
 import { registerDangerous } from '../src/tools/dangerous.js';
@@ -24,14 +25,30 @@ type ToolFn = (args: any) => Promise<CallToolResult>;
  * a test asserts the commands that actually ACT.
  */
 const isProbe = (a: string[]) =>
-  ((a[0] === 'share' || a[0] === 'export') && a.length === 2 && a[1] === '/') || (a[0] === 'find' && a.includes('--type=d') && a.includes('--print-only-handles'));
+  (a[0] === 'share' && a.length === 3 && a[1] === '-p' && a[2] === '/') ||
+  (a[0] === 'export' && a.length === 2 && a[1] === '/') ||
+  (a[0] === 'find' && a.includes('--type=d') && a.includes('--print-only-handles')) ||
+  (a[0] === 'du' && a.length === 3 && String(a[1]).startsWith('--path-display-size=')) ||
+  (a[0] === 'permissions' && a.join(' ') === 'permissions --files') ||
+  (a[0] === 'sync' && (String(a[1]).startsWith('--output-cols=LOCALPATH') || a[1] === '--output-cols=RUN_STATE')) ||
+  (a[0] === 'ls' && a.length === 2) ||
+  // What a target holds (bound into confirmations), a search for nested
+  // .megaignore files, and the scheduled-backup listing.
+  (a[0] === 'find' && a.length === 3 && a[2] === '--print-only-handles') ||
+  (a[0] === 'find' && a.includes('--type=f') && a.some((x) => x.startsWith('--pattern='))) ||
+  (a[0] === 'backup' && a.length === 2 && String(a[1]).startsWith('--path-display-size='));
 const acting = (argv: string[][]) => argv.filter((a) => !isProbe(a));
 
 function fakeRt(config: Partial<Config> = {}, run?: Runtime['run'], binDir: string | null = null): Runtime {
   return {
     config: { maxListLines: 1000, cacheDir: '/tmp/cache', download: { sha256Allow: [] }, exposeContacts: false, exposeAccountDetails: false, exposeFileContents: false, ...config },
     confirm: createConfirmStore(),
-    run: run ?? (async () => ({ code: 0, stdout: '', stderr: '' }) as RunResult),
+    // An idle MEGAcmd's `transfers --summary` unless the test's own run answers it.
+    run: async (cmd, args, opts) => {
+      const r = run ? await run(cmd, args, opts) : ({ code: 0, stdout: '', stderr: '' } as RunResult);
+      if (cmd === 'transfers' && args[0] === '--summary' && !r.stdout) return { ...r, code: 0, stdout: `NUM DOWNLOADS\n${'0'.padStart(16)}${'0 B'.padStart(12)}${'0 B'.padStart(12)}${'0%'.padStart(8)}     ${'0'.padStart(16)}\n` };
+      return r;
+    },
     getResolved: async () => null,
     // Defaults to null like the real 'path' source. The store check needs a REAL
     // value on Windows (the store is executable-relative), so tests that assert on
@@ -171,18 +188,24 @@ describe('session-store exfiltration is refused by the tools themselves', () => 
 
   // A continuous sync/backup cannot leave the store out, so a folder containing it
   // is refused outright — before any preview, and without running anything.
-  it('mega_sync_add / mega_backup_add refuse a folder that contains the store', async () => {
+  // A two-way sync leaves the store out with a .megaignore rule written before it
+  // starts; a periodic backup cannot (MEGA's scheduled copies have no exclusions).
+  it('mega_sync_add leaves the store out; mega_backup_add refuses a folder that contains it', async () => {
     await withStoreHome(async (home) => {
       const argv: string[][] = [];
       const rt = fakeRt({}, async (cmd, args) => (argv.push([cmd, ...args]), { code: 0, stdout: '', stderr: '' }) as RunResult);
       const tools = capture(registerSync, rt);
-      for (const name of ['mega_sync_add', 'mega_backup_add']) {
-        const extra = name === 'mega_backup_add' ? { period: '0 0 * * *', numBackups: 3 } : {};
-        const text = refused(await tools.get(name)!({ localPath: home, remotePath: '/x', ...extra }));
-        expect(text).toMatch(/MASTER KEY/);
-        expect(text).toMatch(/mega_put/);
-      }
-      expect(argv).toEqual([]);
+      const backup = refused(await tools.get('mega_backup_add')!({ localPath: home, remotePath: '/x', period: '0 0 * * *', numBackups: 3 }));
+      expect(backup).toMatch(/MASTER KEY/);
+      expect(backup).toMatch(/mega_sync_add/);
+      const preview = await tools.get('mega_sync_add')!({ localPath: home, remotePath: '/x' });
+      const { summary, confirmToken } = preview.structuredContent as { summary: string; confirmToken: string };
+      expect(summary).toMatch(/Never synced/);
+      expect(summary).toMatch(/\.megaCmd folders at any depth/);
+      expect(existsSync(join(home, '.megaignore'))).toBe(false);
+      await tools.get('mega_sync_add')!({ localPath: home, remotePath: '/x', confirm: confirmToken });
+      expect(readFileSync(join(home, '.megaignore'), 'utf8')).toContain('-dng:.megacmd*');
+      expect(argv.at(-1)).toEqual(['sync', home, '/x']);
     });
   });
 
@@ -271,16 +294,16 @@ describe('cloud copies of the session store are refused by the tools themselves'
   it('refuses a PCRE operation whose matches include the copy', async () => {
     const findOut = `/Backup/ok.txt <H:aaaa>\n${copy} <H:bbbb>\n`;
     const cases: [string, any][] = [
-      ['mega_mv', { src: '.*', usePcre: true, dst: '/x' }],
-      ['mega_export', { remotePath: '.*', usePcre: true, action: 'create' }],
-      ['mega_share', { remotePath: '.*', usePcre: true, action: 'add', withEmail: 'a@b.c' }],
+      ['mega_mv', { src: '/.*', usePcre: true, dst: '/x' }],
+      ['mega_export', { remotePath: '/.*', usePcre: true, action: 'create' }],
+      ['mega_share', { remotePath: '/.*', usePcre: true, action: 'add', withEmail: 'a@b.c' }],
     ];
     for (const [tool, args] of cases) {
       const { rt, argv } = recordingRt(findOut);
       const register = tool === 'mega_mv' ? registerMutate : registerDangerous;
       const res = await capture(register, rt).get(tool)!(args);
       refusedStore(res);
-      expect(acting(argv).map((a) => a[0])).toEqual(['find', 'find']);
+      expect(acting(argv).filter((a) => a[0] !== 'permissions').map((a) => a[0])).toEqual(['find', 'find']);
     }
   });
 
@@ -288,14 +311,15 @@ describe('cloud copies of the session store are refused by the tools themselves'
     const { rt, argv } = recordingRt();
     const cat = capture(registerCat, rt).get('mega_cat')!;
     expect((await cat({ remotePath: '/Docs/notes.txt' })).isError).toBeFalsy();
-    expect((await cat({ remotePath: '/Docs/*.txt' })).isError).toBeFalsy();
+    // A wildcard is listed with mega_find, then each match read by its own path (owner decision).
+    expect((await cat({ remotePath: '/Docs/*.txt' })).isError).toBe(true);
     const cp = capture(registerMutate, rt).get('mega_cp')!;
     const preview = await cp({ src: '/Docs/megaCmd-notes.txt', dst: '/x' });
     expect(preview.isError).toBeFalsy();
     const done = await cp({ src: '/Docs/megaCmd-notes.txt', dst: '/x', confirm: (preview.structuredContent as any).confirmToken });
     expect(done.isError).toBeFalsy();
     // The copy first checks that no session-store copy lies below its source.
-    expect(acting(argv).map((a) => a[0])).toEqual(['cat', 'cat', 'find', 'find', 'cp']);
+    expect(acting(argv).map((a) => a[0])).toEqual(['cat', 'find', 'find', 'cp']);
   });
 });
 
@@ -350,7 +374,10 @@ describe('the remembered file-reading consent cannot be written by a transfer', 
         // A link: its node name is unknown before the download.
         await isRefused(get({ link: 'https://mega.nz/file/abc#key', localDir: dirname(data) }));
         await isRefused(tools.get('mega_thumbnail')!({ remotePath: '/f', localPath: join(data, 'file-reading.json') }));
-        await isRefused(sync.get('mega_sync_add')!({ localPath: dirname(data), remotePath: '/x' }));
+        // A sync of the folder above it leaves the data dir out with a .megaignore rule.
+        const syncPreview = await sync.get('mega_sync_add')!({ localPath: dirname(data), remotePath: '/x' });
+        expect((syncPreview.structuredContent as any).summary).toContain(`  ${basename(data)}`);
+        await isRefused(sync.get('mega_sync_add')!({ localPath: data, remotePath: '/x' }));
       });
     });
   }
@@ -390,9 +417,9 @@ describe('the remembered file-reading consent cannot be written by a transfer', 
         argv.push([cmd, ...args]);
         return { code: 0, stdout: cmd === 'find' ? findStdout(args, `/x/ok.txt <H:aaaa>\n/x/${basename(data)} <H:bbbb>\n`) : '', stderr: '' } as RunResult;
       });
-      const res = await capture(registerMutate, rt).get('mega_get')!({ remotePath: '.*', usePcre: true, localDir: dirname(data), merge: true });
+      const res = await capture(registerMutate, rt).get('mega_get')!({ remotePath: '/.*', usePcre: true, localDir: dirname(data), merge: true });
       expect(res.isError).toBe(true);
-      expect(argv.map((a) => a[0])).toEqual(['find', 'find']);
+      expect(acting(argv).map((a) => a[0])).toEqual(['find', 'find']);
     } finally {
       publishMegacmdBinDir(null);
       rmSync(base, { recursive: true, force: true });
@@ -448,8 +475,13 @@ describe('security-sweep regressions, at the tool boundary', () => {
 
   // A copy can disclose as much as a share: into a shared folder, or one with a
   // public link. So it is confirm-gated like them, and runs only on the token.
-  it('confirm-gates mega_cp, naming both ends', async () => {
-    const { rt, argv } = recordingRt();
+  it('confirm-gates mega_cp into a shared folder, naming both ends', async () => {
+    const argv: string[][] = [];
+    const rt = fakeRt({}, async (cmd, args) => {
+      argv.push([cmd, ...args]);
+      const stdout = cmd === 'share' && args.join(' ') === '-p /' ? '/Shared, shared with bob@example.com (read access)\n' : '';
+      return { code: 0, stdout, stderr: '' } as RunResult;
+    });
     const cp = capture(registerMutate, rt).get('mega_cp')!;
     const preview = await cp({ src: '/Private/report.pdf', dst: '/Shared' });
     expect(preview.structuredContent).toMatchObject({ requiresConfirmation: true });
@@ -458,7 +490,7 @@ describe('security-sweep regressions, at the tool boundary', () => {
     // A token for one copy cannot be spent on another.
     const token = (preview.structuredContent as any).confirmToken;
     expect((await cp({ src: '/Private/other.pdf', dst: '/Shared', confirm: token })).isError).toBe(true);
-    expect(acting(argv).map((a) => a[0])).toEqual(['find']);
+    expect(argv.filter((a) => a[0] === 'cp')).toEqual([]);
   });
 
   // The value is part of what is approved; the token always bound it, but the
@@ -476,22 +508,32 @@ describe('security-sweep regressions, at the tool boundary', () => {
   // is refused instead of truncated.
   it('names every target and refuses plans over the cap', async () => {
     const many = Array.from({ length: 201 }, (_, i) => `/f${i}`);
-    const { rt, argv } = recordingRt();
+    const argv: string[][] = [];
+    const rt = fakeRt({}, async (cmd, args) => {
+      argv.push([cmd, ...args]);
+      // /d is an existing folder (find --type=d lists it).
+      return { code: 0, stdout: cmd === 'find' && args.includes('--print-only-handles') ? 'H:DIR' : '', stderr: '' } as RunResult;
+    });
     const mutate = capture(registerMutate, rt);
-    blocked(await mutate.get('mega_mv')!({ srcs: many, dst: '/d' }), argv, /at most 200/);
-    blocked(await mutate.get('mega_put')!({ localPaths: many, remotePath: '/d' }), argv, /at most 200/);
+    // No cap: the first 200 are listed, the rest counted - all of them are bound.
+    const big = await mutate.get('mega_mv')!({ srcs: many, dst: '/d' });
+    const bigSummary = (big.structuredContent as any).summary as string;
+    expect(bigSummary).toContain('/f199');
+    expect(bigSummary).not.toContain('/f200');
+    expect(bigSummary).toMatch(/and 1 more \(all 201 are included\)/);
+    void argv;
     const ok200 = await mutate.get('mega_mv')!({ srcs: many.slice(0, 200), dst: '/d' });
     const summary = (ok200.structuredContent as any).summary as string;
     expect(summary).toContain('/f199');
-    expect(summary).not.toMatch(/showing first/);
+    expect(summary).not.toMatch(/more \(all/);
 
     const findOut = many.map((p, i) => `${p} <H:h${i}>`).join('\n');
     const pcre = recordingRt();
     const pcreRt = fakeRt({}, async (cmd, args) => (pcre.argv.push([cmd, ...args]), { code: 0, stdout: cmd === 'find' ? findStdout(args, findOut) : '', stderr: '' }) as RunResult);
     const res = await capture(registerDangerous, pcreRt).get('mega_rm')!({ remotePath: '/f.*', usePcre: true });
-    expect(res.isError).toBe(true);
-    expect((res.content?.[0] as any).text).toMatch(/at most 200/);
-    expect(pcre.argv.map((a) => a[0])).toEqual(['find', 'find']);
+    expect(res.isError).toBeFalsy();
+    expect((res.structuredContent as any).summary).toMatch(/201 total; showing first 200/);
+    expect(pcre.argv.map((a) => a[0]).filter((c) => c !== 'sync')).toEqual(['find', 'find']);
   });
 
   /**
@@ -598,10 +640,12 @@ describe('security-sweep regressions, at the tool boundary', () => {
    */
   it('escapes control characters in every preview, centrally', async () => {
     const { rt } = recordingRt();
+    // A path with a line break is refused outright; what still reaches previews
+    // from the cloud (listed names) is escaped by previewSafe.
     const res = await capture(registerManage, rt).get('mega_attr_set')!({ remotePath: '/a\nFAKE LINE', attribute: 'x', action: 'delete' });
-    const summary = (res.structuredContent as { summary: string }).summary;
-    expect(summary).toContain('\\nFAKE LINE');
-    expect(summary).not.toContain('\nFAKE LINE');
+    expect(res.isError).toBe(true);
+    expect((res.content?.[0] as { text: string }).text).toMatch(/line breaks/);
+    expect(previewSafe('/a\nFAKE LINE')).toBe('/a\\nFAKE LINE');
   });
 
   it('keeps multi-line previews structured while still escaping each entry', async () => {
@@ -613,10 +657,9 @@ describe('security-sweep regressions, at the tool boundary', () => {
     expect(ok.split('\n').length).toBeGreaterThanOrEqual(3); // header + one line per path
     expect(ok).toContain(`  ${resolve(join(tmpdir(), 'a'))}`);
 
-    // ...but a newline inside a listed path must not become a line of its own.
-    const forged = listed(await tools.get('mega_put')!({ localPaths: [join(tmpdir(), 'a\nFAKE LINE')], remotePath: '/dst' }));
-    expect(forged).toContain('\\nFAKE LINE');
-    expect(forged).not.toContain('\nFAKE LINE');
+    // ...and a newline inside a path never becomes a line of its own: it is refused.
+    const forged = await tools.get('mega_put')!({ localPaths: [join(tmpdir(), 'a\nFAKE LINE')], remotePath: '/dst' });
+    expect(forged.isError).toBe(true);
   });
 
   it('does not over-block ordinary confirm-gated calls', async () => {
@@ -648,7 +691,7 @@ describe('mega_killsession argv hardening', () => {
   it('a valid sessionId reaches the confirm gate (not an error)', async () => {
     const tools = capture(registerDangerous, fakeRt());
     // A session handle: 8 bytes in base64url, 11 characters.
-    const res = await tools.get('mega_killsession')!({ sessionId: 'AbCdEfGhIjK' });
+    const res = await tools.get('mega_killsession')!({ sessionId: 'AbCdEfGhIjk' });
     expect(res.isError).toBeFalsy();
     expect(res.structuredContent).toMatchObject({ requiresConfirmation: true });
   });
@@ -955,6 +998,62 @@ describe('directory submission: tool annotation completeness', () => {
       const hasHint = ann.readOnlyHint === true || typeof ann.destructiveHint === 'boolean';
       expect(hasHint, `${name}: needs readOnlyHint:true or a destructiveHint boolean`).toBe(true);
       expect(name.length <= 64, `${name}: exceeds 64 chars`).toBe(true);
+    }
+  });
+});
+
+describe('tools that place content in the cloud run one at a time', () => {
+  it('a second call waits until the first has finished', async () => {
+    const order: string[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const rt = fakeRt({}, async (cmd, args) => {
+      if (cmd === 'mkdir') {
+        order.push(`mkdir ${args[args.length - 1]}`);
+        if (args[args.length - 1] === '/A') await gate;
+      }
+      return { code: 0, stdout: '', stderr: '' } as RunResult;
+    });
+    const tools = capture(registerAll, rt);
+    const first = tools.get('mega_mkdir')!({ remotePath: '/A' });
+    const second = tools.get('mega_mkdir')!({ remotePath: '/B' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(order).toEqual(['mkdir /A']);
+    release();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['mkdir /A', 'mkdir /B']);
+  });
+});
+
+describe('a confirmed download into a synced folder waits for the write lock', () => {
+  it('runs after a copy already under way, not in between', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mega-getlock-'));
+    try {
+      const order: string[] = [];
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      const rt = fakeRt({}, async (cmd, args) => {
+        if (cmd === 'sync') return { code: 0, stdout: `LOCALPATH;;MEGA-MCP;;REMOTEPATH;;MEGA-MCP;;RUN_STATE\n${dir};;MEGA-MCP;;/Team;;MEGA-MCP;;Running\n`, stderr: '' } as RunResult;
+        if (cmd === 'mkdir') {
+          order.push('mkdir');
+          await gate;
+        }
+        if (cmd === 'get') order.push('get');
+        return { code: 0, stdout: '', stderr: '' } as RunResult;
+      });
+      const tools = capture(registerAll, rt);
+      const preview = await tools.get('mega_get')!({ remotePath: '/Docs/a.txt', localDir: dir });
+      const token = (preview.structuredContent as any).confirmToken;
+      const mk = tools.get('mega_mkdir')!({ remotePath: '/Private/new' });
+      await new Promise((r) => setTimeout(r, 20));
+      const got = tools.get('mega_get')!({ remotePath: '/Docs/a.txt', localDir: dir, confirm: token });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(order).toEqual(['mkdir']);
+      release();
+      await Promise.all([mk, got]);
+      expect(order).toEqual(['mkdir', 'get']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

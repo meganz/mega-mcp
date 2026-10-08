@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { posix } from 'node:path';
 import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok, err } from '../mcpResult.js';
 import { classifyExit, ExitCode } from '../errors.js';
-import { assertRemotePath, assertNotStoreCopy } from '../paths.js';
-import { guardRun } from './helpers.js';
+import { assertNoWildcard, assertRemotePath, assertNotStoreCopy, isRecoveryKeyName } from '../paths.js';
+import { guardRun, sameNamed, withWriteLock } from './helpers.js';
 
 const DEFAULT_MAX = 1_048_576; // 1 MB
 const HARD_MAX = 10_485_760; // 10 MB
@@ -65,6 +66,13 @@ export function looksBinary(s: string): boolean {
  * instructions embedded in a file cannot cause silent damage — the user still
  * sees a confirmation preview before anything is deleted/shared/uploaded.
  */
+function looksLikeRecoveryKey(line: string): boolean {
+  return /^[A-Za-z0-9_-]{22}$/.test(line) && /[a-z]/.test(line) && /[A-Z]/.test(line);
+}
+
+const RECOVERY_KEY_REFUSAL =
+  "This looks like the account's MEGA recovery key, which is its master key: it is not read into the conversation.";
+
 export function registerCat(server: McpServer, rt: Runtime, allowed?: () => boolean): RegisteredTool {
   const tool: RegisteredTool = server.registerTool(
     'mega_cat',
@@ -88,13 +96,39 @@ export function registerCat(server: McpServer, rt: Runtime, allowed?: () => bool
       guardRun(async () => {
         // Consent is re-checked on every read: turning file reading off in another
         // server process (or another conversation) must stop this one too.
-        if (allowed && !allowed()) {
+        const refused = () => {
+          if (!allowed || allowed()) return null;
           tool.disable();
           return err('Reading file contents was turned off. Ask the user, then call mega_file_reading to turn it on again.');
+        };
+        const off = refused();
+        if (off) return off;
+        // One file per read: a wildcard is listed with mega_find, then each match read by its path.
+        const rp = assertNoWildcard(assertNotStoreCopy(assertRemotePath(remotePath)), 'remotePath');
+        // The recovery key IS the master key: MEGA saves it as MEGA-RECOVERYKEY.txt (or its translation).
+        if (isRecoveryKeyName(posix.basename(rp))) {
+          return err(RECOVERY_KEY_REFUSAL, { remotePath: rp });
         }
-        const rp = assertNotStoreCopy(assertRemotePath(remotePath));
+        // Same-named files would print as one joined text, defeating the reader and the key check.
+        // Counted and read with no copy or move in between (a copy could add a same-named file).
+        const { same, r } = await withWriteLock(async () => {
+          const same = await sameNamed(rt, rp);
+          // Asked again after the wait for the lock (a long transfer may hold it).
+          if (same.count < 0 || same.count > 1 || refused()) return { same, r: null };
+          return { same, r: await rt.run('cat', [rp], { maxBuffer: Math.min(maxBytes ?? DEFAULT_MAX, HARD_MAX) }) };
+        });
+        // ...and once more for a read that was turned off while it ran.
+        const late = refused();
+        if (late) return late;
+        if (same.count === -1) return err(`Could not check how many files are named ${rp}; nothing was read.`, { remotePath: rp });
+        if (same.count > 1) {
+          return err(
+            `${same.count} files are named ${rp} (or match it as a pattern); MEGAcmd would print all of them as one text. List them with mega_find or mega_ls and read each one by its own path (files that share one exact name need one renamed first).`,
+            { remotePath: rp },
+          );
+        }
         const cap = Math.min(maxBytes ?? DEFAULT_MAX, HARD_MAX);
-        const r = await rt.run('cat', [rp], { maxBuffer: cap });
+        if (!r) return err(`Could not read ${rp}.`, { remotePath: rp });
         if (r.maxBufferExceeded) {
           return err(
             `File exceeds the ${Math.floor(cap / 1024)} KB read cap. Raise maxBytes (up to 10 MB), or the file is too large to read inline — download it with mega_get instead.`,
@@ -109,6 +143,10 @@ export function registerCat(server: McpServer, rt: Runtime, allowed?: () => bool
             bytes: r.stdout.length,
           });
         }
+        // ...and under any name: a line that is just a mixed-case 22-character base64url key.
+        if (r.stdout.split(/\r?\n/).some((l) => looksLikeRecoveryKey(l.trim()))) return err(RECOVERY_KEY_REFUSAL, { remotePath: rp });
+        // A file that is only one 22-character token is refused in any case (keys can be one case).
+        if (/^[A-Za-z0-9_-]{22}$/.test(r.stdout.trim())) return err(RECOVERY_KEY_REFUSAL, { remotePath: rp });
         // Text only, no structuredContent: ok() mirrors the text into it, which
         // would send every file twice (up to 2x the byte cap) for no benefit.
         return { content: [{ type: 'text', text: r.stdout.length ? r.stdout : '(empty file)' }] };

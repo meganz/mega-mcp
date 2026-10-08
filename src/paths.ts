@@ -1,6 +1,6 @@
-import { resolve, sep, dirname, basename, join } from 'node:path';
+import { resolve, sep, dirname, basename, join, relative, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
-import { realpathSync, existsSync, readdirSync, lstatSync, statSync } from 'node:fs';
+import { realpathSync, existsSync, readdirSync, lstatSync, statSync, type Dirent } from 'node:fs';
 
 /** Thrown when a model-supplied path fails validation. */
 export class ValidationError extends Error {
@@ -15,9 +15,16 @@ const isWin = process.platform === 'win32';
 const SEG_SPLIT = isWin ? /[\\/]+/ : /\//;
 
 /** Fold always: required on NTFS/APFS, and elsewhere it only over-blocks a dotdir
- *  named ".MEGACMD", which hitsSessionStore() refuses on every platform anyway. */
+ *  named ".MEGACMD", which hitsSessionStore() refuses on every platform anyway.
+ *  As APFS does: NFC and full case folding ("ß" is "ss": toUpperCase expands it). */
 function fold(p: string): string {
-  return p.toLowerCase();
+  // Twice: "ẞ" lowers to "ß", which only the second pass expands to "ss".
+  return p.normalize('NFC').toUpperCase().toLowerCase().toUpperCase().toLowerCase().normalize('NFC');
+}
+
+/** A file or folder NAME folded as fold() does, for name checks elsewhere. */
+export function foldName(name: string): string {
+  return fold(name);
 }
 
 /**
@@ -91,10 +98,58 @@ function diskChain(p: string): Set<string> {
   }
 }
 
-/** `child` IS `parent` or lies under it, by on-disk identity (needs `parent` to exist). */
+/**
+ * `child` is `parent` or under it, by on-disk identity. A missing `parent` is matched by its
+ * nearest existing ancestor plus folded names below, so a firmlink spelling cannot evade it.
+ */
 function onDiskAtOrUnder(child: string, parent: string, chain: Set<string> = diskChain(child)): boolean {
   const id = diskId(parent);
-  return id !== null && chain.has(id);
+  if (id !== null) return chain.has(id);
+  const rest: string[] = [];
+  let base = resolve(parent);
+  for (;;) {
+    const up = dirname(base);
+    if (up === base) return false;
+    rest.unshift(basename(base));
+    base = up;
+    const baseId = diskId(base);
+    if (baseId === null) continue;
+    if (!chain.has(baseId)) return false;
+    const below: string[] = [];
+    for (let c = resolve(child); ; ) {
+      if (diskId(c) === baseId) return below.length >= rest.length && rest.every((r, i) => fold(r) === fold(below[i] as string));
+      const cUp = dirname(c);
+      if (cUp === c) return false;
+      below.unshift(basename(c));
+      c = cUp;
+    }
+  }
+}
+
+/** `child` is `parent` or under it, by any spelling (folded text, realpath, on disk). */
+export function localAtOrUnder(child: string, parent: string): boolean {
+  const parents = [parent, realpathBestEffort(parent)];
+  return spellingsOf(resolve(child)).some((c) => parents.some((p) => isAtOrUnder(normWinPath(c), p)) || onDiskAtOrUnder(c, parent));
+}
+
+/**
+ * macOS firmlink: /System/Volumes/Data/<path> is /<path>. Protected folders are known by the
+ * short spelling, so use it when the nearest existing directory is the same on disk.
+ */
+function shortFirmlinkSpelling(abs: string): string {
+  if (process.platform !== 'darwin') return abs;
+  const m = abs.match(/^\/System\/Volumes\/Data(\/.+)$/i);
+  if (!m) return abs;
+  const short = m[1] as string;
+  let a = abs;
+  let b = short;
+  while (!existsSync(a)) {
+    const up = dirname(a);
+    if (up === a || dirname(b) === b) return abs;
+    a = up;
+    b = dirname(b);
+  }
+  return sameOnDisk(a, b) ? short : abs;
 }
 
 function sameOnDisk(a: string, b: string): boolean {
@@ -121,9 +176,24 @@ let publishedBinDir: string | null = null;
  */
 let trustRoots: string[] = [];
 
-export function publishMegacmdBinDir(dir: string | null, roots: readonly string[] = []): void {
+/** Write-protected only (host config, this connector's code); uploading from them is allowed. */
+let writeRootsOf: () => readonly string[] = () => [];
+
+/** `writeOnly` may be a function: read on every check, so a project opened later counts. */
+export function publishMegacmdBinDir(dir: string | null, roots: readonly string[] = [], writeOnly: readonly string[] | (() => readonly string[]) = []): void {
   publishedBinDir = dir;
-  trustRoots = [...new Set([...(dir ? [dir] : []), ...roots].filter(Boolean).map((p) => resolve(p)))];
+  trustRoots = [...new Set([...(dir ? [dir] : []), ...roots].filter(Boolean).map((p) => resolve(appBundleOf(p))))];
+  writeRootsOf = typeof writeOnly === 'function' ? writeOnly : () => writeOnly;
+}
+
+function currentWriteRoots(): string[] {
+  return [...new Set(writeRootsOf().filter(Boolean).map((p) => resolve(p)))];
+}
+
+/** A bin dir in a macOS .app stands for the whole bundle: its programs load Contents/Frameworks. */
+function appBundleOf(p: string): string {
+  const m = p.match(/^(.*?\.app)(?:[\\/]|$)/i);
+  return m ? (m[1] as string) : p;
 }
 
 /**
@@ -206,10 +276,26 @@ function hitsSessionStore(rawAbs: string): boolean {
   return sessionStoreRoots().some((r) => isAtOrUnder(abs, r) || onDiskAtOrUnder(abs, r, chain));
 }
 
-/** .megaCmd, plus the MEGACMD_WORKING_FOLDER_SUFFIX variant .megaCmd_<suffix>. */
+/**
+ * The local spellings MEGA may give a cloud name when it writes it to disk (SDK escapefsincompatible):
+ * as is (APFS, ext), ":" escaped (HFS+), or every character Windows, exFAT and FAT reject as %xx
+ * (exFAT/FAT also escape trailing dots). "." and ".." become %2e and %2e%2e everywhere.
+ */
+export function localSpellings(name: string): string[] {
+  if (name === '.') return ['%2e'];
+  if (name === '..') return ['%2e%2e'];
+  const esc = (bad: (c: string) => boolean) => Array.from(name, (c) => (c.length === 1 && c.charCodeAt(0) < 0x80 && bad(c) ? `%${c.charCodeAt(0).toString(16).padStart(2, '0')}` : c)).join('');
+  const strict = esc((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f || '\\/:?"<>|*'.includes(c));
+  const dots = strict.replace(/\.+$/, (m) => '%2e'.repeat(m.length));
+  return [...new Set([name, esc((c) => c === '/' || c === '\0'), esc((c) => c === '/' || c === ':' || c === '\0'), strict, dots])];
+}
+
+/** .megaCmd, the MEGACMD_WORKING_FOLDER_SUFFIX variant .megaCmd_<suffix>, and renamed copies. */
 function isStoreName(name: string): boolean {
-  const s = fold(name);
-  return s === '.megacmd' || s.startsWith('.megacmd_');
+  // Also as uploaded ("%2emegaCmd" arrives as ".megaCmd"), and any name starting so: a copy kept
+  // aside (".megaCmd (1)", ".megaCmd.bak", ".megaCmd.old", ".megaCmd~") may still hold a valid
+  // session - the same rule (-dng:.megacmd*) every sync gets.
+  return [name, cloudNameOf(name)].some((n) => fold(n).startsWith('.megacmd'));
 }
 
 /**
@@ -291,17 +377,74 @@ function pathHitsSessionStore(abs: string): boolean {
  * guard, or the Win32 aliases would walk around it just as they did there.
  */
 function assertNotTrustRoot(abs: string): void {
-  if (trustRoots.length === 0) return;
+  insideAny(abs, trustRoots, "Refusing to read or write inside the MEGAcmd program directory or this connector's data directory - a file placed there would be loaded by MEGAcmd or by the connector itself.");
+}
+
+/**
+ * A .megaignore written into a synced folder could re-include the session store or a
+ * protected folder. Applied where a write lands in a sync (or replaces a file).
+ */
+/** A name the file system opens as `.megaignore` (folded; on Windows also with trailing dots/spaces or a ":stream"). */
+export function isIgnoreFileName(name: string): boolean {
+  return [name, cloudNameOf(name)].some((n) => fold(normSegment(n)) === '.megaignore');
+}
+
+/** The recovery key file's name in each language of MEGA's web app (webclient lang key 20830). */
+const RECOVERY_KEY_NAMES = [
+  'MEGA-RECOVERYKEY', 'MEGA-RETTUNGSSCHLUESSEL', 'MEGA-CLÉdeRÉCUPÉRATION', 'MEGA-CLAVEDERECUPERACION', 'MEGA-CHAVEDERECUPERACAO',
+  'MEGA-CHIAVEDIRECUPERO', 'MEGA-HERSTELSLEUTEL', 'MEGA-KLUCZODZYSKIWANIA', 'MEGA-CHEIEDERECUPERARE', 'MEGA-KUNCIPEMULIHAN',
+  'MEGA-KURTARMA-ANAHTARI', 'CHIAKHOAPHUCHOI-MEGA', 'MEGA-КЛЮЧ-ВОССТАНОВЛЕНИЯ', 'MEGA-คีย์การกู้คืน', 'MEGA-回復キー',
+  'MEGA-恢复密钥', 'MEGA-還原金鑰', 'مفتاح الاستعادة-MEGA',
+].map((n) => n.normalize('NFC').toLowerCase());
+
+/** A recovery key file by name (a browser may add " (1)" before .txt; versions too). */
+export function isRecoveryKeyName(name: string): boolean {
+  const n = name.replace(/#\d{10}$/, '').normalize('NFC').toLowerCase();
+  return n.endsWith('.txt') && RECOVERY_KEY_NAMES.some((k) => n.startsWith(k));
+}
+
+/** The cloud name the SDK gives a local name (LocalPath::toName): NFC, `%xx` escapes decoded. */
+export function cloudNameOf(local: string): string {
+  // MEGA lists names NFC (a decoded letter may compose with a mark after it).
+  return decodeLocalName(local).normalize('NFC');
+}
+
+/** The name the SDK uploads (and its sync rules compare): NFC first, then `%xx` decoded - not NFC again. */
+export function decodeLocalName(local: string): string {
+  const n = local.normalize('NFC');
+  if (n === '%2e%2e') return '..';
+  if (n === '%2e') return '.';
+  return n.replace(/%([0-7][0-9a-f])/g, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
+}
+
+export function assertNotIgnoreFile(target: string): void {
+  if (isIgnoreFileName(basename(target))) {
+    throw new ValidationError(`Refusing to write ${target}: a .megaignore file decides what a MEGA sync carries.`);
+  }
+}
+
+/** Refuse a local path INSIDE any protected folder (not "above" one). */
+export function assertNotInsideProtected(abs: string): void {
+  assertNotConfigDir(abs);
+  assertNotTrustRoot(abs);
+  assertNotWriteRoot(abs);
+}
+
+/** A WRITE into one of the write-only roots (host configuration, the connector's code). */
+function assertNotWriteRoot(abs: string): void {
+  insideAny(abs, currentWriteRoots(), 'Refusing to write into an app configuration folder or this connector\'s own folder - a file placed there would decide what runs at the next start.');
+}
+
+function insideAny(abs: string, roots: readonly string[], message: string): void {
+  if (roots.length === 0) return;
   for (const candidate of spellingsOf(abs)) {
-    for (const root of trustRoots) {
+    for (const root of roots) {
       if (
         isAtOrUnder(normWinPath(candidate), root) ||
         isAtOrUnder(normWinPath(candidate), realpathBestEffort(root)) ||
         onDiskAtOrUnder(candidate, root)
       ) {
-        throw new ValidationError(
-          "Refusing to read or write inside the MEGAcmd program directory or this connector's data directory - a file placed there would be loaded by MEGAcmd or by the connector itself.",
-        );
+        throw new ValidationError(message);
       }
     }
   }
@@ -320,7 +463,7 @@ function assertNotTrustRoot(abs: string): void {
  */
 function protectedBelow(abs: string, inclusive: boolean): string[] {
   const forms = [...new Set([abs, resolve(abs)].flatMap(spellingsOf))].map(normWinPath);
-  const roots = [...trustRoots, ...sessionStoreRoots()].flatMap((r) => [r, realpathBestEffort(r)]);
+  const roots = [...trustRoots, ...currentWriteRoots(), ...sessionStoreRoots()].flatMap((r) => [r, realpathBestEffort(r)]);
   const hits = new Set<string>();
   for (const root of roots) {
     for (const f of forms) {
@@ -349,13 +492,64 @@ export function assertDownloadTarget(localDir: string, name: string | null): voi
   for (const n of version ? [name, version[1] as string] : [name]) assertTargetBelow(localDir, n);
 }
 
+/**
+ * Symlinks below `abs` leading into or above a protected directory: MEGAcmd follows them when
+ * merging a download into an existing folder. Bounded like storeCopiesIn.
+ */
+function protectedViaSymlinks(abs: string): string[] {
+  const roots = [...trustRoots, ...currentWriteRoots(), ...sessionStoreRoots()].flatMap((r) => [r, realpathBestEffort(r)]);
+  // By text and by disk: a firmlink spelling (/System/Volumes/Data/...) is the same folder.
+  return linksBelow(abs)
+    .filter(({ real }) => roots.some((r) => isAtOrUnder(real, r) || isAtOrUnder(r, real) || onDiskAtOrUnder(real, r) || onDiskAtOrUnder(r, real)))
+    .map(({ link, real }) => `${link} -> ${real}`);
+}
+
+/** Every symlink below `abs` and where it leads, following links into folders (bounded like storeCopiesIn). */
+export function linksBelow(abs: string): { link: string; real: string }[] {
+  const out: { link: string; real: string }[] = [];
+  const stack = [normWinPath(abs)];
+  const seen = new Set<string>();
+  let visited = 0;
+  while (stack.length > 0 && ++visited <= STORE_WALK_MAX_DIRS) {
+    const dir = stack.pop() as string;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const child = join(dir, e.name);
+      if (e.isSymbolicLink()) {
+        const real = realpathBestEffort(child);
+        // A merge follows links inside the target too: walk it, once per folder so a loop ends.
+        try {
+          if (statSync(real).isDirectory() && !seen.has(real)) {
+            seen.add(real);
+            stack.push(real);
+          }
+        } catch {
+          // Dangling: nothing is written through it.
+        }
+        out.push({ link: child, real });
+      } else if (e.isDirectory()) {
+        stack.push(child);
+      }
+    }
+  }
+  return out;
+}
+
 function assertTargetBelow(localDir: string, name: string | null): void {
   const target = name !== null ? join(localDir, name) : localDir;
   if (name !== null) {
     assertNotConfigDir(target);
     assertNotTrustRoot(target);
+    // (Only through a link at the name: MEGAcmd does not write into "/" itself.)
+    if (holdsDataVolume(target)) throw new ValidationError(`Refusing to download "${name}" into ${localDir}: ${target} holds the whole data volume (every home folder).`);
   }
-  const below = protectedBelow(target, name !== null);
+  assertNotWriteRoot(target);
+  const below = [...protectedBelow(target, name !== null), ...protectedViaSymlinks(target)];
   if (below.length > 0) {
     throw new ValidationError(
       `Refusing to download ${name !== null ? `"${name}" ` : ''}into ${localDir}: the download could write into a directory MEGAcmd or this connector depends on (${below.join(', ')}). Choose a different destination folder${name !== null ? '' : ', such as a subfolder'}.`,
@@ -381,12 +575,10 @@ export function assertNoLocalGlob(lp: string, field = 'localPath'): string {
   return lp;
 }
 
-/**
- * Refuse a TWO-WAY sync of a folder that contains a protected directory: cloud
- * changes are written back into the local tree, below the sync root.
- */
+/** Refuse a local folder that contains a protected directory (or a symlink to one). */
 export function assertNoProtectedWithin(lp: string, what: string): void {
-  const below = protectedBelow(lp, false);
+  assertNotWriteRoot(lp);
+  const below = [...protectedBelow(lp, false), ...protectedViaSymlinks(lp)];
   if (below.length > 0) {
     throw new ValidationError(
       `Refusing to ${what} ${lp}: it contains a directory MEGAcmd or this connector depends on (${below.join(', ')}), and changes from the cloud would be written into it. Choose a folder that does not contain it.`,
@@ -395,23 +587,81 @@ export function assertNoProtectedWithin(lp: string, what: string): void {
 }
 
 /**
- * EVERY session store contained INSIDE `abs` — for tools that read a path
- * recursively (upload / sync / backup). Backing up `$HOME` is legitimate, so this
- * does not refuse by itself: mega_put uploads such a folder WITHOUT the store
- * (planUpload), and sync/backup, which cannot leave it out, refuse it
- * (assertNoStoreWithin). Warning and allowing was not enough: once uploaded, the
- * copy is an ordinary cloud file that mega_cat could read back into the model.
- *
- * All of them, not the first: sessionStoreRoots() lists $HOME/.megaCmd first and
- * unconditionally, but on Windows the real store is executable-relative
- * (%LOCALAPPDATA%\MEGAcmd\.megaCmd on a stock install) and $HOME/.megaCmd does not
- * exist at all — so returning the first match named a directory holding nothing
- * while staying silent about the one holding the master key.
- *
- * Roots that do not exist are dropped: the concern is material this read would
- * actually carry away, and an absent directory carries none. The REFUSAL
- * path deliberately does not filter that way — a download destination inside a
- * not-yet-created store must still be refused.
+ * Store-named folders below `abs` (symlinks not followed): a backup or second install may hold
+ * a live session. Stops after STORE_WALK_MAX_DIRS folders (`complete` false).
+ */
+const STORE_WALK_MAX_DIRS = 20_000;
+export function storeCopiesIn(abs: string): { found: string[]; complete: boolean } {
+  const found: string[] = [];
+  const stack = [normWinPath(abs)];
+  let visited = 0;
+  let complete = true;
+  while (stack.length > 0) {
+    if (++visited > STORE_WALK_MAX_DIRS) return { found, complete: false };
+    const dir = stack.pop() as string;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch (e) {
+      // Gone since: nothing there. Unreadable (permissions): not searched, the rest still is.
+      if (isUnreadable(e)) complete = false;
+      continue;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const child = join(dir, e.name);
+      if (isStoreName(e.name)) found.push(child);
+      else stack.push(child);
+    }
+  }
+  return { found, complete };
+}
+
+function isUnreadable(e: unknown): boolean {
+  const code = (e as NodeJS.ErrnoException).code;
+  return code === 'EACCES' || code === 'EPERM';
+}
+
+/** Files named .megaignore inside local `lps` (bounded like storeCopiesIn). */
+export function ignoreFilesIn(lps: readonly string[]): { found: string[]; complete: boolean } {
+  const found: string[] = [];
+  let visited = 0;
+  let complete = true;
+  for (const lp of lps) {
+    let isDir = false;
+    try {
+      isDir = statSync(lp).isDirectory();
+    } catch {
+      continue;
+    }
+    if (!isDir) continue;
+    const stack = [normWinPath(lp)];
+    while (stack.length > 0) {
+      if (++visited > STORE_WALK_MAX_DIRS) return { found, complete: false };
+      const dir = stack.pop() as string;
+      let entries: Dirent[];
+      try {
+        entries = readdirSync(dir, { withFileTypes: true });
+      } catch (e) {
+        if (isUnreadable(e)) complete = false;
+        continue;
+      }
+      for (const e of entries) {
+        if (e.isDirectory()) stack.push(join(dir, e.name));
+        else if (isIgnoreFileName(e.name)) found.push(join(dir, e.name));
+      }
+    }
+  }
+  return { found, complete };
+}
+
+export function storeCopiesWithin(abs: string): string[] {
+  return storeCopiesIn(abs).found;
+}
+
+/**
+ * Every session store inside `abs` (all, not the first: on Windows the real one is
+ * executable-relative). Missing roots are dropped; the refusal path does not drop them.
  */
 export function sessionStoresWithin(abs: string, binDir?: string | null): string[] {
   // Canonicalize as thoroughly as the refusal path does. An advisory that a
@@ -428,6 +678,7 @@ export function sessionStoresWithin(abs: string, binDir?: string | null): string
       hits.set(fold(realpathBestEffort(root)), root);
     }
   }
+  for (const copy of storeCopiesWithin(abs)) hits.set(fold(realpathBestEffort(copy)), copy);
   return [...hits.values()];
 }
 
@@ -493,7 +744,8 @@ export function assertSecret(v: string, field: string): string {
  */
 export function assertRemotePath(p: string, field = 'remotePath'): string {
   rejectNul(p);
-  const t = p.trim();
+  // MEGA finds a child by its NFC name (a Kelvin sign or NFD reaches "/Kids"): check that spelling.
+  const t = p.trim().normalize('NFC');
   if (t === '') throw new ValidationError(`${field} is empty.`);
   if (!t.startsWith('/')) {
     throw new ValidationError(`${field} must be an absolute MEGA path starting with "/".`);
@@ -503,8 +755,54 @@ export function assertRemotePath(p: string, field = 'remotePath'): string {
   if (t.includes('\\')) {
     throw new ValidationError(`${field} must not contain a backslash - MEGAcmd reads it as an escape, so it would resolve a different path.`);
   }
+  // MEGAcmd resolves "." and "..", so it would act on another node than the preview names.
+  if (t.split('/').some((seg) => seg === '.' || seg === '..')) {
+    throw new ValidationError(`${field} must not contain "." or ".." segments - MEGAcmd resolves them, so it would act on a different path.`);
+  }
+  // An empty segment is read differently by mkdir (literal) and put/mv (falls back to the
+  // parent), and MEGAcmd reads a leading "//Name" as "/Name".
+  if (t.replace(/^\/\/(?:bin|in|from)(?=\/|$)/, '').includes('//')) {
+    throw new ValidationError(`${field} must not contain an empty segment ("//").`);
+  }
+  rejectControls(t, field);
   rejectArgvQuote(t, field);
   return t;
+}
+
+/** A path written INTO: no `name#<10 digits>` segment either (put/mv/cp read it as a version). */
+export function assertRemoteDest(p: string, field = 'remotePath'): string {
+  return assertNoHandleName(assertNoVersionName(assertRemotePath(p, field), field), field);
+}
+
+/**
+ * MEGAcmd reads "H:<8 characters>" as a node handle, and, when no node has it, as a
+ * name: a pinned handle that vanished mid-run would then act on such a node instead.
+ */
+export function assertNoHandleName(p: string, field = 'remotePath'): string {
+  if (p.split('/').some((seg) => /^H:[A-Za-z0-9_-]{8}$/.test(seg))) {
+    throw new ValidationError(`${field} must not name an item "H:" and 8 characters - MEGAcmd reads that as a node handle.`);
+  }
+  return p;
+}
+
+/**
+ * A source placed under its own name (get, cp, mv): MEGAcmd resolves `name#<10 digits>` as a
+ * version (getNodesMatching), which lands under that version's name, not the one checked.
+ */
+export function assertNoVersionName(p: string, field = 'remotePath'): string {
+  if (p.split('/').some((seg) => /#\d{10}$/.test(seg))) {
+    throw new ValidationError(`${field} must not contain a name ending in "#" and 10 digits - MEGAcmd reads that as a file version, which keeps its own name.`);
+  }
+  return p;
+}
+
+/** Control characters in a path could forge preview lines; such names are left to usePcre. */
+function rejectControls(p: string, field: string): void {
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f-\x9f\u2028\u2029]/.test(p)) {
+    throw new ValidationError(`${field} must not contain line breaks or other control characters.`);
+  }
+  if (/\p{Cs}/u.test(p)) throw new ValidationError(`${field} holds a broken Unicode character (a lone surrogate).`);
 }
 
 export function assertOptionalRemotePath(p: string | undefined, field = 'remotePath'): string | undefined {
@@ -650,11 +948,36 @@ export function assertLocalPath(p: string, field = 'localPath'): string {
   if (t === '') throw new ValidationError(`${field} is empty.`);
   // Trim before resolve: leading whitespace would otherwise re-root an absolute
   // path under cwd (resolve('  /x') -> '<cwd>/  /x').
-  const abs = resolve(t);
+  const abs = shortFirmlinkSpelling(resolve(t));
+  rejectControls(abs, field);
   rejectArgvQuote(abs, field);
+  assertNotDataVolumeRoot(abs);
   assertNotConfigDir(abs);
   assertNotTrustRoot(abs);
   return abs;
+}
+
+/**
+ * macOS's data volume root (and the folders above it) holds every home folder under another
+ * spelling; /.vol, /.nofollow and /.resolve name any folder by other means. All refused.
+ */
+function assertNotDataVolumeRoot(abs: string): void {
+  if (process.platform === 'win32') return;
+  const spellings = spellingsOf(abs);
+  // Paths that name another process's files (/dev/fd, /proc/self) or a folder by other means.
+  if (spellings.some((s) => /^\/(?:dev|proc)(?:\/|$)/.test(s) || (process.platform === 'darwin' && /^\/\.(?:vol|nofollow|resolve)(?:\/|$)/i.test(s)))) {
+    throw new ValidationError(`${abs} uses a special path form; use the folder's ordinary path.`);
+  }
+  if (holdsDataVolume(abs, spellings)) {
+    throw new ValidationError(`${abs} holds the whole data volume (every home folder); choose a folder inside it, such as /Users/<name>/Documents.`);
+  }
+}
+
+/** macOS: /System, /System/Volumes or /System/Volumes/Data, which hold every home folder under another spelling. */
+function holdsDataVolume(abs: string, spellings: readonly string[] = spellingsOf(abs)): boolean {
+  if (process.platform !== 'darwin') return false;
+  const roots = ['/System', '/System/Volumes', '/System/Volumes/Data'];
+  return spellings.some((s) => roots.some((r) => fold(r) === fold(s).replace(/(.)\/+$/, '$1') || sameOnDisk(r, s)));
 }
 
 /**
@@ -664,14 +987,92 @@ export function assertLocalPath(p: string, field = 'localPath'): string {
  * and an exclusion added afterwards races the first scan — so the store cannot be
  * left out reliably. A two-way sync could also write into the live store.
  */
-export function assertNoStoreWithin(lp: string, what: string, binDir?: string | null): void {
+export function assertNoStoreWithin(lp: string, what: string, binDir?: string | null): string[] {
   const stores = sessionStoresWithin(lp, binDir);
-  if (stores.length === 0) return;
+  if (stores.length === 0) {
+    // A note for the preview when the search for copies elsewhere stopped early.
+    return storeCopiesIn(lp).complete
+      ? []
+      : [`(Could not search ${lp} completely - too many subfolders, or folders that cannot be read - for copies of a MEGAcmd session store (.megaCmd).)`];
+  }
   throw new ValidationError(
     `Refusing to ${what} ${lp}: it contains the MEGAcmd session store (${stores.join(', ')}), which holds this ` +
-      "account's MASTER KEY, and a continuous sync/backup cannot reliably leave it out. Choose a folder that does " +
-      'not contain it, or use mega_put, which uploads a folder without the session store.',
+      "account's MASTER KEY, and a periodic backup cannot leave it out (MEGA's scheduled copies have no exclusion " +
+      'rules). Use mega_sync_add, which leaves it out, or mega_put, which uploads the folder without it.',
   );
+}
+
+/** A .megaignore rule a two-way sync gets, and what it is for (for the preview). */
+export interface SyncExclusion {
+  rule: string;
+  label: string;
+  /** The excluded path below the sync root, in cloud names ("" for a name rule). */
+  rel: string;
+}
+
+/** A path as a POSIX extended regex matching only itself (`]` and `}` are literal there). */
+function regexOfPath(p: string): string {
+  return p.replace(/[\\.[()*+?{|^$]/g, '\\$&').replace(/[ \t\v\f]/g, '[$&]');
+}
+
+/**
+ * Root .megaignore rules for a two-way sync of `lp` (SDK syncfilter.cpp): store folders by
+ * name at any depth, each protected folder or store copy by path. Syncs skip symlinks.
+ */
+export function syncExclusions(lp: string, binDir?: string | null): SyncExclusion[] {
+  assertNotWriteRoot(lp);
+  const out: SyncExclusion[] = [];
+  const stores = sessionStoresWithin(lp, binDir);
+  // Always: a copy in a folder that could not be searched (permissions) is covered too.
+  out.push({ rule: '-dng:.megacmd*', label: '.megaCmd folders at any depth (the MEGAcmd session store, and any copy of it)', rel: '' });
+  const paths = new Map<string, SyncExclusion>();
+  for (const target of [...stores, ...protectedBelow(lp, false)]) {
+    const rel = relativeWithin(lp, target);
+    if (rel === null) {
+      throw new ValidationError(`Refusing to sync ${lp}: ${target} is inside it, but its path relative to ${lp} cannot be worked out to leave it out. Use the usual spelling of the folder.`);
+    }
+    if (!rel) continue;
+    // Rules are matched against cloud names, so each part is written in that form.
+    // (As the SDK compares rules: decoded, not normalized again - a non-NFC result is refused below.)
+    const segs = rel.split('/').map((seg) => decodeLocalName(seg));
+    // (A decoded name that is not NFC would not match the rule MEGA normalizes.)
+    if (segs.some((seg) => /[\r\n/]/.test(seg) || seg === '.' || seg === '..' || seg !== seg.normalize('NFC'))) {
+      throw new ValidationError(`Refusing to sync ${lp}: ${target} is inside it and its path cannot be written as an exclusion rule. Choose a folder that does not contain it.`);
+    }
+    // A store directly in lp is already covered by the name rule.
+    if (segs.length === 1 && isStoreName(segs[0] as string)) continue;
+    const cloudRel = segs.join('/');
+    // Wildcard characters or outer spaces (the SDK trims a pattern): a regex rule matching only this path.
+    const literal = segs.every((seg) => !/[*?[\]\\]/.test(seg) && seg === seg.trim());
+    const rule = literal ? `-apg:${cloudRel}` : `-apr:${regexOfPath(cloudRel)}`;
+    // Keyed by exact spelling: a configured and an on-disk spelling that differ by a non-ASCII
+    // letter's case each get a rule (the SDK folds ASCII only).
+    if (!paths.has(cloudRel)) paths.set(cloudRel, { rule, label: rel, rel: cloudRel });
+  }
+  out.push(...paths.values());
+  return out;
+}
+
+/** How the file system spells `abs` (case included), resolving links; a missing tail kept as given. */
+export function onDiskSpelling(abs: string): string {
+  return realpathBestEffort(abs);
+}
+
+/** `target`'s path below `lp`, "/"-separated ("" for lp itself), or null if no spelling lines up. */
+export function relativeWithin(lp: string, target: string): string | null {
+  for (const base of spellingsOf(lp)) {
+    for (const t of [target, ...spellingsOf(target)]) {
+      const rel = relative(normWinPath(base), normWinPath(t));
+      if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) return rel.split(sep).join('/');
+    }
+  }
+  // Spellings that differ as text (a macOS firmlink): find the target's ancestor that IS lp on disk.
+  for (const t of [target, ...spellingsOf(target)]) {
+    for (let a = t; dirname(a) !== a; a = dirname(a)) {
+      if (sameOnDisk(lp, a)) return relative(a, t).split(sep).join('/');
+    }
+  }
+  return null;
 }
 
 /** One `put` of a plan: `sources` go INTO the cloud folder `dest`. */
@@ -685,9 +1086,14 @@ export interface UploadPlan {
   steps: UploadStep[];
   /** Local paths left out because they are (or lead into) a session store. */
   excluded: string[];
+  /** Sources too large to search completely for a copy of a store elsewhere. */
+  unchecked: string[];
+  /** Symlinks inside a rebuilt folder, left out as a whole-folder upload leaves them. */
+  links: string[];
 }
 
-function joinRemote(parent: string, name: string): string {
+/** A cloud path below `parent`, joined as text: posix.join would turn "//bin/x" into "/bin/x". */
+export function joinRemote(parent: string, name: string): string {
   if (!name) return parent;
   return `${parent.replace(/\/+$/, '')}/${name}`;
 }
@@ -709,9 +1115,20 @@ function joinRemote(parent: string, name: string): string {
  * its local one.
  */
 export function planUpload(lps: string[], rp: string, binDir?: string | null, name?: string): UploadPlan {
-  const stores = sessionStoreRoots(binDir)
-    .filter((r) => existsSync(r))
-    .map((r) => realpathBestEffort(r));
+  // The live stores and every store-named folder inside what is uploaded. statSync follows
+  // links, as MEGAcmd uploads what a source path leads to.
+  const isDir = (p: string) => {
+    try {
+      return statSync(normWinPath(p)).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  const folders = lps.filter(isDir);
+  const walks = folders.map((lp) => ({ lp, ...storeCopiesIn(lp) }));
+  const stores = [...sessionStoreRoots(binDir).filter((r) => existsSync(r)), ...walks.flatMap((w) => w.found)].map((r) =>
+    realpathBestEffort(r),
+  );
   const containsStore = (p: string): boolean => {
     const real = realpathBestEffort(normWinPath(p));
     return stores.some((st) => !(fold(st) === fold(real) || sameOnDisk(st, p)) && (isAtOrUnder(st, real) || onDiskAtOrUnder(st, p)));
@@ -720,10 +1137,12 @@ export function planUpload(lps: string[], rp: string, binDir?: string | null, na
   const direct: string[] = [];
   const steps: UploadStep[] = [];
   const excluded: string[] = [];
+  const links: string[] = [];
 
   const split = (dir: string, remoteParent: string, as?: string): void => {
     const listed = realpathBestEffort(normWinPath(dir));
-    const step: UploadStep = { dest: joinRemote(remoteParent, as ?? basename(normWinPath(dir))), sources: [] };
+    // The name MEGA gives a whole-folder upload (`%xx` decoded, NFC), so a rebuilt tree lands where the preview says.
+    const step: UploadStep = { dest: joinRemote(remoteParent, as ?? cloudNameOf(basename(normWinPath(dir)))), sources: [] };
     steps.push(step);
     let names: string[];
     try {
@@ -744,29 +1163,44 @@ export function planUpload(lps: string[], rp: string, binDir?: string | null, na
         excluded.push(child);
         continue;
       }
+      // Left out, as a whole-folder upload leaves it: as a source of its own MEGAcmd would follow
+      // it into what the store search did not look at.
+      if (isLink) {
+        links.push(child);
+        continue;
+      }
       // Either way the name reaches argv: as a source, or as part of a cloud folder.
       rejectArgvQuote(child, `"${name}" inside ${dir}`);
-      if (!isLink && containsStore(child)) split(child, step.dest);
+      // (Below "/", the data volume holds the store under another spelling: rebuilt down to it.)
+      if (containsStore(child) || holdsDataVolume(child)) split(child, step.dest);
       else step.sources.push(child);
     }
   };
 
+  const folderSet = new Set(folders);
   for (const lp of lps) {
-    if (sessionStoresWithin(lp, binDir).length > 0 || containsStore(lp)) split(lp, rp, name);
+    if (folderSet.has(lp) && (sessionStoresWithin(lp, binDir).length > 0 || containsStore(lp))) split(lp, rp, name);
     else direct.push(lp);
   }
   if (direct.length > 0) steps.unshift({ dest: rp, sources: direct });
-  // A rebuilt folder's cloud path comes from LOCAL names, and MEGAcmd unescapes a
-  // backslash and reads `name#<10 digits>` as a file version when it resolves the
-  // destination - so it could land somewhere other than the folder mkdir made.
+  // A rebuilt folder's cloud path comes from LOCAL names (decoded: "%2e%2e" is ".."), and MEGAcmd
+  // unescapes a backslash and reads `name#<10 digits>` as a file version when it resolves the
+  // destination - so it must be a plain path below rp, or it could land somewhere else.
   for (const step of steps) {
-    if (step.dest !== rp && (step.dest.includes('\\') || /#\d{10}(\/|$)/.test(step.dest))) {
+    if (step.dest === rp) continue;
+    let plain = !step.dest.includes('\\') && !/#\d{10}(\/|$)/.test(step.dest) && (rp === '/' ? step.dest.startsWith('/') : step.dest.startsWith(`${rp.replace(/\/+$/, '')}/`));
+    try {
+      plain &&= assertRemotePath(step.dest) === step.dest;
+    } catch {
+      plain = false;
+    }
+    if (!plain) {
       throw new ValidationError(
         `Cannot upload around the session store here: the folder name in ${step.dest} would be read differently by MEGAcmd. Upload the subfolders individually instead.`,
       );
     }
   }
-  return { steps, excluded };
+  return { steps, excluded, links, unchecked: walks.filter((w) => !w.complete).map((w) => w.lp) };
 }
 
 /**
@@ -779,8 +1213,9 @@ export function planUpload(lps: string[], rp: string, binDir?: string | null, na
  * `.megaCmd_x.txt`), refusing ordinary requests to guard a name that needs an
  * unusual MEGACMD_WORKING_FOLDER_SUFFIX to exist at all.
  */
-function globCanMatchStoreName(segment: string): boolean {
-  const g = fold(segment);
+export function globCanMatchStoreName(segment: string): boolean {
+  // A run of "*" matches what one does: collapsed, the work stays linear.
+  const g = fold(segment).replace(/\*+/g, '*');
   // Positions in `g` reachable so far; a "*" may also match nothing.
   const close = (states: Set<number>): Set<number> => {
     const out = new Set(states);

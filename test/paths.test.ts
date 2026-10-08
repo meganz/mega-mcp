@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { isAbsolute, resolve, join, sep, basename } from 'node:path';
 import { homedir } from 'node:os';
-import { realpathSync, existsSync } from 'node:fs';
+import { realpathSync, existsSync, rmSync } from 'node:fs';
 import { previewSafe } from '../src/tools/helpers.js';
 import {
   assertRemotePath,
@@ -198,13 +198,15 @@ describe('assertLocalPath — Win32 spellings the OS folds away', () => {
     // The folding must not swallow real directories: only trailing dots/spaces and
     // a stream suffix are dropped, never an interior dot or a longer name.
     expect(assertLocalPath(`${homedir()}\\megaCmdStuff\\a.txt`)).toContain('megaCmdStuff');
-    expect(assertLocalPath(`${homedir()}\\.megaCmdish\\a.txt`)).toContain('.megaCmdish');
+    expect(assertLocalPath(`${homedir()}\\my.megaCmd\\a.txt`)).toContain('my.megaCmd');
     expect(assertLocalPath(`${homedir()}\\my.notes.\\a.txt`)).toContain('my.notes');
   });
 
   it.runIf(!isWin)('leaves posix names alone (a trailing dot IS a distinct directory there)', () => {
-    // Folding on posix would refuse a legitimate directory the user really has.
-    expect(assertLocalPath(`${homedir()}/.megaCmd./session`)).toContain('.megaCmd.');
+    // Folding on posix would refuse a legitimate directory the user really has. (".megaCmd." itself
+    // is refused, as any name starting ".megaCmd" is: a copy of the store kept aside.)
+    expect(assertLocalPath(`${homedir()}/notes./session`)).toContain('notes.');
+    expect(() => assertLocalPath(`${homedir()}/.megaCmd./session`)).toThrow(/configuration directory/);
   });
 
   /**
@@ -424,14 +426,10 @@ describe('sessionStoresWithin / assertNoStoreWithin (bulk upload, sync, backup)'
       const base = join(home, '..');
       const found = sessionStoresWithin(base, binDir);
       expect(reports(found, homeStore)).toBe(true);
-      if (isWin) {
-        expect(reports(found, binStore)).toBe(true);
-        expect(() => assertNoStoreWithin(base, 'back up', binDir)).toThrow(binStore);
-      } else {
-        // posix: the store is under $HOME wherever the binary lives, so binDir must
-        // NOT invent a root next to the executable.
-        expect(reports(found, binStore)).toBe(false);
-      }
+      // Both, on every platform: a store-named folder MEGAcmd does not use (here,
+      // one beside a posix binary) is a copy whose session may still be valid.
+      expect(reports(found, binStore)).toBe(true);
+      expect(() => assertNoStoreWithin(base, 'back up', binDir)).toThrow(binStore);
     });
   });
 
@@ -456,10 +454,11 @@ describe('sessionStoresWithin / assertNoStoreWithin (bulk upload, sync, backup)'
   // Both branches of `if (isWin && binDir)` are pinned, using a REAL store next to
   // a real bin dir. The previous version asserted the posix behaviour ungated, so
   // on Windows it passed only because C:\Applications happens not to exist.
-  it.runIf(!isWin)('ignores a passed-in MEGAcmd bin dir on posix (store is under $HOME there)', async () => {
+  it.runIf(!isWin)('does not invent a store root beside a posix binary (only an existing folder counts)', async () => {
     await withFixture(({ home, binDir, binStore }) => {
-      // binStore really exists next to the binary; posix must still not count it,
-      // or every /Applications backup would be refused for a store MEGAcmd never made.
+      // posix keeps the store under $HOME: binDir adds no root of its own. A
+      // .megaCmd that does exist beside the binary is still found, as a copy.
+      rmSync(binStore, { recursive: true, force: true });
       expect(reports(sessionStoresWithin(join(home, '..'), binDir), binStore)).toBe(false);
       expect(() => assertNoStoreWithin(binDir, 'back up', binDir)).not.toThrow();
     });
@@ -484,8 +483,9 @@ describe('sessionStoresWithin / assertNoStoreWithin (bulk upload, sync, backup)'
       renameSync(homeStore, suffixed);
       const saved = process.env.MEGACMD_WORKING_FOLDER_SUFFIX;
       try {
+        // Found either way: a suffixed store is a store, in use or not.
         delete process.env.MEGACMD_WORKING_FOLDER_SUFFIX;
-        expect(reports(sessionStoresWithin(home), suffixed)).toBe(false);
+        expect(reports(sessionStoresWithin(home), suffixed)).toBe(true);
         process.env.MEGACMD_WORKING_FOLDER_SUFFIX = 'work';
         expect(reports(sessionStoresWithin(home), suffixed)).toBe(true);
         expect(() => assertNoStoreWithin(home, 'sync')).toThrow(/\.megaCmd_work/);
@@ -548,7 +548,7 @@ describe('planUpload leaves the session store behind', () => {
 
   it('uploads a folder without a store whole, in one step, unchanged', async () => {
     await withTree(({ other }) => {
-      expect(planUpload([other], '/B')).toEqual({ steps: [{ dest: '/B', sources: [other] }], excluded: [] });
+      expect(planUpload([other], '/B')).toEqual({ steps: [{ dest: '/B', sources: [other] }], excluded: [], links: [], unchecked: [] });
     });
   });
 
@@ -613,19 +613,20 @@ describe('planUpload leaves the session store behind', () => {
  */
 describe('assertNotStoreCopy (cloud copies of the session store)', () => {
   it('refuses a path through a .megaCmd folder, in any case or suffix variant', () => {
-    for (const p of ['/Backup/home/.megaCmd/session', '/b/.megaCmd', '/b/.MEGACMD/x', '/b/.megaCmd_work/session', '/b/.megaCmd_*/session']) {
+    for (const p of ['/Backup/home/.megaCmd/session', '/b/.megaCmd', '/b/.MEGACMD/x', '/b/.megaCmd_work/session', '/b/.megaCmd_*/session', '/b/.megaCmdbackup/x', '/b/.megaCmd.bak/session', '/b/.megaCmd.old', '/b/.megaCmd~/x', '/b/.megaCmd-backup']) {
       expect(() => assertNotStoreCopy(p)).toThrow(/session store/);
     }
   });
 
   it('refuses a wildcard that could expand to the store', () => {
     for (const p of ['/b/*/session', '/b/.mega*/session', '/b/?megaCmd/session', '/b/*md/session', '/b/.megaCmd?*/session', '/b/*_*/x', '/b/.megacmd?x/s', '/b/*']) {
-      expect(() => assertNotStoreCopy(p), p).toThrow(/wildcard/);
+      // (".megaCmd?*" starts like a store name, so it is refused as one.)
+      expect(() => assertNotStoreCopy(p), p).toThrow(/wildcard|session store/);
     }
   });
 
   it('allows ordinary names and wildcards that cannot reach the store', () => {
-    for (const p of ['/b/megaCmd/x', '/b/.megaCmdbackup/x', '/b/my.megaCmd', '/b/*.txt', '/docs/report?.pdf', '/b/mega*', '/Photos/2024/*.jpg', '/']) {
+    for (const p of ['/b/megaCmd/x', '/b/my.megaCmd', '/b/*.txt', '/docs/report?.pdf', '/b/mega*', '/Photos/2024/*.jpg', '/']) {
       expect(assertNotStoreCopy(p)).toBe(p);
     }
   });

@@ -23,6 +23,9 @@ const PROBE_TIMEOUT_MS = 10_000;
 export async function detectAuth(run: RunFn): Promise<AuthState> {
   const r = await run('whoami', [], { timeoutMs: PROBE_TIMEOUT_MS });
 
+  if (r.spawnError === 'INTEGRITY_FAILED') {
+    return { loggedIn: false, reason: 'integrity_failed', detail: classifyExit(r) };
+  }
   if (r.spawnError) {
     return { loggedIn: false, reason: 'no_megacmd', detail: classifyExit(r) };
   }
@@ -47,7 +50,7 @@ export async function ensureReady(run: RunFn, tries = 3, baseDelayMs = 500): Pro
   let last: AuthState = { loggedIn: false, reason: 'server_error' };
   for (let i = 0; i < tries; i++) {
     last = await detectAuth(run);
-    if (last.loggedIn || last.reason === 'no_megacmd') return last;
+    if (last.loggedIn || last.reason === 'no_megacmd' || last.reason === 'integrity_failed') return last;
     if (i < tries - 1) await delay(baseDelayMs * (i + 1)); // e.g. 500ms, 1000ms
   }
   return last;

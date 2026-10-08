@@ -82,6 +82,10 @@ export function registerConfig(server: McpServer, rt: Runtime): void {
             break;
           case 'permissions':
             if (!target) throw new ValidationError('permissions requires target ("files" or "folders") when setting a value.');
+            // No execute bits: a download on PATH could run in place of a program (even MEGAcmd's).
+            if (target === 'files' && /[1357]/.test(v)) {
+              throw new ValidationError('File permissions cannot include execute bits (use e.g. "600" or "644").');
+            }
             args = [`--${target}`, '-s', v];
             break;
           default:

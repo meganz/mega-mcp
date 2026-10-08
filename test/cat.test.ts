@@ -59,7 +59,8 @@ describe('mega_cat', () => {
   });
 
   it('reports a clear error when the file exceeds the cap', async () => {
-    const run: Runtime['run'] = async () => ({ code: -1, stdout: '', stderr: '', maxBufferExceeded: true }) as RunResult;
+    const run: Runtime['run'] = async (cmd) =>
+      (cmd === 'du' ? { code: 0, stdout: 'FILENAME SIZE\n/big.bin: 99999999\n-----\n', stderr: '' } : { code: -1, stdout: '', stderr: '', maxBufferExceeded: true }) as RunResult;
     const res = await catTool(run)({ remotePath: '/big.bin' });
     expect(res.isError).toBe(true);
     expect((res.content?.[0] as any).text).toMatch(/cap|too large/i);

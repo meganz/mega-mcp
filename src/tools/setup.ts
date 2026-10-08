@@ -50,19 +50,29 @@ export function registerSetup(server: McpServer, rt: Runtime): void {
         // finished. Re-resolve and, if MEGAcmd is now available, report success.
         rt.invalidateResolved();
         const resolved = await rt.getResolved();
-        if (resolved) {
-          const auth = await rt.ensureReady();
-          const state = auth.loggedIn
-            ? `You are logged in as ${auth.email ?? '(unknown)'}.`
-            : auth.reason === 'not_logged_in'
+        const found = resolved ? await rt.ensureReady() : null;
+        // Found but not MEGA-signed: the installer would keep it, so say what fixes it.
+        if (found?.reason === 'integrity_failed') {
+          return err(found.detail ?? 'MEGAcmd failed its signature check, so it was not run.', { ok: false, ready: false, reason: 'integrity_failed' });
+        }
+        if (resolved && found) {
+          const state = found.loggedIn
+            ? `You are logged in as ${found.email ?? '(unknown)'}.`
+            : found.reason === 'not_logged_in'
               ? 'It is not logged in yet — use mega_whoami for the exact login command.'
-              : `Status: ${auth.reason}.`;
+              : `Status: ${found.reason}.`;
           return ok(`MEGAcmd is installed and available. ${state}`.trim(), {
             ok: true,
             ready: true,
-            loggedIn: auth.loggedIn,
-            email: auth.email,
+            loggedIn: found.loggedIn,
+            email: found.email,
           });
+        }
+
+        // Linux has no automatic download (packages need root): say so instead of a preview.
+        if (process.platform === 'linux') {
+          const r = await acquireMegacmd(rt.config);
+          return err(r.detail ?? 'Install MEGAcmd with your package manager, then retry.', { ok: false, reason: r.reason });
         }
 
         // Not installed. Start a background install if one isn't already running

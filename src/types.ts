@@ -23,6 +23,8 @@ export interface Config {
   bundledDir?: string;
   /** Per-user cache root where a runtime-downloaded MEGAcmd is stored. */
   cacheDir: string;
+  /** This connector's own install folder (its dist/ and node_modules/). */
+  appDir?: string;
   /** Standard-install bin dirs to probe, in order, and (macOS/Windows) install
    * into. Windows: %LOCALAPPDATA%\MEGAcmd first (the installer's natural per-user
    * location — MEGAcmd assumes it lives there), then Program Files. (MSIX
@@ -92,6 +94,8 @@ export type AuthReason =
   | 'ok'
   | 'not_logged_in'
   | 'no_megacmd'
+  /** A MEGAcmd was found but failed its signature check, so it is never run. */
+  | 'integrity_failed'
   | 'server_error';
 
 export interface AuthState {

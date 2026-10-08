@@ -2,8 +2,8 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Runtime } from '../runtime.js';
 import { ok } from '../mcpResult.js';
-import { assertRemotePath, assertNoFlag, assertFlagValue, assertSecret, assertNoWildcard, ValidationError } from '../paths.js';
-import { guardRun, runToResult, checkConfirm, secretBinding, destinationNotes } from './helpers.js';
+import { assertNoVersionName, assertRemotePath, assertRemoteDest, assertNoFlag, assertFlagValue, assertSecret, assertNoWildcard, ValidationError } from '../paths.js';
+import { noteSessionChange, guardRun, runToResult, checkConfirm, secretBinding, destinationNotes, assertSyncedLanding, backupFolderLines } from './helpers.js';
 import { isPublicLink } from '../argv.js';
 
 const TRANSFER_FLAG: Record<string, string> = { pause: '-p', resume: '-r', cancel: '-c' };
@@ -15,6 +15,16 @@ const IPC_FLAG: Record<string, string> = { accept: '-a', deny: '-d', ignore: '-i
  * all use the two-call confirm protocol. Read forms live elsewhere (attr/users
  * read in readonly.ts/contacts.ts, transfers list in readonly.ts).
  */
+/** What some account-wide attributes do, said in the preview (raw names are cryptic). */
+const KNOWN_ATTRS: Record<string, (value: string) => string[]> = {
+  '^!dv': (v) => [
+    v === '1'
+      ? 'This turns file VERSIONING OFF for the whole account: from then on a replaced file is deleted, not kept as an older version.'
+      : 'This sets whether file versioning is off ("1") or on ("0") for the whole account.',
+  ],
+  '^!rubbishtime': (v) => [`This sets how many days the Rubbish Bin keeps deleted items before they are removed for good (${v}).`],
+};
+
 export function registerManage(server: McpServer, rt: Runtime): void {
   // mega_attr_set — set or delete a node attribute. (Read form: mega_attr.)
   server.registerTool(
@@ -34,8 +44,12 @@ export function registerManage(server: McpServer, rt: Runtime): void {
     },
     async ({ remotePath, attribute, action, value, confirm }) =>
       guardRun(async () => {
-        const rp = assertNoWildcard(assertRemotePath(remotePath), 'remotePath');
+        const rp = assertNoVersionName(assertNoWildcard(assertRemotePath(remotePath), 'remotePath'));
         const attr = assertNoFlag(attribute, 'attribute');
+        // s4 is MEGA's S4 configuration (access keys, public URL access): not set from here.
+        if (attr.toLowerCase() === 's4') throw new ValidationError('The s4 attribute (S4 storage configuration) is not changed through this tool.');
+        // BACKST marks a scheduled backup's copies (complete, ongoing, failed): its rotation decides by it.
+        if (attr.toUpperCase() === 'BACKST') throw new ValidationError('The BACKST attribute (the state of a periodic backup\'s copy) is not changed through this tool.');
         if (action === 'set' && (value === undefined || value.trim() === '')) {
           throw new ValidationError('value is required for action="set".');
         }
@@ -45,8 +59,11 @@ export function registerManage(server: McpServer, rt: Runtime): void {
           action === 'set'
             ? `This will set attribute "${attr}" to "${val as string}" on ${rp}.`
             : `This will delete attribute "${attr}" from ${rp}.`;
-        const gate = checkConfirm(rt, 'mega_attr_set', { remotePath: rp, attribute: attr, action, value: val }, confirm, summary);
+        // A node's attributes go with it: everyone who can open it reads them.
+        const notes = action === 'set' ? await destinationNotes(rt, rp) : [];
+        const gate = checkConfirm(rt, 'mega_attr_set', { remotePath: rp, attribute: attr, action, value: val, notes }, confirm, [summary, ...notes]);
         if (gate) return gate;
+        noteSessionChange(rp, `attribute "${attr}" ${action === 'set' ? 'set' : 'removed'}`);
         const args = action === 'set' ? [rp, '-s', attr, val as string] : [rp, '-d', attr];
         return runToResult(rt, 'attr', args, () => ok(summary.replace(/^This will /, 'Done: '), { remotePath: rp, attribute: attr, action }));
       }),
@@ -69,7 +86,7 @@ export function registerManage(server: McpServer, rt: Runtime): void {
       guardRun(async () => {
         const attr = assertNoFlag(attribute, 'attribute');
         const val = assertNoFlag(value, 'value');
-        const summary = `This will set your profile attribute "${attr}" to "${val}".`;
+        const summary = [`This will set your profile attribute "${attr}" to "${val}".`, ...(KNOWN_ATTRS[attr]?.(val) ?? [])];
         const gate = checkConfirm(rt, 'mega_userattr_set', { attribute: attr, value: val }, confirm, summary);
         if (gate) return gate;
         return runToResult(rt, 'userattr', ['-s', attr, val], () => ok(`Set profile attribute "${attr}".`, { attribute: attr }));
@@ -221,11 +238,22 @@ export function registerManage(server: McpServer, rt: Runtime): void {
           throw new ValidationError('link must be a MEGA public link (https://mega.nz/file/... or /folder/...).');
         }
         const pw = password === undefined ? undefined : assertSecret(password, 'password');
-        const rp = assertRemotePath(remotePath);
-        const notes = confirm ? [] : await destinationNotes(rt, rp);
-        const summary = [`This will import the contents of the link ${lk} into ${rp}.`, ...notes];
+        // Resolved literally by MEGAcmd, listed as a pattern by the checks: no wildcards.
+        const rp = assertNoWildcard(assertRemoteDest(remotePath), 'remotePath');
+        await assertSyncedLanding(rt, rp, 'unknown');
+        // The imported item's name is known only once it is fetched.
+        const notes = [...(await destinationNotes(rt, rp)), ...(await backupFolderLines(rt, rp))];
+        // A FILE link replaces a same-named file in rp (an older version only with versioning, also
+        // on a synced computer). Anything but a bare whole-folder link can bring a file.
+        const bareFolder = /^https:\/\/(?:mega\.nz|mega\.co\.nz|mega\.app)\/(?:folder\/[A-Za-z0-9_-]+#[A-Za-z0-9_-]+|#F![A-Za-z0-9_-]+![A-Za-z0-9_-]+)$/.test(lk);
+        const fileLink = !bareFolder;
+        const summary = [
+          `This will import the contents of the link ${lk} into ${rp}.`,
+          ...(fileLink ? [`If ${rp} already holds a file with the linked file's name, that file is REPLACED (kept only as an older version, if file versioning is on).`] : []),
+          ...notes,
+        ];
         // Bind only the presence of a password into the token, never its value.
-        const gate = checkConfirm(rt, 'mega_import', { link: lk, remotePath: rp, password: secretBinding(password) }, confirm, summary);
+        const gate = checkConfirm(rt, 'mega_import', { link: lk, remotePath: rp, password: secretBinding(password), notes }, confirm, summary);
         if (gate) return gate;
         // The VALIDATED password, not the raw one: an embedded quote here would
         // re-tokenize the command and redirect the import to another destination.

@@ -32,6 +32,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     megacmdDir,
     bundledDir,
+    appDir: resolve(here, '..'),
     cacheDir: resolveCacheDir(env),
     systemAppBinDirs: systemAppBinDirs(env),
     download: downloadSpec(env),

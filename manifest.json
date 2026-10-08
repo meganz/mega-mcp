@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "mega-cloud-mcp",
   "display_name": "MEGA Cloud MCP",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Operate your MEGA cloud account (list, search, upload, download, share) via MEGAcmd.",
   "long_description": "Wraps the MEGAcmd CLI so an AI assistant can manage files in your end-to-end encrypted MEGA account. You log in out-of-band yourself in the MEGAcmd interactive shell (login <email>); no credentials ever pass through the AI. Destructive and data-moving actions require explicit confirmation.",
   "author": { "name": "Mega Limited", "email": "jsh@mega.co.nz", "url": "https://github.com/meganz" },
@@ -31,7 +31,7 @@
   },
   "tools_generated": false,
   "tools": [
-    { "name": "megacmd_setup", "description": "Download + verify the MEGAcmd engine on first use (no login)." },
+    { "name": "megacmd_setup", "description": "Download + verify the MEGAcmd engine on first use on macOS/Windows (no login)." },
     { "name": "mega_whoami", "description": "Show the logged-in MEGA account (email only)." },
     { "name": "mega_account", "description": "Show the account plan tier and storage (no session/balance)." },
     { "name": "mega_logout", "description": "Log out of the current MEGA session (confirm)." },
@@ -50,8 +50,8 @@
     { "name": "mega_attr_set", "description": "Set or delete a node attribute (confirm)." },
     { "name": "mega_errorcode", "description": "Explain a numeric MEGAcmd error code." },
     { "name": "mega_config", "description": "Show or change a MEGAcmd setting (set: confirm)." },
-    { "name": "mega_mkdir", "description": "Create a cloud folder." },
-    { "name": "mega_cp", "description": "Copy a cloud node (confirm)." },
+    { "name": "mega_mkdir", "description": "Create a cloud folder (confirm when its place is shared, linked or synced)." },
+    { "name": "mega_cp", "description": "Copy cloud nodes, one or in bulk (confirm when the destination is shared, linked or synced, or a file would be replaced)." },
     { "name": "mega_mv", "description": "Move or rename a cloud node (confirm)." },
     { "name": "mega_put", "description": "Upload a local file/folder to the cloud (confirm)." },
     { "name": "mega_get", "description": "Download a cloud file/folder locally (confirm)." },
@@ -69,7 +69,7 @@
     { "name": "mega_backup_control", "description": "Abort or delete a backup (confirm)." },
     { "name": "mega_sync_issues", "description": "Show sync conflicts/issues." },
     { "name": "mega_sync_config", "description": "Show global sync configuration." },
-    { "name": "mega_sync_ignore", "description": "View/modify sync ignore filters (add/remove confirm)." },
+    { "name": "mega_sync_ignore", "description": "View/modify sync ignore filters (exclusions only; confirm)." },
     { "name": "mega_userattr_set", "description": "Set one of your own profile attributes (confirm)." },
     { "name": "mega_invite", "description": "Send/resend/withdraw a contact invitation (confirm)." },
     { "name": "mega_ipc", "description": "Accept/deny/ignore an incoming contact request (confirm)." },
@@ -90,7 +90,7 @@
     "megacmd_dir": {
       "type": "directory",
       "title": "MEGAcmd install directory (optional)",
-      "description": "Only set this if MEGAcmd is not bundled or not on PATH. Point to the folder containing mega-ls, mega-whoami, etc.",
+      "description": "Only set this if MEGAcmd is not bundled or not on PATH. Point to the folder containing mega-ls, mega-whoami, etc. It is used before /Applications and PATH; on macOS it is signature-checked only inside MEGAcmd.app, and on Linux not at all.",
       "required": false
     },
     "max_list_lines": {
@@ -104,14 +104,14 @@
     "expose_contacts": {
       "type": "boolean",
       "title": "Expose contact tools",
-      "description": "Enable mega_users / mega_showpcr / mega_userattr. Off by default: these surface contact emails/names (third-party PII) into the conversation.",
+      "description": "Enable mega_users / mega_showpcr / mega_userattr (your contact list, contact requests and profile attributes). Off by default.",
       "default": false,
       "required": false
     },
     "expose_account_details": {
       "type": "boolean",
       "title": "Expose account-detail tools",
-      "description": "Enable mega_sessions / mega_balance. Off by default: these surface your own login metadata (IP/location/devices) and financial history into the conversation.",
+      "description": "Enable mega_sessions / mega_balance. Off by default: these surface your own login sessions (session IDs, IP/location/devices) and financial history into the conversation.",
       "default": false,
       "required": false
     },

@@ -16,8 +16,7 @@
  *
  * Note: `whoami -l` never calls dumpSession(), so the resumable login KEY is not
  * present in this output at all (it appears only in `logout -k` / `session`,
- * which we never run). The "Session ID" it does print (the killSession handle) is
- * replaced with [hidden] by the runtime (src/invocation.ts scrubSecrets).
+ * which we never run). The "Session ID" it does print is the killSession handle.
  *
  * Field labels & order: meganz/MEGAcmd src/megacmdexecuter.cpp
  * actUponGetExtendedAccountDetails (~line 2252). There is NO transfer-quota line.

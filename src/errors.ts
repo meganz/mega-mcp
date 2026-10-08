@@ -64,6 +64,8 @@ export function firstStderrLine(stderr: string): string {
 export function redact(text: string): string {
   return text
     .replace(/\bsession\b[^\n]*/gi, 'session [redacted]')
+    // A link's key follows "#" or "!" (folder keys are 22 characters, below the length rule).
+    .replace(/([#!])[A-Za-z0-9_-]{16,}/g, '$1[redacted]')
     .replace(/[A-Za-z0-9_-]{40,}/g, '[redacted]');
 }
 
@@ -78,10 +80,10 @@ export function classifyExit(
     return 'Output too large to return. Narrow the request (a more specific path or pattern).';
   }
   if (result.timedOut) {
-    return 'The MEGAcmd command timed out. The server may be busy or still starting; try again shortly.';
+    return 'The MEGAcmd command timed out. The server may be busy or still starting; a transfer may also still be running in MEGAcmd (see mega_transfers). Try again shortly.';
   }
   if (result.spawnError === 'INTEGRITY_FAILED') {
-    return 'The cached MEGAcmd failed an integrity check. Run the `megacmd_setup` tool to re-download a verified copy.';
+    return "The MEGAcmd found on this computer failed its signature check (it is not the program MEGA signed), so it was not run. Remove it and reinstall MEGAcmd from https://mega.io/cmd.";
   }
   if (result.spawnError) {
     return 'MEGAcmd is not available. Run the `megacmd_setup` tool to download it, or install MEGAcmd / set the MEGAcmd directory in the extension settings.';
