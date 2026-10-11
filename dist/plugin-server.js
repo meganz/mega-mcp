@@ -22736,7 +22736,7 @@ function ignoreFilesIn(lps) {
 function storeCopiesWithin(abs) {
   return storeCopiesIn(abs).found;
 }
-function sessionStoresWithin(abs, binDir) {
+function sessionStoresWithin(abs, binDir, opts = {}) {
   const forms = [...new Set([abs, resolve4(abs)].flatMap(spellingsOf))];
   const hits = /* @__PURE__ */ new Map();
   for (const root of sessionStoreRoots(binDir)) {
@@ -22745,7 +22745,7 @@ function sessionStoresWithin(abs, binDir) {
       hits.set(fold(realpathBestEffort(root)), root);
     }
   }
-  for (const copy of storeCopiesWithin(abs)) hits.set(fold(realpathBestEffort(copy)), copy);
+  if (opts.walk !== false) for (const copy of storeCopiesWithin(abs)) hits.set(fold(realpathBestEffort(copy)), copy);
   return [...hits.values()];
 }
 function rejectNul(p) {

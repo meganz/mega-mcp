@@ -667,7 +667,7 @@ export function storeCopiesWithin(abs: string): string[] {
  * Every session store inside `abs` (all, not the first: on Windows the real one is
  * executable-relative). Missing roots are dropped; the refusal path does not drop them.
  */
-export function sessionStoresWithin(abs: string, binDir?: string | null): string[] {
+export function sessionStoresWithin(abs: string, binDir?: string | null, opts: { walk?: boolean } = {}): string[] {
   // Canonicalize as thoroughly as the refusal path does. An advisory that a
   // non-canonical-but-ordinary spelling silently switches off is worse than none.
   const forms = [...new Set([abs, resolve(abs)].flatMap(spellingsOf))];
@@ -682,7 +682,8 @@ export function sessionStoresWithin(abs: string, binDir?: string | null): string
       hits.set(fold(realpathBestEffort(root)), root);
     }
   }
-  for (const copy of storeCopiesWithin(abs)) hits.set(fold(realpathBestEffort(copy)), copy);
+  // (Copies elsewhere are searched for by walking the tree; `walk: false` checks the known places only.)
+  if (opts.walk !== false) for (const copy of storeCopiesWithin(abs)) hits.set(fold(realpathBestEffort(copy)), copy);
   return [...hits.values()];
 }
 

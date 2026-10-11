@@ -377,14 +377,14 @@ describe('sessionStoresWithin / assertNoStoreWithin (bulk upload, sync, backup)'
   const reports = (list: string[], want: string) => list.some((p) => sameStore(p, want));
   const names = (paths: string[]) => paths.map((p) => p.split(/[\\/]/).pop());
 
-  // (Walks the whole disk up to the 20,000-folder bound: slow on CI runners.)
   it('detects the store inside an ancestor tree', async () => {
     await withFixture(({ home, homeStore }) => {
       expect(reports(sessionStoresWithin(home), homeStore)).toBe(true);
-      // The filesystem root contains it too, spelled the way this platform spells it.
-      expect(sessionStoresWithin(ROOT).length).toBeGreaterThan(0);
+      // The filesystem root contains it too, spelled the way this platform spells it. (Its known place
+      // only: walking the whole disk to the 20,000-folder bound takes over 30 s on a CI runner's cold cache.)
+      expect(reports(sessionStoresWithin(ROOT, undefined, { walk: false }), homeStore)).toBe(true);
     });
-  }, 30_000);
+  });
 
   it('reports one store ONCE even when its root has two spellings', async () => {
     // sessionStoreRoots() adds both the raw and the realpath spelling of each root.
