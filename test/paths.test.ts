@@ -377,13 +377,14 @@ describe('sessionStoresWithin / assertNoStoreWithin (bulk upload, sync, backup)'
   const reports = (list: string[], want: string) => list.some((p) => sameStore(p, want));
   const names = (paths: string[]) => paths.map((p) => p.split(/[\\/]/).pop());
 
+  // (Walks the whole disk up to the 20,000-folder bound: slow on CI runners.)
   it('detects the store inside an ancestor tree', async () => {
     await withFixture(({ home, homeStore }) => {
       expect(reports(sessionStoresWithin(home), homeStore)).toBe(true);
       // The filesystem root contains it too, spelled the way this platform spells it.
       expect(sessionStoresWithin(ROOT).length).toBeGreaterThan(0);
     });
-  });
+  }, 30_000);
 
   it('reports one store ONCE even when its root has two spellings', async () => {
     // sessionStoreRoots() adds both the raw and the realpath spelling of each root.
@@ -677,12 +678,13 @@ describe('assertDownloadTarget / assertNoProtectedWithin', () => {
     });
   });
 
+  // (Searches the real home folder: slow on a large one.)
   it('covers the session store the same way', () => {
     const home = homedir();
     expect(() => assertDownloadTarget(home, '.megaCmd')).toThrow(ValidationError);
     expect(() => assertDownloadTarget(join(home, '..'), basename(home))).toThrow(/could write into/);
     expect(() => assertDownloadTarget(home, 'Documents')).not.toThrow();
-  });
+  }, 30_000);
 
   it('refuses a two-way sync root that contains a protected directory', async () => {
     await withRoot(({ parent }) => {

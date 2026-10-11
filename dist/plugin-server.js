@@ -22501,6 +22501,7 @@ function localSpellings(name) {
   return [.../* @__PURE__ */ new Set([name, esc2((c) => c === "/" || c === "\0"), esc2((c) => c === "/" || c === ":" || c === "\0"), strict, dots])];
 }
 function isStoreName(name) {
+  if (name[0] !== "." && name[0] !== "%") return false;
   return [name, cloudNameOf(name)].some((n) => fold(n).startsWith(".megacmd"));
 }
 function realpathBestEffort(abs) {
@@ -22536,6 +22537,7 @@ function assertNotTrustRoot(abs) {
   insideAny(abs, trustRoots, "Refusing to read or write inside the MEGAcmd program directory or this connector's data directory - a file placed there would be loaded by MEGAcmd or by the connector itself.");
 }
 function isIgnoreFileName(name) {
+  if (name[0] !== "." && name[0] !== "%") return false;
   return [name, cloudNameOf(name)].some((n) => fold(normSegment(n)) === ".megaignore");
 }
 var RECOVERY_KEY_NAMES = [

@@ -294,7 +294,8 @@ export function localSpellings(name: string): string[] {
 function isStoreName(name: string): boolean {
   // Also as uploaded ("%2emegaCmd" arrives as ".megaCmd"), and any name starting so: a copy kept
   // aside (".megaCmd (1)", ".megaCmd.bak", ".megaCmd.old", ".megaCmd~") may still hold a valid
-  // session - the same rule (-dng:.megacmd*) every sync gets.
+  // session - the same rule (-dng:.megacmd*) every sync gets. (Starting "." or "%", as above.)
+  if (name[0] !== '.' && name[0] !== '%') return false;
   return [name, cloudNameOf(name)].some((n) => fold(n).startsWith('.megacmd'));
 }
 
@@ -386,6 +387,9 @@ function assertNotTrustRoot(abs: string): void {
  */
 /** A name the file system opens as `.megaignore` (folded; on Windows also with trailing dots/spaces or a ":stream"). */
 export function isIgnoreFileName(name: string): boolean {
+  // Only a name starting "." or "%" (an escaped dot) can be one: no folding turns another character
+  // into a dot - checked first, as this runs for every entry of a folder walk.
+  if (name[0] !== '.' && name[0] !== '%') return false;
   return [name, cloudNameOf(name)].some((n) => fold(normSegment(n)) === '.megaignore');
 }
 
