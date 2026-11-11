@@ -273,9 +273,9 @@ export function sanitizeVersion(v: string): string {
  * binary against the user's already-authenticated MEGA session.
  *
  * Identity-based, NOT hash-based, so it survives MEGAcmd self-updates (the
- * binary content changes but the signer stays "Mega Limited"):
+ * binary content changes but the signer stays MEGA):
  *  - macOS: Developer-ID code signature + notarization (+ optional team id).
- *  - Windows: the server exe's Authenticode signature (signer "Mega Limited").
+ *  - Windows: the server exe's Authenticode signature (a signer in WINDOWS_SIGNERS).
  *  - Linux: no per-binary code signature exists, so fall back to the
  *    install-time SHA-256 when one was recorded (cache installs only).
  *
@@ -463,7 +463,7 @@ async function acquireWindows(config: Config, onProgress: (p: string) => void): 
       return { ok: false, reason: 'hash_mismatch', detail: `Downloaded artifact hash ${hash.slice(0, 12)}… is not in the vetted allowlist.` };
     }
 
-    // Integrity gate: Authenticode (signer Organization = Mega Limited, trusted
+    // Integrity gate: Authenticode (a signer in WINDOWS_SIGNERS, trusted
     // chain, optional thumbprint pin) BEFORE we run it. Hash pin above is optional.
     onProgress('verifying-signature');
     await verifyAuthenticodeWin(exe, config.download.winThumbprint);
@@ -534,10 +534,38 @@ function launchViaExplorer(target: string): void {
   child.unref();
 }
 
-async function verifyAuthenticodeWin(exe: string, thumbprint?: string): Promise<void> {
+/**
+ * Who signs MEGAcmd for Windows. A signer is a list of subject attributes that must ALL be in the
+ * signing certificate, each as an RDN of its own and compared with case; one attribute may be
+ * given in the spellings Windows prints its type in.
+ *  - "Mega Limited": MEGAcmd up to 2.6.
+ *  - "MEGA Privacy LLC", Hungary, company register number 13-09-239012: MEGAcmd 2.7.0 on (an EV
+ *    certificate, seen on https://mega.nz/MEGAcmdSetup64.exe). A company of that name can exist in
+ *    another country, so the country and the register number are part of the pin; both stay the
+ *    same when the certificate is renewed.
+ */
+export const WINDOWS_SIGNERS: readonly (readonly (readonly string[])[])[] = [
+  [['O=Mega Limited']],
+  [['O=MEGA Privacy LLC'], ['C=HU'], ['SERIALNUMBER=13-09-239012', 'OID.2.5.4.5=13-09-239012', '2.5.4.5=13-09-239012']],
+];
+
+/** `rdns` (a certificate subject, one "TYPE=value" per entry) is one of WINDOWS_SIGNERS. */
+export function isWindowsSigner(rdns: readonly string[], signers = WINDOWS_SIGNERS): boolean {
+  return signers.some((all) => all.every((any) => any.some((rdn) => rdns.includes(rdn))));
+}
+
+/** The same test as a PowerShell expression over `$rdns` (-ccontains: a whole entry, with case). */
+export function windowsSignerCondition(signers = WINDOWS_SIGNERS): string {
+  const quoted = (rdn: string): string => `'${rdn.replace(/'/g, "''")}'`;
+  return signers
+    .map((all) => `(${all.map((any) => `(${any.map((rdn) => `($rdns -ccontains ${quoted(rdn)})`).join(' -or ')})`).join(' -and ')})`)
+    .join(' -or ');
+}
+
+export async function verifyAuthenticodeWin(exe: string, thumbprint?: string): Promise<void> {
   // Identity pin (Windows analogue of the macOS Developer-ID team-id pin):
   //  - Status must be 'Valid' (trusted chain; blocks self-signed / untrusted).
-  //  - the signer Organization must be EXACTLY "Mega Limited".
+  //  - the signer must be one of WINDOWS_SIGNERS, attribute for attribute.
   //  - if a certificate thumbprint is configured, it must match exactly.
   //
   // The O= comparison reads the PARSED RDN list, one per line, never the flattened
@@ -557,7 +585,7 @@ async function verifyAuthenticodeWin(exe: string, thumbprint?: string): Promise<
     `$c = $s.SignerCertificate; ` +
     `if (-not $c) { exit 4 }; ` +
     `$rdns = $c.SubjectName.Format($true) -split "\`r?\`n" | ForEach-Object { $_.Trim() }; ` +
-    `if (-not ($rdns -ccontains 'O=Mega Limited')) { exit 4 }; ` +
+    `if (-not (${windowsSignerCondition()})) { exit 4 }; ` +
     `if ($env:MEGA_VERIFY_THUMBPRINT -and ($c.Thumbprint -ne $env:MEGA_VERIFY_THUMBPRINT)) { exit 5 }; ` +
     `exit 0`;
   try {
@@ -575,7 +603,7 @@ async function verifyAuthenticodeWin(exe: string, thumbprint?: string): Promise<
       },
     });
   } catch {
-    throw new Error(`signature_failed: Authenticode verification failed for ${basename(exe)} (expected a valid, trusted "O=Mega Limited" signature)`);
+    throw new Error(`signature_failed: Authenticode verification failed for ${basename(exe)} (expected a valid, trusted signature by MEGA: "Mega Limited" or "MEGA Privacy LLC")`);
   }
 }
 

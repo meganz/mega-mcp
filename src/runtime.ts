@@ -452,7 +452,7 @@ export function createRuntime(config: Config, deps: RuntimeDeps = {}): Runtime {
     // Integrity gate: verify the code signature of WHATEVER binary we are about
     // to launch, once per resolution, for EVERY source - not just the ones we
     // downloaded. Identity-based, so it survives MEGAcmd self-updates (signer
-    // stays "Mega Limited"; see verifyResolvedBinary). Swaps made later by other
+    // stays MEGA; see verifyResolvedBinary). Swaps made later by other
     // software running as the same user are out of scope (see SECURITY.md): such
     // software can read the session store directly.
     const binDir = resolved.binDir ?? (resolved.source === 'path' ? await resolvePathBinDir() : null);

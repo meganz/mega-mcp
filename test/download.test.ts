@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { acquireMegacmd, sanitizeVersion, verifyResolvedBinary } from '../src/download/megacmd.js';
+import { acquireMegacmd, sanitizeVersion, verifyResolvedBinary, isWindowsSigner, windowsSignerCondition, WINDOWS_SIGNERS } from '../src/download/megacmd.js';
 import type { Config } from '../src/types.js';
 
 // A FRESH temp dir cannot contain a MEGAcmd install, on any platform. The old
@@ -95,3 +95,59 @@ describe.runIf(hasWinInstall)('verifyResolvedBinary (win32 Authenticode)', () =>
   });
 });
 
+describe('Windows signers (Authenticode identity pin)', () => {
+  // The subjects as Windows prints them, one attribute per line. The first is the certificate
+  // MEGAcmd was signed with up to 2.6; the second the one on https://mega.nz/MEGAcmdSetup64.exe
+  // for 2.7.0 (GlobalSign EV, valid from 2 October 2026).
+  const megaLimited = ['CN=Mega Limited', 'O=Mega Limited', 'STREET="Level 21, Huawei Centre 120 Albert Street"', 'L=Auckland', 'S=Auckland', 'C=NZ'];
+  const megaPrivacy = [
+    'CN=MEGA Privacy LLC',
+    'OU=IT',
+    'O=MEGA Privacy LLC',
+    'STREET=Templom utca 17',
+    'L=Csomád',
+    'S=Pest',
+    'C=HU',
+    'OID.1.3.6.1.4.1.311.60.2.1.3=HU',
+    'SERIALNUMBER=13-09-239012',
+    'OID.2.5.4.15=Private Organization',
+  ];
+  const without = (rdns: string[], prefix: string) => rdns.filter((rdn) => !rdn.startsWith(prefix));
+
+  it('accepts both certificates MEGA has signed MEGAcmd with', () => {
+    expect(isWindowsSigner(megaLimited)).toBe(true);
+    expect(isWindowsSigner(megaPrivacy)).toBe(true);
+    // The register number under the other names Windows may print its type with.
+    expect(isWindowsSigner([...without(megaPrivacy, 'SERIALNUMBER='), 'OID.2.5.4.5=13-09-239012'])).toBe(true);
+  });
+
+  it('the new name alone is not enough: the country and the register number are part of it', () => {
+    expect(isWindowsSigner(['CN=MEGA Privacy LLC', 'O=MEGA Privacy LLC', 'C=US'])).toBe(false);
+    expect(isWindowsSigner([...without(megaPrivacy, 'C='), 'C=US'])).toBe(false);
+    expect(isWindowsSigner([...without(megaPrivacy, 'SERIALNUMBER='), 'SERIALNUMBER=01-09-999999'])).toBe(false);
+    expect(isWindowsSigner(without(megaPrivacy, 'SERIALNUMBER='))).toBe(false);
+    // Only the country of the address counts, not the register's.
+    expect(isWindowsSigner(without(megaPrivacy, 'C='))).toBe(false);
+  });
+
+  it('compares whole attributes, with case, and never a name inside another attribute', () => {
+    expect(isWindowsSigner(['CN=Mega Limited', 'O=Evil Corp'])).toBe(false);
+    expect(isWindowsSigner(['CN="Evil Corp, O=Mega Limited, X"', 'O=Evil Corp'])).toBe(false);
+    expect(isWindowsSigner(['O=MEGA LIMITED'])).toBe(false);
+    expect(isWindowsSigner(['O=Mega Limited Inc'])).toBe(false);
+    expect(isWindowsSigner([...without(megaPrivacy, 'O='), 'O=Mega Privacy LLC'])).toBe(false);
+    expect(isWindowsSigner([])).toBe(false);
+  });
+
+  it('the PowerShell check is built from the same list', () => {
+    const ps = windowsSignerCondition();
+    for (const rdn of WINDOWS_SIGNERS.flat(2)) expect(ps).toContain(`($rdns -ccontains '${rdn}')`);
+    expect(ps).toBe(
+      "((($rdns -ccontains 'O=Mega Limited'))) -or " +
+        "((($rdns -ccontains 'O=MEGA Privacy LLC')) -and (($rdns -ccontains 'C=HU')) -and " +
+        "(($rdns -ccontains 'SERIALNUMBER=13-09-239012') -or ($rdns -ccontains 'OID.2.5.4.5=13-09-239012') -or ($rdns -ccontains '2.5.4.5=13-09-239012')))",
+    );
+    // A quote in a name can't end the PowerShell string.
+    expect(windowsSignerCondition([[["O=O'Brien"]]])).toBe("((($rdns -ccontains 'O=O''Brien')))");
+  });
+});

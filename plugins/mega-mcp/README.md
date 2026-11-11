@@ -82,8 +82,8 @@ stop reading your files at any time.
     `T9RH74Y7L9`), then installs `MEGAcmd.app` to `/Applications`, or to a
     per-user cache if `/Applications` isn't writable.
   - Windows: `https://mega.nz/MEGAcmdSetup64.exe`. It checks the Authenticode
-    signature (signer `Mega Limited`), then opens the installer for you to
-    complete.
+    signature (signer `Mega Limited`, or `MEGA Privacy LLC` for MEGAcmd 2.7.0 and
+    later), then opens the installer for you to complete.
   - Linux: nothing is downloaded. Claude explains how to install MEGAcmd with
     your package manager from <https://mega.io/cmd>.
 - **Sends:** MEGAcmd talks to MEGA's servers to carry out the operations you

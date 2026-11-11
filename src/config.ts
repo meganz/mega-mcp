@@ -130,7 +130,7 @@ function downloadSpec(env: NodeJS.ProcessEnv): DownloadSpec {
       };
       break;
     case 'win32':
-      // Identity pin = Authenticode "O=Mega Limited" on a trusted chain (+ an
+      // Identity pin = Authenticode signer in WINDOWS_SIGNERS on a trusted chain (+ an
       // optional thumbprint via MEGA_MCP_WIN_THUMBPRINT). Hash optional, as above.
       spec = { url: 'https://mega.nz/MEGAcmdSetup64.exe', sha256Allow: [], winThumbprint: clean(env.MEGA_MCP_WIN_THUMBPRINT) };
       break;

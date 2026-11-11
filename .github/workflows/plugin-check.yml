@@ -2,9 +2,15 @@ name: Plugin check
 
 on:
   push:
-    branches: [main, release]
+    # develop: where a change is pushed first, so main receives it only once CI is green.
+    branches: [main, release, develop]
   pull_request:
     branches: [main, release]
+  # Once a week too: the Windows job checks MEGA's current installer against the signer this
+  # connector accepts, so a change of MEGA's certificate is noticed without a push.
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -32,10 +38,10 @@ jobs:
       # The checks compare the committed files with fresh builds; none may have been rewritten.
       - run: test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }
 
-  # The Codex plugin's Windows launcher, bin/mega-mcp.cmd, which the job above can't run:
-  # started the way Codex starts it, it must find Node in each place it promises and serve
-  # the tools. It runs the checked-in bundle, so it needs no npm ci. scripts/release-plugin.mjs
-  # requires this job too.
+  # What only Windows can check. The Codex plugin's launcher, bin/mega-mcp.cmd: started the way
+  # Codex starts it, it must find Node in each place it promises and serve the tools (it runs
+  # the checked-in bundle). And the signature check of MEGAcmd for Windows, against MEGA's
+  # current installer. scripts/release-plugin.mjs requires this job too.
   windows:
     runs-on: windows-latest
     timeout-minutes: 15
@@ -47,3 +53,8 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/check-launcher.mjs
+      # MEGA's official installer (downloaded, never run) must pass the server's own signature
+      # check, and a program signed by someone else must not.
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/check-windows-signer.mjs

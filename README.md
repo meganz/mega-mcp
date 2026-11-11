@@ -248,8 +248,9 @@ Per-platform status:
   `T9RH74Y7L9`) verified before execution. A SHA-256 pin is optional (MEGA
   publishes none and the URL rolls); set `MEGA_MCP_DOWNLOAD_SHA256` to enforce one.
 - **Windows** — implemented; on-device validation in progress. Downloads the official MEGAcmd
-  NSIS installer, verifies its Authenticode signature (signer organization
-  `Mega Limited`) before running, then launches it via `explorer.exe` so MEGAcmd
+  NSIS installer, verifies its Authenticode signature (signer `Mega Limited`, or
+  `MEGA Privacy LLC` of Hungary with its company register number, which signs
+  MEGAcmd 2.7.0 and later) before running, then launches it via `explorer.exe` so MEGAcmd
   installs **standalone** to the real `%LOCALAPPDATA%\MEGAcmd` — outside the MSIX
   package container, so its server auto-spawn works and the session is shared. The
   install is interactive: complete the dialog, then retry (`megacmd_setup` reports
@@ -378,7 +379,13 @@ Code: its `git-subdir` source pins `plugins/mega-mcp` to `release`, and
 `check:plugin` fails if that pin changes. (Codex reads only
 `.agents/plugins/marketplace.json`, so the two catalogs don't collide.)
 
-1. Land changes on `main`. Whenever `src/`, a bundled dependency, `scripts/plugin-parts/`,
+1. Work on `develop`: commit and push there as often as needed; CI runs on every push (jobs
+   `check` and `windows`). `main` gets a version once, as one commit. When the version is
+   ready, make `develop` that one commit (`git reset --soft main`, then commit with the
+   version's message), push it (`git push --force-with-lease origin develop`; `develop` is
+   the one branch that may be rewritten) and wait for CI on it. Then fast-forward `main`
+   (`git switch main`, `git merge --ff-only develop`, `git push origin main`); CI's result
+   for that commit carries over. Whenever `src/`, a bundled dependency, `scripts/plugin-parts/`,
    `scripts/plugin-bundle-options.mjs`, `LICENSE`, `NOTICE` or the icon changes, run `npm run build:plugin`
    and commit `dist/plugin-server.js`, `dist/plugin-parts/` and the copies it writes into
    `plugins/mega-mcp/` with it. CI runs `npm run check:plugin` (plus typecheck
@@ -398,7 +405,7 @@ Code: its `git-subdir` source pins `plugins/mega-mcp` to `release`, and
    asks you to retry while they are running), then fast-forwards `release` to
    `main`; add `-- --dry-run` to preview what would ship.
 
-Don't push to `release` directly or force-push it.
+Don't push to `release` directly or force-push it, and don't rewrite `main`.
 
 ## Tools
 

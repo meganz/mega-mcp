@@ -244,7 +244,10 @@ so this computer's own session is recognised however it is written).
   stops a damaged or wrong install), even though replaced binaries are out of
   scope - a review should not remove it on that ground.
 - On Windows, only `MEGAclient.exe` and `MEGAcmdServer.exe` are signature-checked,
-  not the DLLs next to them nor `MEGAcmdShell.exe`.
+  not the DLLs next to them nor `MEGAcmdShell.exe`. The signer must be one of the two
+  MEGA has used: the organization `Mega Limited`, or `MEGA Privacy LLC` together with
+  its country (HU) and company register number (MEGAcmd 2.7.0 and later). Another
+  signer MEGA moves to later is refused until a release adds it.
 - MEGA's Linux packages are not code-signed, so on Linux the MEGAcmd found on
   `PATH` is run without a signature or checksum check. On macOS, a MEGAcmd outside
   an `.app` bundle (configured, or found on `PATH`) is not signature-checked either.

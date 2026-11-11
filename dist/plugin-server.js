@@ -788,8 +788,16 @@ function launchViaExplorer(target) {
   const child = spawn3(systemTool("explorer"), [real], { detached: true, stdio: "ignore" });
   child.unref();
 }
+var WINDOWS_SIGNERS = [
+  [["O=Mega Limited"]],
+  [["O=MEGA Privacy LLC"], ["C=HU"], ["SERIALNUMBER=13-09-239012", "OID.2.5.4.5=13-09-239012", "2.5.4.5=13-09-239012"]]
+];
+function windowsSignerCondition(signers = WINDOWS_SIGNERS) {
+  const quoted = (rdn) => `'${rdn.replace(/'/g, "''")}'`;
+  return signers.map((all) => `(${all.map((any) => `(${any.map((rdn) => `($rdns -ccontains ${quoted(rdn)})`).join(" -or ")})`).join(" -and ")})`).join(" -or ");
+}
 async function verifyAuthenticodeWin(exe, thumbprint) {
-  const ps = `$ErrorActionPreference='Stop'; $s = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $env:MEGA_VERIFY_PATH; if ($s.Status -ne 'Valid') { exit 3 }; $c = $s.SignerCertificate; if (-not $c) { exit 4 }; $rdns = $c.SubjectName.Format($true) -split "\`r?\`n" | ForEach-Object { $_.Trim() }; if (-not ($rdns -ccontains 'O=Mega Limited')) { exit 4 }; if ($env:MEGA_VERIFY_THUMBPRINT -and ($c.Thumbprint -ne $env:MEGA_VERIFY_THUMBPRINT)) { exit 5 }; exit 0`;
+  const ps = `$ErrorActionPreference='Stop'; $s = Microsoft.PowerShell.Security\\Get-AuthenticodeSignature -LiteralPath $env:MEGA_VERIFY_PATH; if ($s.Status -ne 'Valid') { exit 3 }; $c = $s.SignerCertificate; if (-not $c) { exit 4 }; $rdns = $c.SubjectName.Format($true) -split "\`r?\`n" | ForEach-Object { $_.Trim() }; if (-not (${windowsSignerCondition()})) { exit 4 }; if ($env:MEGA_VERIFY_THUMBPRINT -and ($c.Thumbprint -ne $env:MEGA_VERIFY_THUMBPRINT)) { exit 5 }; exit 0`;
   try {
     await pExecFile(systemTool("powershell"), ["-NoProfile", "-NonInteractive", "-Command", ps], {
       windowsHide: true,
@@ -805,7 +813,7 @@ async function verifyAuthenticodeWin(exe, thumbprint) {
       }
     });
   } catch {
-    throw new Error(`signature_failed: Authenticode verification failed for ${basename(exe)} (expected a valid, trusted "O=Mega Limited" signature)`);
+    throw new Error(`signature_failed: Authenticode verification failed for ${basename(exe)} (expected a valid, trusted signature by MEGA: "Mega Limited" or "MEGA Privacy LLC")`);
   }
 }
 async function acquireLinux() {
