@@ -3521,8 +3521,10 @@ describe('MCP-6: recovery key content anywhere in a read file', () => {
     for (const head of ['recovery', '{"source":"mega","items":[', 'mega.nz/']) {
       expect(holdsRecoveryKey(head + 'a'.repeat(size)), head).toBe(false);
     }
-    expect(Date.now() - started).toBeLessThan(20_000);
-  });
+    // (About 3 s on a laptop; a CI runner is several times slower, and vitest's default
+    // limit of 5 s for a test is not meant for 110 MB of input.)
+    expect(Date.now() - started).toBeLessThan(60_000);
+  }, 120_000);
 
   it('splits on every line break, and takes a one-case token only on a line of its own (review)', () => {
     // Only the line-of-its-own rule refuses this one: lower case, a key's last character.

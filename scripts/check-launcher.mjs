@@ -237,9 +237,13 @@ export async function checkLauncher() {
       // Installed versions (nvm-windows' folder): passed over when not Node 18+, with nothing
       // else to find - no Program Files, an empty profile.
       const bare = join(work, 'bare-home');
+      for (const dir of [bare, join(bare, 'Local'), join(bare, 'Roaming')]) mkdirSync(dir, { recursive: true });
       const nvm = join(work, 'nvm');
       mkdirSync(join(nvm, 'v10.0.0'), { recursive: true });
-      writeFileSync(join(nvm, 'v10.0.0', NODE), '');
+      // An older version stands in as a real program that fails the version check at once, as an
+      // old node.exe does. (Not an empty file: Windows shows a dialog for a broken .exe and waits
+      // for it to be closed, which hangs a runner with no screen.)
+      copyFileSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'whoami.exe'), join(nvm, 'v10.0.0', NODE));
       const installed = placeNode(join(nvm, 'v22.0.0'));
       scenarios.push({
         name: 'an installed version is found by folder, an unusable one passed over',
