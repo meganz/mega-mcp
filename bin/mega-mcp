@@ -1,0 +1,214 @@
+#!/bin/sh
+# Starts the MEGA MCP server (dist/plugin-server.js) with Node.js 18 or later. This is the
+# Codex plugin's command (.mcp.json: "./bin/mega-mcp" with cwd "."); bin/mega-mcp.cmd does
+# the same on Windows, where Codex picks the .cmd beside this file.
+#
+# Codex gives a plugin's server a trimmed environment and a config with no variables, so
+# a bare `node` often isn't found even when Node is installed (Homebrew, nvm, ... in an
+# app opened from the Dock), and the Node that ships with the ChatGPT app is never on its
+# PATH (MCP-9). This runs the first of these that is Node.js 18 or later:
+#   1. MEGA_MCP_NODE, if you set it (for example in ~/.codex/.env)
+#   2. `node` on PATH, as before this launcher existed
+#   3. the Node that ships with the ChatGPT / Codex app
+#   4. Homebrew, MacPorts, Nix, n and the usual system folders
+#   5. versions installed by fnm, nvm, Volta, asdf, mise or nodenv, then ~/.local/bin, ~/bin
+#      and ~/.nix-profile
+# Only absolute paths are run, and a candidate that depends on a variable is skipped when
+# the variable is empty. A version manager's shim found on PATH is skipped (it reads config
+# files around it to pick a Node); the rest of PATH and the versions it installed are
+# searched instead. Every place searched is passed to the server in MEGA_MCP_NODE_ROOTS, so
+# its transfers refuse to write there (a node placed there would run at the next start).
+# Nothing outside this file is needed, not even on PATH.
+set -u
+
+case $0 in
+  */*) bin_dir=${0%/*} ;;
+  *) bin_dir=. ;;
+esac
+root=$(CDPATH='' cd -- "$bin_dir/.." && pwd -P) || exit 1
+server=$root/dist/plugin-server.js
+check='process.exit(+process.versions.node.split(".")[0] >= 18 ? 0 : 1)'
+
+home=${HOME:-}
+cache=${XDG_CACHE_HOME:-${home:+$home/.cache}}
+data=${XDG_DATA_HOME:-${home:+$home/.local/share}}
+# clean DIR: sets p to DIR without a doubled "/", a trailing "/" or a trailing "/." - the same
+# folder, spelled the way the shim patterns in on_path are.
+clean() {
+  p=$1
+  while :; do
+    case $p in
+      *//*) p=${p%%//*}/${p#*//} ;;
+      */.) p=${p%/.} ;;
+      */) p=${p%/} ;;
+      *) break ;;
+    esac
+  done
+}
+clean "${VOLTA_HOME:-${home:+$home/.volta}}"
+volta=$p
+asdf=${ASDF_DATA_DIR:-${home:+$home/.asdf}}
+mise=${MISE_DATA_DIR:-${data:+$data/mise}}
+nodenv=${NODENV_ROOT:-${home:+$home/.nodenv}}
+nvm=${NVM_DIR:-${home:+$home/.nvm}}
+linuxbrew=
+[ -d /home/linuxbrew/.linuxbrew ] && linuxbrew=/home/linuxbrew/.linuxbrew
+codex_cli_dir=
+case ${CODEX_CLI_PATH:-} in */*) codex_cli_dir=${CODEX_CLI_PATH%/*} ;; esac
+
+node=
+mode=find
+roots=
+shim=
+
+# try FILE: choose FILE if it is an absolute path to Node.js 18 or later.
+try() {
+  # (A ":" would split the list of places passed to the server.)
+  case $1 in /*:*) return 1 ;; /*) ;; *) return 1 ;; esac
+  [ -f "$1" ] && [ -x "$1" ] || return 1
+  "$1" -e "$check" </dev/null >/dev/null 2>&1 || return 1
+  node=$1
+}
+
+# try_newest DIR SUFFIX: try the highest major version among DIR/<version>SUFFIX, where
+# <version> is a folder named like v22.11.0, 22.11.0 or node@22.
+try_newest() {
+  [ -n "$1" ] && [ -d "$1" ] || return 1
+  best=
+  best_major=-1
+  for c in "$1"/*"$2"; do
+    [ -f "$c" ] || continue
+    v=${c#"$1"/}
+    v=${v%%/*}
+    v=${v#node@}
+    v=${v#v}
+    v=${v%%.*}
+    # (Digits only, and few enough for the comparison below.)
+    case $v in '' | *[!0-9]* | ?????????*) continue ;; esac
+    if [ "$v" -gt "$best_major" ]; then
+      best=$c
+      best_major=$v
+    fi
+  done
+  [ -n "$best" ] && try "$best"
+}
+
+# One place to search: in find mode it is tried; in roots mode it is only recorded (the
+# whole list then runs through) for MEGA_MCP_NODE_ROOTS.
+place() {
+  if [ "$mode" = roots ]; then
+    case $1 in /?*) roots=${roots:+$roots:}$1 ;; esac
+    return 1
+  fi
+  try "$1"
+}
+# The first `node` in PATH's folders that is Node.js 18 or later, as a bare `node` is looked up
+# - except a version manager's shim (asdf, mise, nodenv, proto, Volta), which is passed over.
+# In roots mode each is only recorded (the shell may walk a PATH of its own when none is set,
+# which the server doesn't see).
+on_path() {
+  rest=${PATH:-}:
+  while [ -n "$rest" ]; do
+    dir=${rest%%:*}
+    rest=${rest#*:}
+    # (An empty entry is the working folder: relative, so not run.)
+    [ -n "$dir" ] || continue
+    clean "$dir"
+    c=$p/node
+    if [ "$mode" = roots ]; then
+      case $c in /?*) roots=${roots:+$roots:}$c ;; esac
+      continue
+    fi
+    case $c in
+      */shims/node | */.volta/bin/node | "${volta:-/nonexistent}/bin/node")
+        [ -z "$shim" ] && [ -f "$c" ] && [ -x "$c" ] && shim=$c
+        continue
+        ;;
+    esac
+    try "$c" && return 0
+  done
+  return 1
+}
+newest() {
+  if [ "$mode" = roots ]; then
+    case $1 in /?*) roots=${roots:+$roots:}$1 ;; esac
+    return 1
+  fi
+  try_newest "$1" "$2"
+}
+
+search() {
+  # (PATH is the server's to protect: it sees the same PATH.)
+  if [ "$mode" = find ]; then
+    if [ -n "${MEGA_MCP_NODE:-}" ]; then
+      try "$MEGA_MCP_NODE" && return
+      printf 'mega-mcp: MEGA_MCP_NODE (%s) is not Node.js 18 or later; looking elsewhere.\n' "$MEGA_MCP_NODE" >&2
+    fi
+    on_path && return
+  else
+    place "${MEGA_MCP_NODE:-}"
+    on_path
+  fi
+
+  # The ChatGPT / Codex app's own Node, where OpenAI's own Codex plugins look for it.
+  place "${CODEX_MCP_NODE_PATH:-}" && return
+  place "${CODEX_BROWSER_USE_NODE_PATH:-}" && return
+  [ -n "${CODEX_ELECTRON_RESOURCES_PATH:-}" ] && place "$CODEX_ELECTRON_RESOURCES_PATH/cua_node/bin/node" && return
+  [ -n "$codex_cli_dir" ] && place "$codex_cli_dir/cua_node/bin/node" && return
+  [ -n "$cache" ] && place "$cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node" && return
+  place /Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node && return
+  [ -n "$home" ] && place "$home/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node" && return
+
+  # Package managers and system folders (Homebrew's belong to the user who installed it).
+  place /opt/homebrew/bin/node && return
+  place /usr/local/bin/node && return
+  [ -n "$linuxbrew" ] && place "$linuxbrew/bin/node" && return
+  for c in /opt/local/bin/node /usr/bin/node /snap/bin/node /nix/var/nix/profiles/default/bin/node /run/current-system/sw/bin/node; do
+    place "$c" && return
+  done
+  # Homebrew's versioned formulas (node@22, ...) aren't linked into bin.
+  newest /opt/homebrew/opt /bin/node && return
+  newest /usr/local/opt /bin/node && return
+  [ -n "$linuxbrew" ] && newest "$linuxbrew/opt" /bin/node && return
+  [ -n "${N_PREFIX:-}" ] && place "$N_PREFIX/bin/node" && return
+
+  # Versions installed by version managers, at their default places unless their variable
+  # says otherwise: fnm's default alias (a link to an installed version), else the newest.
+  for fnm in "${FNM_DIR:-}" "${data:+$data/fnm}" "${home:+$home/Library/Application Support/fnm}" "${home:+$home/.fnm}"; do
+    [ -n "$fnm" ] || continue
+    place "$fnm/aliases/default/bin/node" && return
+    newest "$fnm/node-versions" /installation/bin/node && return
+  done
+  [ -n "$nvm" ] && newest "$nvm/versions/node" /bin/node && return
+  [ -n "$volta" ] && newest "$volta/tools/image/node" /bin/node && return
+  [ -n "$asdf" ] && newest "$asdf/installs/nodejs" /bin/node && return
+  [ -n "$mise" ] && newest "$mise/installs/node" /bin/node && return
+  [ -n "$nodenv" ] && newest "$nodenv/versions" /bin/node && return
+  [ -n "$home" ] || return 1
+  place "$home/.local/bin/node" && return
+  place "$home/bin/node" && return
+  place "$home/.nix-profile/bin/node" && return
+  return 1
+}
+
+if search; then
+  mode=roots
+  search
+  MEGA_MCP_NODE_ROOTS=$roots
+  export MEGA_MCP_NODE_ROOTS
+  # The server gets the environment Codex gave it before this launcher existed, without
+  # the variables .mcp.json passes only for finding Node (XDG_CACHE_HOME, for one, would
+  # move the server's cache and state folder on Linux). Keep in step with env_vars;
+  # CODEX_HOME is for the server.
+  unset MEGA_MCP_NODE CODEX_MCP_NODE_PATH CODEX_BROWSER_USE_NODE_PATH CODEX_ELECTRON_RESOURCES_PATH \
+    CODEX_CLI_PATH XDG_CACHE_HOME XDG_DATA_HOME N_PREFIX VOLTA_HOME ASDF_DATA_DIR MISE_DATA_DIR \
+    NODENV_ROOT FNM_DIR NVM_DIR NVM_HOME NVM_SYMLINK SCOOP
+  exec "$node" "$server" "$@"
+fi
+printf '%s\n' "mega-mcp: Node.js 18 or later was not found, so the MEGA tools can't start." >&2
+[ -n "$shim" ] && printf '%s\n' "A version manager's shim on PATH was passed over ($shim): the launcher runs Node itself." >&2
+printf '%s\n' \
+  'Install Node.js from https://nodejs.org/ (on a Mac, `brew install node` works too), then' \
+  "quit and reopen the app. If Node is installed somewhere this doesn't look, add" \
+  "MEGA_MCP_NODE='/full/path/to/node' (with the quotes) to ~/.codex/.env and restart Codex." >&2
+exit 127

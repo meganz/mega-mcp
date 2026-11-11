@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { tmpdir } from 'node:os';
-import { join, dirname, basename } from 'node:path';
+import { join, dirname, basename, delimiter } from 'node:path';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, realpathSync, readdirSync, symlinkSync, readFileSync, chmodSync, statSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -10,12 +10,12 @@ import { registerReadOnly } from '../src/tools/readonly.js';
 import { registerSync } from '../src/tools/sync.js';
 import { redact } from '../src/errors.js';
 import { registerConfig } from '../src/tools/config.js';
-import { registerCat, looksBinary } from '../src/tools/cat.js';
+import { registerCat, looksBinary, holdsRecoveryKey } from '../src/tools/cat.js';
 import { registerContacts } from '../src/tools/contacts.js';
 import { registerManage } from '../src/tools/manage.js';
 import { createConfirmStore } from '../src/confirm.js';
 import { isIgnoreFileName, storeCopiesIn, syncExclusions, assertRemoteDest, assertNoFlag, assertRemotePath, assertDownloadTarget, assertNoLocalGlob, publishMegacmdBinDir, assertLocalPath, assertNoStoreWithin, assertNoProtectedWithin, planUpload, ValidationError } from '../src/paths.js';
-import { createRuntime } from '../src/runtime.js';
+import { createRuntime, nodeWriteRoots } from '../src/runtime.js';
 import type { Runtime } from '../src/runtime.js';
 import { verifyResolvedBinary } from '../src/download/megacmd.js';
 import { resolvePathBinDir } from '../src/resolve.js';
@@ -1194,8 +1194,8 @@ describe('second full-review fixes', () => {
   it('mega_cat refuses a recovery key among other lines, and a version of the key file', async () => {
     const { rt } = recording((cmd) => (cmd === 'cat' ? { stdout: 'My MEGA recovery key:\nAbCdEfGhIjKlMnOpQrStUv\n' } : {}));
     const cat = tools(registerCat, rt).get('mega_cat')!;
-    expect(text(await cat({ remotePath: '/Notes/keys.txt' }))).toMatch(/recovery key/);
-    expect(text(await cat({ remotePath: '/D/MEGA-RECOVERYKEY.txt#1700000000' }))).toMatch(/recovery key/);
+    expect(text(await cat({ remotePath: '/Notes/keys.txt' }))).toMatch(/not read into the conversation/);
+    expect(text(await cat({ remotePath: '/D/MEGA-RECOVERYKEY.txt#1700000000' }))).toMatch(/not read into the conversation/);
     // By name before anything is read: translated names, a browser's " (1)", a trailing slash.
     const unread = recording((cmd) => (cmd === 'cat' ? { stdout: 'note' } : {}));
     const catByName = tools(registerCat, unread.rt).get('mega_cat')!;
@@ -3357,3 +3357,389 @@ describe('round 16 fixes', () => {
     expect(text(await ctl({ action: 'resume', id: '/Users/me/W' }))).toMatch(/could not|cannot|unknown/i);
   });
 });
+
+describe('MCP-6: recovery key content anywhere in a read file', () => {
+  // A synthetic key in the web app's form: 16 bytes in base64url (22 characters, last one A/Q/g/w).
+  const key = 'AbCdEfGhIjKlMnOpQrStUw';
+  // The refusal's own words (a body can itself say "recovery key").
+  const REFUSED = /not read into the conversation/;
+  const read = async (stdout: string) => {
+    const { rt } = recording((cmd) => (cmd === 'cat' ? { stdout } : {}));
+    return text(await tools(registerCat, rt).get('mega_cat')!({ remotePath: '/Notes/n.txt' }));
+  };
+
+  it('refuses a key after a label, in a CR-only file, after a lowercase label and next to punctuation', async () => {
+    for (const body of [
+      `MEGA Recovery Key: ${key}\n`,
+      `notes\r${key}\rmore\r`,
+      `my mega recovery key - ${key.toLowerCase().slice(0, 21)}w\n`,
+      `backup (${key}).\n`,
+      `"${key}",\n`,
+      `line one\u2028${key}\u2028line two`,
+      // Glued with "-" or "_", split by invisible characters, or in standard base64 next to a label.
+      `key-${key}\n`,
+      `MEGA_RECOVERY_KEY_${key}\n`,
+      `${key}-backup\n`,
+      'AbCdEfGh\u200bIjKlMnOpQrStUw\n',
+      'MEGA recovery key: AbCd+fGh/jKlMnOpQrStUw\n',
+    ]) {
+      expect(await read(body), JSON.stringify(body)).toMatch(REFUSED);
+    }
+  });
+
+  it('still reads ordinary text, code, hashes and MEGA links', async () => {
+    for (const body of [
+      'const x = handleConnectionString;\nmax_connection_setting = 3\n',
+      `see https://mega.nz/folder/AbCdEfGh#${key} for the files\n`,
+      'commit a81a93259a9efb79820fd6d05d5504ac639e1f6f, id 123e4567-e89b-12d3-a456-426614174000\n',
+      'The internationalization of applications matters.\r\nSecond line.\r\n',
+      `legacy link https://mega.nz/#F!AbCdEfGh!${key}\n`,
+      'MEGA: open the shared folder now.\nmy-very-long-css-class-name-here\nsrc/components/AppNav/HeaderQ.tsx\n',
+      // A subfolder of a folder link, mega.app, and a password-protected link.
+      `https://mega.nz/folder/AbCdEfGh#${key}/folder/IjKlMnOp\n`,
+      `https://mega.app/folder/AbCdEfGh#${key}\n`,
+      `https://mega.nz/#P!AgFkZkGgYqJBH2x5n_${key}\n`,
+    ]) {
+      expect(await read(body), JSON.stringify(body)).toBe(body);
+    }
+  });
+
+  it('refuses a key after "#" or "!" that is not a MEGA link (review)', async () => {
+    for (const body of [
+      `MEGA Recovery Key: #${key}\n`,
+      `#${key}\n`,
+      `https://example.com/page#${key}\n`,
+      `MEGA Recovery Key!${key}\n`,
+      `#x-${key}\n`,
+      `https://evil-mega.nz/folder/AbCdEfGh#${key} recovery\n`,
+    ]) {
+      expect(await read(body), JSON.stringify(body)).toMatch(REFUSED);
+    }
+  });
+
+  it('refuses a key with other invisible characters inside, or glued to a label by one (review)', async () => {
+    for (const ch of ['\u034f', '\ufe0f', '\u180b', '\u3164', '\u0001', '\u007f', '\u009b', '\u{e0100}']) {
+      const body = `AbCdEfGh${ch}IjKlMnOpQrStUw\n`;
+      expect(await read(body), JSON.stringify(body)).toMatch(REFUSED);
+    }
+    expect(await read(`Recovery\u200b${key}\n`)).toMatch(REFUSED);
+  });
+
+  it('refuses standard base64 next to a translated label (review)', async () => {
+    for (const label of ['Clave de recuperación', 'リカバリーキー', 'Wiederherstellungsschlüssel', 'Klucz odzyskiwania']) {
+      const body = `${label}: AbCd+fGh/jKlMnOpQrStUw\n`;
+      expect(await read(body), JSON.stringify(body)).toMatch(REFUSED);
+    }
+  });
+
+  it('reads lockfile integrity hashes and base64 data, which only look like keys (review)', async () => {
+    // This repo's lockfile: sha512 hashes with runs of exactly 22 characters ending in A/Q/g/w.
+    const lock = readFileSync(join(__dirname, '..', 'package-lock.json'), 'utf8');
+    expect(holdsRecoveryKey(lock)).toBe(false);
+    // The same shape by hand: a random-looking run of exactly 22 characters, ending in Q,
+    // between "/" and "+".
+    const run = 'Ab3CdEfGhIjKlMnOpQrS9Q';
+    expect(run).toHaveLength(22);
+    expect(holdsRecoveryKey(`note ${run}\n`)).toBe(true);
+    const digest = `${'a'.repeat(30)}/${run}+${'b'.repeat(32)}==`;
+    expect(digest).toHaveLength(88);
+    for (const body of [
+      `      "integrity": "sha512-${digest}",\n`,
+      // Standard base64 data: "+" next to the run, in a long stretch that looks encoded.
+      `data:image/png;base64,iVBORw0KGgo/x9Zc4/${run}+Qm8dLw2pTn5vKe7Rb1YhJ3s\n`,
+      `data:image/png;base64,iVBORw0KGgo+${run}/Qm8dLw2pTn5vKe7Rb1YhJ3sx9Zc4\n`,
+    ]) {
+      expect(await read(body), JSON.stringify(body)).toBe(body);
+    }
+    // A label still counts inside encoded data.
+    expect(await read(`MEGA recovery key: sha512-${digest}\n`)).toMatch(REFUSED);
+    // Not a digest of that length, a short stretch, or words joined by "+": refused.
+    for (const body of [`sha512-${digest.slice(0, 60)}\n`, `abc/${run}+def\n`, `Zq3x9Zc4a+${run}\n`, `q=note+to+self+the+key+is+${run}\n`, `averyveryverylongmailboxname+${run}@example.com\n`]) {
+      expect(await read(body), JSON.stringify(body)).toMatch(REFUSED);
+    }
+  });
+
+  it('a "+" next to a key, or "sha256-" before one, does not make it encoded data (review)', async () => {
+    for (const body of [
+      // A diff's added line, form-encoded text, an e-mail tag.
+      `@@ -1,2 +1,3 @@\n notes\n+${key}\n`,
+      `key+${key}\n`,
+      `${key}+backup\n`,
+      `q=backup+${key}&x=1\n`,
+      `user+${key}@example.com\n`,
+      // Not a digest of that hash's length.
+      `sha256-${key}\n`,
+      `my sha256-${key} is the key\n`,
+      `sha1-key=${key}\n`,
+    ]) {
+      expect(await read(body), JSON.stringify(body)).toMatch(REFUSED);
+    }
+  });
+
+  it('refuses a key that invisible characters both split and join to a word (review)', async () => {
+    for (const body of [`note\u200bAbCdEfGh\u200bIjKlMnOpQrStUw\n`, `AbCdEfGh\u200bIjKlMnOpQrStUw\u200bbackup\n`, `Key\u2060AbCd\u2060EfGh\u2060IjKl\u2060MnOp\u2060QrSt\u2060Uw\n`]) {
+      expect(await read(body), JSON.stringify(body)).toMatch(REFUSED);
+    }
+  });
+
+  it('reads album and chat links and a link with a port; a link-like prefix on another host is no link (review)', async () => {
+    for (const body of [
+      `https://mega.nz/collection/AbCdEfGh#${key}\n`,
+      `https://mega.nz/chat/AbCdEfGh#${key}\n`,
+      `https://mega.nz:443/folder/AbCdEfGh#${key}\n`,
+      `[files](https://mega.nz/folder/AbCdEfGh#${key})\n`,
+    ]) {
+      expect(await read(body), JSON.stringify(body)).toBe(body);
+    }
+    for (const body of [`https://evil.com/mega.nz/folder/AbCdEfGh#${key}\n`, `https://evil.com/?u=mega.nz/folder/AbCdEfGh#${key}\n`, `https://user@mega.nz/folder/AbCdEfGh#${key}\n`]) {
+      expect(await read(body), JSON.stringify(body)).toMatch(REFUSED);
+    }
+  });
+
+  it('knows the label without spaces, in file-name spelling and in half-width letters (review)', async () => {
+    for (const label of ['복구키', 'CLAVEDERECUPERACION', 'Wiederherstellungsschluessel', 'MEGA_KEY', 'ﾘｶﾊﾞﾘｰｷｰ']) {
+      const body = `${label}=AbCd+fGh/jKlMnOpQrStUw\n`;
+      expect(await read(body), JSON.stringify(body)).toMatch(REFUSED);
+    }
+  });
+
+  it('says a refusal by content may be a false match; one by name does not', async () => {
+    expect(await read(`${key}\n`)).toMatch(/look the same/);
+    const { rt } = recording(() => ({}));
+    const byName = text(await tools(registerCat, rt).get('mega_cat')!({ remotePath: '/Notes/MEGA-RECOVERYKEY.txt' }));
+    expect(byName).toMatch(REFUSED);
+    expect(byName).not.toMatch(/look the same/);
+  });
+
+  it('checks 10 MB of line breaks, separators or dense candidates quickly (review)', () => {
+    const size = 10 * 1024 * 1024;
+    const started = Date.now();
+    for (const unit of ['\n', '\r', 'a\n', '-', 'A-', 'A--', `${'x'.repeat(22)}/`, `#${'x'.repeat(22)} `]) {
+      expect(holdsRecoveryKey(unit.repeat(Math.ceil(size / unit.length))), JSON.stringify(unit)).toBe(false);
+    }
+    // A labelled line without a space (a regex that retries from every position would take hours).
+    for (const head of ['recovery', '{"source":"mega","items":[', 'mega.nz/']) {
+      expect(holdsRecoveryKey(head + 'a'.repeat(size)), head).toBe(false);
+    }
+    expect(Date.now() - started).toBeLessThan(20_000);
+  });
+
+  it('splits on every line break, and takes a one-case token only on a line of its own (review)', () => {
+    // Only the line-of-its-own rule refuses this one: lower case, a key's last character.
+    const plain = 'abcdefghijklmnopqrstuw';
+    for (const br of ['\n', '\r', '\r\n', '\v', '\f', '\u0085', '\u2028', '\u2029']) {
+      expect(holdsRecoveryKey(`notes${br}${plain}${br}more`), JSON.stringify(br)).toBe(true);
+      // The last line, without a line break after it.
+      expect(holdsRecoveryKey(`notes${br}${plain}`), JSON.stringify(br)).toBe(true);
+    }
+    expect(holdsRecoveryKey(`  ${plain}\t\n`)).toBe(true);
+    expect(holdsRecoveryKey(`notes ${plain} more\n`)).toBe(false);
+    expect(holdsRecoveryKey(`notes\t${plain}\n`)).toBe(false);
+  });
+
+  it('a label is needed where the rule says so (review)', async () => {
+    // A one-case token with a key's last character: refused next to each label, read without one.
+    const plain = 'abcdefghijklmnopqrstuw';
+    for (const label of ['recovery', 'Master key', 'MEGA']) {
+      expect(holdsRecoveryKey(`${label}: ${plain} (saved)\n`), label).toBe(true);
+    }
+    expect(holdsRecoveryKey(`password: ${plain} (saved)\n`)).toBe(false);
+    // Standard base64 next to a label: needs "+" or "/" in it and a key's last character.
+    expect(holdsRecoveryKey('MEGA key: AbCd+fGh/jKlMnOpQrStUw\n')).toBe(true);
+    expect(holdsRecoveryKey('MEGA key: AbCd+fGh/jKlMnOpQrStUx\n')).toBe(false);
+    expect(holdsRecoveryKey('note: AbCd+fGh/jKlMnOpQrStUw\n')).toBe(false);
+  });
+
+  it('a link leaves out only its own key: not the next field, not a key glued to it, not after an invisible character (review)', async () => {
+    const std = 'AbCd+fGh/jKlMnOpQrStUw';
+    for (const body of [
+      `https://mega.nz/login,user@example.com,hunter2,${std}\n`,
+      `{"site":"https://mega.nz/","recovery_key":"${std}"}\n`,
+      `key=${std};site=mega.nz/\n`,
+      `https://mega.nz/folder/AbCdEfGh#AbCdEfGhIjKlMnOpQrStUw-${key}\n`,
+      `https://mega.nz/folder/AbCdEfG#${key}\n`,
+      // A cut-off host label is no link start.
+      `https://evil.com/${'a'.repeat(190)}.mega.nz/folder/AbCdEfGh#${key}\n`,
+      // An invisible character between the key and what follows.
+      `${key}\u200bAbCd+fGh/jKlMnOpQrStUw\n`,
+      `recovery\u200b${std}\n`,
+      `mega\u200b${std}\n`,
+      `MEGA ${std}\u200bbackup\n`,
+    ]) {
+      expect(await read(body), JSON.stringify(body)).toMatch(REFUSED);
+    }
+    for (const body of [
+      `HTTPS://WWW.MEGA.NZ/folder/AbCdEfGh#${key}\n`,
+      `https://mega.nz/file/AbCdEfGh#${'Zq3'.repeat(14)}w\n`,
+      `https://mega.nz/embed/AbCdEfGh#${'Zq3'.repeat(14)}w\n`,
+      `https://mega.nz/embed#!AbCdEfGh!${'Zq3'.repeat(14)}w\n`,
+      // A handle that ends like a key, and a subfolder after the key.
+      `https://mega.nz/collection/AbCdEfGw#${key}\n`,
+      `MEGA: https://mega.nz/folder/AbCdEfGw#${key}/folder/IjKlMnOw\n`,
+    ]) {
+      expect(await read(body), JSON.stringify(body)).toBe(body);
+    }
+  });
+});
+
+
+describe('Node.js the server runs on (Codex launcher, MCP-9)', () => {
+  // The launcher runs the first Node it finds in a list of places, and a host starting a bare
+  // `node` looks it up; a node (or, on Windows, a DLL next to node.exe) that a transfer places
+  // where they look would run at the next start.
+  const home = '/Users/someone';
+  const posixRoots = (execPath: string, listed?: string, path?: string, cwd = '/work') =>
+    nodeWriteRoots({ execPath, listed, home, path, cwd, platform: 'darwin' });
+
+  it("protects the running node's folder and the places the launcher lists", () => {
+    const listed = ['/Users/someone/.cache/codex-runtimes', '/Users/someone/.nvm/versions/node', '', 'relative/dir'].join(':');
+    expect(posixRoots('/Users/someone/.nvm/versions/node/v22.1.0/bin/node', listed)).toEqual([
+      '/Users/someone/.nvm/versions/node/v22.1.0/bin',
+      '/Users/someone/.cache/codex-runtimes',
+      '/Users/someone/.nvm/versions/node',
+    ]);
+  });
+
+  it('never protects the home folder, a folder above it or the root - only the node then', () => {
+    expect(posixRoots('/Users/someone/node', '/Users/someone:/Users/SOMEONE/:/Users:/:/opt/homebrew/opt')).toEqual(['/Users/someone/node', '/opt/homebrew/opt']);
+    expect(posixRoots('/node')).toEqual(['/node']);
+  });
+
+  it('protects a node in every PATH folder (empty and relative entries are the working folder), never the folder itself', () => {
+    expect(posixRoots('/opt/homebrew/bin/node', undefined, '/Users/someone/.local/bin::relative:/Users/someone:/usr/bin')).toEqual([
+      '/opt/homebrew/bin',
+      '/Users/someone/.local/bin/node',
+      '/work/node',
+      '/work/relative/node',
+      '/Users/someone/node',
+      '/usr/bin/node',
+    ]);
+  });
+
+  it('on Windows: the working folder first, every PATHEXT extension, drive roots and the profile left out', () => {
+    const roots = nodeWriteRoots({
+      execPath: 'C:\\Program Files\\nodejs\\node.exe',
+      listed: 'C:\\Users\\U\\AppData\\Local\\mise;D:\\;C:\\Users\\u;C:\\Users\\U\\node.exe',
+      home: 'C:\\Users\\U',
+      path: 'C:\\Users\\U\\AppData\\Local\\Microsoft\\WindowsApps;"C:\\Tools"',
+      pathext: '.COM;.EXE;.PS1X',
+      cwd: 'C:\\Projects\\app',
+      platform: 'win32',
+    });
+    expect(roots.slice(0, 3)).toEqual(['C:\\Program Files\\nodejs', 'C:\\Users\\U\\AppData\\Local\\mise', 'C:\\Users\\U\\node.exe']);
+    for (const dir of ['C:\\Projects\\app', 'C:\\Users\\U\\AppData\\Local\\Microsoft\\WindowsApps', 'C:\\Tools']) {
+      // (Bare `node` too: a PATHEXT with an empty entry, or a host under Git Bash, finds it.)
+      for (const name of ['node', 'node.exe', 'node.cmd', 'node.js', 'node.vbs', 'node.wsf', 'node.msc', 'node.ps1', 'node.ps1x']) expect(roots).toContain(`${dir}\\${name}`);
+    }
+    expect(roots).not.toContain('D:\\');
+    expect(roots).not.toContain('C:\\Users\\u');
+    // Without a working folder (it was removed), the names that depend on it are left out.
+    const noCwd = nodeWriteRoots({ execPath: 'C:\\Program Files\\nodejs\\node.exe', home: 'C:\\Users\\U', path: 'C:\\Tools;rel', platform: 'win32' });
+    expect(noCwd).toContain('C:\\Tools\\node.exe');
+    expect(noCwd.filter((p) => !p.startsWith('C:\\Tools\\') && p !== 'C:\\Program Files\\nodejs')).toEqual([]);
+  });
+
+  it('an unset PATH names no folder, an empty one the working folder; no home folder known drops nothing (review)', () => {
+    expect(posixRoots('/opt/n/bin/node', undefined, undefined)).toEqual(['/opt/n/bin']);
+    expect(posixRoots('/opt/n/bin/node', undefined, '')).toEqual(['/opt/n/bin', '/work/node']);
+    // An empty home folder would resolve to this process's working folder and drop every root
+    // at or above it; a root folder is left out all the same.
+    const here = process.cwd();
+    expect(nodeWriteRoots({ execPath: join(here, 'node'), listed: [dirname(here), '/'].join(delimiter), home: '', cwd: here })).toEqual([here, dirname(here)]);
+    // A home folder named "node" in a PATH folder is not protected as a whole.
+    expect(nodeWriteRoots({ execPath: '/opt/n/bin/node', home: '/home/node', path: '/home:/usr/bin', cwd: '/work', platform: 'linux' })).toEqual(['/opt/n/bin', '/usr/bin/node']);
+  });
+
+  it.skipIf(process.platform === 'win32')('refuses a download that would create a node where the launcher or a host looks', () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'mega-noderoots-')));
+    try {
+      const user = join(base, 'home');
+      const localAppData = join(user, 'AppData', 'Local');
+      const project = join(base, 'project');
+      mkdirSync(localAppData, { recursive: true });
+      mkdirSync(project);
+      const windowsApps = join(localAppData, 'Microsoft', 'WindowsApps');
+      const roots = nodeWriteRoots({
+        execPath: join(base, 'nodejs', 'node'),
+        listed: [join(localAppData, 'mise'), join(user, '.cache', 'codex-runtimes')].join(':'),
+        home: user,
+        path: `${windowsApps}::`,
+        cwd: project,
+      });
+      publishMegacmdBinDir(null, [], roots);
+      // A folder named like the version manager's, downloaded into its parent, lands inside it.
+      expect(() => assertDownloadTarget(localAppData, 'mise')).toThrow(ValidationError);
+      expect(() => assertDownloadTarget(join(localAppData, 'mise', 'installs'), 'node')).toThrow(ValidationError);
+      expect(() => assertDownloadTarget(user, '.cache')).toThrow(/could write into/);
+      expect(() => assertDownloadTarget(join(base, 'nodejs'), 'node.dll')).toThrow(ValidationError);
+      expect(() => assertDownloadTarget(windowsApps, 'node')).toThrow(ValidationError);
+      // An empty PATH entry is the working folder (the project the host starts the server in).
+      expect(() => assertDownloadTarget(project, 'node')).toThrow(ValidationError);
+      // Ordinary destinations are unaffected.
+      expect(() => assertDownloadTarget(windowsApps, 'other-tool')).not.toThrow();
+      expect(() => assertDownloadTarget(project, 'src')).not.toThrow();
+      expect(() => assertDownloadTarget(project, 'node.js')).not.toThrow();
+      expect(() => assertDownloadTarget(user, 'Documents')).not.toThrow();
+      // The refusal says what the place is.
+      expect(() => assertDownloadTarget(project, 'node')).toThrow(/Node\.js is started from/);
+      // A folder already named "node" where a host looks is an ordinary folder: a lookup passes over it.
+      const other = join(base, 'other');
+      mkdirSync(join(other, 'node'), { recursive: true });
+      publishMegacmdBinDir(null, [], nodeWriteRoots({ execPath: join(base, 'nodejs', 'node'), home: user, path: other, cwd: project }));
+      expect(() => assertDownloadTarget(join(other, 'node'), 'lib')).not.toThrow();
+      expect(() => assertDownloadTarget(localAppData, 'Temp')).not.toThrow();
+      // Only a folder: a file of that name, a link to a file and a dangling link stay protected.
+      const kinds = { file: join(base, 'k-file'), folder: join(base, 'k-folder'), linkToFolder: join(base, 'k-link'), dangling: join(base, 'k-dangling') };
+      for (const dir of Object.values(kinds)) mkdirSync(dir);
+      writeFileSync(join(kinds.file, 'node'), '');
+      mkdirSync(join(kinds.folder, 'node'));
+      symlinkSync(kinds.folder, join(kinds.linkToFolder, 'node'));
+      symlinkSync(join(base, 'nowhere'), join(kinds.dangling, 'node'));
+      const kept = nodeWriteRoots({ execPath: join(base, 'nodejs', 'node'), home: user, path: Object.values(kinds).join(':'), cwd: project });
+      expect(kept.filter((p) => p.includes('k-'))).toEqual([join(kinds.file, 'node'), join(kinds.dangling, 'node')]);
+      publishMegacmdBinDir(null, [], kept);
+      expect(() => assertDownloadTarget(kinds.file, 'node')).toThrow(ValidationError);
+    } finally {
+      publishMegacmdBinDir(null);
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('a home folder spelled through a symlink is still recognised (review)', () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'mega-noderoots-')));
+    try {
+      const real = join(base, 'real-home');
+      mkdirSync(real);
+      symlinkSync(real, join(base, 'home'));
+      // HOME is the link; the node sits directly in the real home folder.
+      expect(nodeWriteRoots({ execPath: join(real, 'node'), listed: real, home: join(base, 'home'), cwd: base })).toEqual([join(real, 'node')]);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('createRuntime protects what MEGA_MCP_NODE_ROOTS and PATH name', async () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'mega-noderoots-')));
+    const saved = { roots: process.env.MEGA_MCP_NODE_ROOTS, path: process.env.PATH };
+    try {
+      const listed = join(base, 'versions');
+      const onPath = join(base, 'bin');
+      mkdirSync(onPath);
+      process.env.MEGA_MCP_NODE_ROOTS = listed;
+      process.env.PATH = `${onPath}${process.platform === 'win32' ? ';' : ':'}${saved.path ?? ''}`;
+      createRuntime({ cacheDir: join(base, 'cache'), systemAppBinDirs: [], download: { sha256Allow: [] }, maxListLines: 1000, exposeContacts: false, exposeAccountDetails: false, exposeFileContents: false } as Config, {
+        resolve: async () => null,
+      });
+      expect(() => assertDownloadTarget(base, 'versions')).toThrow(ValidationError);
+      expect(() => assertDownloadTarget(onPath, process.platform === 'win32' ? 'node.exe' : 'node')).toThrow(ValidationError);
+      expect(() => assertDownloadTarget(onPath, 'other')).not.toThrow();
+    } finally {
+      if (saved.roots === undefined) delete process.env.MEGA_MCP_NODE_ROOTS;
+      else process.env.MEGA_MCP_NODE_ROOTS = saved.roots;
+      process.env.PATH = saved.path;
+      publishMegacmdBinDir(null);
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+});
+

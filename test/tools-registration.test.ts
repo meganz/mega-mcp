@@ -236,6 +236,7 @@ describe('session-store exfiltration is refused by the tools themselves', () => 
     }
   });
 
+  // (Searches the real home and Documents folders: slow on a large one.)
   it('does not over-block or over-warn on ordinary local paths', async () => {
     const mutate = capture(registerMutate, fakeRt());
     const sync = capture(registerSync, fakeRt());
@@ -245,7 +246,7 @@ describe('session-store exfiltration is refused by the tools themselves', () => 
     expect((put.structuredContent as { summary: string }).summary).not.toMatch(/MASTER KEY/);
     expect((await mutate.get('mega_get')!({ remotePath: '/f', localDir: homedir() })).isError).toBeFalsy();
     expect((await sync.get('mega_sync_add')!({ localPath: doc, remotePath: '/x' })).isError).toBeFalsy();
-  });
+  }, 30_000);
 });
 
 /**

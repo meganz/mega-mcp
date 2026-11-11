@@ -1,9 +1,27 @@
 {
   "mcpServers": {
     "mega": {
-      "command": "node",
-      "args": [
-        "./dist/plugin-server.js"
+      "command": "./bin/mega-mcp",
+      "cwd": ".",
+      "env_vars": [
+        "MEGA_MCP_NODE",
+        "CODEX_MCP_NODE_PATH",
+        "CODEX_BROWSER_USE_NODE_PATH",
+        "CODEX_ELECTRON_RESOURCES_PATH",
+        "CODEX_CLI_PATH",
+        "XDG_CACHE_HOME",
+        "XDG_DATA_HOME",
+        "N_PREFIX",
+        "VOLTA_HOME",
+        "ASDF_DATA_DIR",
+        "MISE_DATA_DIR",
+        "NODENV_ROOT",
+        "FNM_DIR",
+        "NVM_DIR",
+        "NVM_HOME",
+        "NVM_SYMLINK",
+        "SCOOP",
+        "CODEX_HOME"
       ]
     }
   }

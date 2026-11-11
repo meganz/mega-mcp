@@ -12,9 +12,13 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # Pinned to commits: a moved tag cannot change what runs here.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # No token left in .git/config while dependencies' install scripts run.
+          persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
@@ -22,5 +26,24 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      # Bundle matches src/, versions match, marketplace entry is valid, bundle starts standalone.
+      # Bundle matches src/, versions match, marketplace entry is valid, bundle starts standalone,
+      # the Codex launcher (bin/mega-mcp) finds Node.
       - run: npm run check:plugin
+      # The checks compare the committed files with fresh builds; none may have been rewritten.
+      - run: test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }
+
+  # The Codex plugin's Windows launcher, bin/mega-mcp.cmd, which the job above can't run:
+  # started the way Codex starts it, it must find Node in each place it promises and serve
+  # the tools. It runs the checked-in bundle, so it needs no npm ci. scripts/release-plugin.mjs
+  # requires this job too.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+      - run: node scripts/check-launcher.mjs

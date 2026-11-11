@@ -67,14 +67,30 @@ function isAtOrUnder(child: string, parent: string): boolean {
   return c === p || c.startsWith(p.endsWith(sep) ? p : p + sep);
 }
 
+/**
+ * What one guard call has already asked the disk: a call compares its path with every protected
+ * root, and roots share most of their parent folders (a dozen `node` names in each PATH folder).
+ * Never kept beyond the call.
+ */
+interface Seen {
+  ids: Map<string, string | null>;
+  reals: Map<string, string | null>;
+}
+const newSeen = (): Seen => ({ ids: new Map(), reals: new Map() });
+
 /** (dev, ino) of an existing path, else null. bigint: NTFS file ids exceed 2^53. */
-function diskId(p: string): string | null {
+function diskId(p: string, seen?: Seen): string | null {
+  const known = seen?.ids.get(p);
+  if (known !== undefined) return known;
+  let id: string | null;
   try {
     const st = statSync(p, { bigint: true });
-    return `${st.dev}:${st.ino}`;
+    id = `${st.dev}:${st.ino}`;
   } catch {
-    return null;
+    id = null;
   }
+  seen?.ids.set(p, id);
+  return id;
 }
 
 /**
@@ -86,11 +102,11 @@ function diskId(p: string): string | null {
  * check below therefore also asks the filesystem: is the other directory's
  * identity in this chain?
  */
-function diskChain(p: string): Set<string> {
+function diskChain(p: string, seen?: Seen): Set<string> {
   const ids = new Set<string>();
   let cur = resolve(p);
   for (;;) {
-    const id = diskId(cur);
+    const id = diskId(cur, seen);
     if (id) ids.add(id);
     const parent = dirname(cur);
     if (parent === cur) return ids;
@@ -102,8 +118,8 @@ function diskChain(p: string): Set<string> {
  * `child` is `parent` or under it, by on-disk identity. A missing `parent` is matched by its
  * nearest existing ancestor plus folded names below, so a firmlink spelling cannot evade it.
  */
-function onDiskAtOrUnder(child: string, parent: string, chain: Set<string> = diskChain(child)): boolean {
-  const id = diskId(parent);
+function onDiskAtOrUnder(child: string, parent: string, chain: Set<string> = diskChain(child), seen?: Seen): boolean {
+  const id = diskId(parent, seen);
   if (id !== null) return chain.has(id);
   const rest: string[] = [];
   let base = resolve(parent);
@@ -112,12 +128,12 @@ function onDiskAtOrUnder(child: string, parent: string, chain: Set<string> = dis
     if (up === base) return false;
     rest.unshift(basename(base));
     base = up;
-    const baseId = diskId(base);
+    const baseId = diskId(base, seen);
     if (baseId === null) continue;
     if (!chain.has(baseId)) return false;
     const below: string[] = [];
     for (let c = resolve(child); ; ) {
-      if (diskId(c) === baseId) return below.length >= rest.length && rest.every((r, i) => fold(r) === fold(below[i] as string));
+      if (diskId(c, seen) === baseId) return below.length >= rest.length && rest.every((r, i) => fold(r) === fold(below[i] as string));
       const cUp = dirname(c);
       if (cUp === c) return false;
       below.unshift(basename(c));
@@ -305,19 +321,24 @@ function isStoreName(name: string): boolean {
  * routinely absent, and a lexical check would let `~/link/session` (link ->
  * ~/.megaCmd) through. `.native` also resolves Windows MSIX redirection.
  */
-function realpathBestEffort(abs: string): string {
+function realpathBestEffort(abs: string, seen?: Seen): string {
   let head = abs;
   const tail: string[] = [];
   for (;;) {
-    try {
-      const real = realpathSync.native(head).replace(/^\\\\\?\\/, '');
-      return tail.length ? join(real, ...tail) : real;
-    } catch {
-      const parent = dirname(head);
-      if (parent === head) return abs; // reached the root without resolving
-      tail.unshift(basename(head));
-      head = parent;
+    let real = seen?.reals.get(head);
+    if (real === undefined) {
+      try {
+        real = realpathSync.native(head).replace(/^\\\\\?\\/, '');
+      } catch {
+        real = null;
+      }
+      seen?.reals.set(head, real);
     }
+    if (real !== null) return tail.length ? join(real, ...tail) : real;
+    const parent = dirname(head);
+    if (parent === head) return abs; // reached the root without resolving
+    tail.unshift(basename(head));
+    head = parent;
   }
 }
 
@@ -436,21 +457,22 @@ export function assertNotInsideProtected(abs: string): void {
 
 /** A WRITE into one of the write-only roots (host configuration, the connector's code). */
 function assertNotWriteRoot(abs: string): void {
-  insideAny(abs, currentWriteRoots(), 'Refusing to write into an app configuration folder or this connector\'s own folder - a file placed there would decide what runs at the next start.');
+  insideAny(abs, currentWriteRoots(), 'Refusing to write into an app configuration folder, this connector\'s own folder or a place Node.js is started from (its folder, or a file named "node" where the apps look for it) - a file placed there would decide what runs at the next start.');
 }
 
 function insideAny(abs: string, roots: readonly string[], message: string): void {
   if (roots.length === 0) return;
+  // Each root's real path, and each spelling's identities on disk, are worked out once per call.
+  const seen = newSeen();
+  const reals = roots.map((r) => realpathBestEffort(r, seen));
   for (const candidate of spellingsOf(abs)) {
-    for (const root of roots) {
-      if (
-        isAtOrUnder(normWinPath(candidate), root) ||
-        isAtOrUnder(normWinPath(candidate), realpathBestEffort(root)) ||
-        onDiskAtOrUnder(candidate, root)
-      ) {
+    const c = normWinPath(candidate);
+    const chain = diskChain(candidate, seen);
+    roots.forEach((root, i) => {
+      if (isAtOrUnder(c, root) || isAtOrUnder(c, reals[i] as string) || onDiskAtOrUnder(candidate, root, chain, seen)) {
         throw new ValidationError(message);
       }
-    }
+    });
   }
 }
 
@@ -467,14 +489,26 @@ function insideAny(abs: string, roots: readonly string[], message: string): void
  */
 function protectedBelow(abs: string, inclusive: boolean): string[] {
   const forms = [...new Set([abs, resolve(abs)].flatMap(spellingsOf))].map(normWinPath);
-  const roots = [...trustRoots, ...currentWriteRoots(), ...sessionStoreRoots()].flatMap((r) => [r, realpathBestEffort(r)]);
+  const seen = newSeen();
+  const roots = [...new Set([...trustRoots, ...currentWriteRoots(), ...sessionStoreRoots()].flatMap((r) => [r, realpathBestEffort(r, seen)]))];
   const hits = new Set<string>();
+  // Each form's and each root's identity on disk is worked out once per call, not once per pair.
+  const formIds = forms.map((f) => diskId(f, seen));
   for (const root of roots) {
-    for (const f of forms) {
-      const below = isAtOrUnder(root, f) || onDiskAtOrUnder(root, f);
-      const same = fold(root) === fold(f) || sameOnDisk(root, f);
-      if (below && (inclusive || !same)) hits.add(root);
-    }
+    let chain: Set<string> | null = null;
+    let rootId: string | null | undefined;
+    forms.forEach((f, i) => {
+      let below = isAtOrUnder(root, f);
+      if (!below) {
+        chain = chain ?? diskChain(root, seen);
+        const id = formIds[i] ?? null;
+        below = id !== null ? chain.has(id) : onDiskAtOrUnder(root, f, chain, seen);
+      }
+      if (!below) return;
+      if (rootId === undefined) rootId = diskId(root, seen);
+      const same = fold(root) === fold(f) || (rootId !== null && rootId === formIds[i]);
+      if (inclusive || !same) hits.add(root);
+    });
   }
   return [...hits];
 }
@@ -501,10 +535,22 @@ export function assertDownloadTarget(localDir: string, name: string | null): voi
  * merging a download into an existing folder. Bounded like storeCopiesIn.
  */
 function protectedViaSymlinks(abs: string): string[] {
-  const roots = [...trustRoots, ...currentWriteRoots(), ...sessionStoreRoots()].flatMap((r) => [r, realpathBestEffort(r)]);
+  const links = linksBelow(abs);
+  if (links.length === 0) return [];
+  const seen = newSeen();
+  const roots = [...new Set([...trustRoots, ...currentWriteRoots(), ...sessionStoreRoots()].flatMap((r) => [r, realpathBestEffort(r, seen)]))];
+  const rootChains = new Map<string, Set<string>>();
+  const chainOf = (r: string): Set<string> => {
+    let c = rootChains.get(r);
+    if (!c) rootChains.set(r, (c = diskChain(r, seen)));
+    return c;
+  };
   // By text and by disk: a firmlink spelling (/System/Volumes/Data/...) is the same folder.
-  return linksBelow(abs)
-    .filter(({ real }) => roots.some((r) => isAtOrUnder(real, r) || isAtOrUnder(r, real) || onDiskAtOrUnder(real, r) || onDiskAtOrUnder(r, real)))
+  return links
+    .filter(({ real }) => {
+      const realChain = diskChain(real, seen);
+      return roots.some((r) => isAtOrUnder(real, r) || isAtOrUnder(r, real) || onDiskAtOrUnder(real, r, realChain, seen) || onDiskAtOrUnder(r, real, chainOf(r), seen));
+    })
     .map(({ link, real }) => `${link} -> ${real}`);
 }
 

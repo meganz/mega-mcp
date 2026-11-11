@@ -135,7 +135,7 @@ through the `release` branch, with nothing to reinstall.
   `claude plugin update mega-mcp@mega`.
 
   However the marketplace is added, the plugin is pinned to the `release`
-  branch. It (`plugins/mega-mcp/`) runs the same single-file bundle as the
+  branch. It (`plugins/mega-mcp/`) runs the same prebuilt bundle as the
   Codex plugin, so it needs Node.js but no `node_modules`; to try a local
   checkout, run `claude --plugin-dir ./plugins/mega-mcp`.
 - **ChatGPT desktop app / OpenAI Codex (plugin, recommended):** add this repo
@@ -163,10 +163,13 @@ through the `release` branch, with nothing to reinstall.
   However the marketplace is added, with or without a ref, the plugin itself is
   pinned to the `release` branch. Updates install automatically: Codex checks
   `release` when it starts (`codex plugin marketplace upgrade mega` updates right away). The
-  plugin runs the checked-in single-file bundle `dist/plugin-server.js`, so it
-  needs Node.js but no `node_modules`. It works wherever Codex runs locally
-  (ChatGPT desktop app, Codex CLI, IDE extension), but not on the web or
-  mobile (see below).
+  plugin starts `bin/mega-mcp` (`bin\mega-mcp.cmd` on Windows), which runs the
+  checked-in bundle `dist/plugin-server.js` (with its parts in `dist/plugin-parts/`)
+  with the first Node.js 18 or later it finds, so it needs no `node_modules`. In the
+  ChatGPT desktop app it can use the Node.js that comes with the app, so you don't
+  have to install one (see **Troubleshooting** for where it looks). It works wherever
+  Codex runs locally (ChatGPT desktop app, Codex CLI, IDE extension), but not on the
+  web or mobile (see below).
 - **Claude Desktop chat:** chat doesn't start a plugin's local MCP server, so
   in the desktop app's chat install the desktop extension instead: double-click
   `mega-cloud-mcp.mcpb` and approve it. It doesn't update itself; install the
@@ -212,7 +215,10 @@ Then, in any client:
 
 ## Requirements
 
-- Node.js >= 18
+- Node.js >= 18. The Codex plugin finds it in the usual places even when the app's
+  `PATH` misses it, and in the ChatGPT app it can use the Node.js that comes with
+  the app. Claude Code needs `node` on the `PATH` of the app that starts it (not
+  only in Terminal). See **Troubleshooting**.
 - MEGAcmd — acquired automatically on first use on macOS and Windows (see below).
   On Linux, install MEGA's `megacmd` package (https://mega.io/cmd).
 
@@ -256,6 +262,61 @@ Per-platform status:
 Because MEGAcmd is downloaded from MEGA's own servers (not redistributed by this
 extension), the BSD/GPL redistribution concerns do not apply.
 
+## Troubleshooting
+
+**The MEGA tools don't appear in Codex** (ChatGPT app, Codex CLI, IDE extension).
+The plugin starts `bin/mega-mcp` (`bin\mega-mcp.cmd` on Windows), which runs the
+server with the first Node.js 18 or later it finds, in this order:
+
+1. `MEGA_MCP_NODE`, if you set it (see below)
+2. `node` on the app's `PATH` (a version manager's shim there is skipped, and the
+   versions it installed are searched in step 5; on Windows only the first
+   `node.exe` on `PATH` is considered)
+3. the Node.js that comes with the ChatGPT app
+4. Homebrew, MacPorts, Nix, n, the Node.js installer's folders, Scoop and the
+   usual system folders
+5. versions installed by fnm, nvm, Volta, asdf, mise or nodenv (fnm's default
+   first, then the highest major version), then `~/.local/bin`, `~/bin` and
+   `~/.nix-profile`; or, on Windows, by nvm-windows, Volta, fnm or mise (nvm's
+   current and fnm's default first, then the first installed version in
+   folder-name order that is Node.js 18 or later)
+
+The server's transfers then refuse to write into these places, so a download can't
+put a different Node.js there for the next start.
+
+If none of them is Node.js 18 or later, it writes what to do into Codex's log and
+the tools stay missing. Then:
+
+1. Install Node.js 18 or later from <https://nodejs.org/> (on a Mac,
+   `brew install node` works too), then quit the app completely and open it again.
+2. If Node.js is installed somewhere else, tell the plugin where in
+   `~/.codex/.env`, which Codex reads every time it starts and a plugin update
+   doesn't change. Run this in a Terminal window where `node --version` prints 18
+   or later, then restart the app:
+
+   ```bash
+   printf "\nMEGA_MCP_NODE='%s'\n" "$(node -p process.execPath)" >> ~/.codex/.env
+   ```
+
+   On Windows, add a line `MEGA_MCP_NODE='C:\full\path\to\node.exe'` to
+   `%USERPROFILE%\.codex\.env`. Keep the single quotes: without them Codex
+   ignores a line whose path has a space or a backslash in it.
+
+Don't change the installed plugin's own files instead: the next plugin update
+replaces them.
+
+**The MEGA tools don't appear in Claude Code.** The Claude plugin starts the server
+with the command `node`, which the app looks up on its own `PATH`. The Claude
+desktop app takes that `PATH` from your login shell when it starts, so a Node that
+a new Terminal window finds is normally found too. It can still be missing, for
+example when Node is set up in a file your login shell doesn't read. The server
+then never runs, so it can't report anything itself.
+
+1. In a new Terminal window, check that `node --version` prints 18 or later.
+2. Quit the app completely (not just its window) and open it again: it reads
+   `PATH` only when it starts. Claude Code in a terminal uses that terminal's
+   `PATH`.
+
 ## Uninstalling / cleanup
 
 Removing the connector does **not** automatically remove MEGAcmd or your session
@@ -279,8 +340,8 @@ Removing the connector does **not** automatically remove MEGAcmd or your session
 ```bash
 npm install
 npm run build      # tsc -> dist/
-npm run build:plugin # bundle plugin server -> dist/plugin-server.js, copied into plugins/mega-mcp/
-npm run check:plugin # verify bundle == src/, versions, both marketplace entries, Claude plugin copies, standalone start
+npm run build:plugin # bundle plugin server -> dist/plugin-server.js + dist/plugin-parts/, copied into plugins/mega-mcp/
+npm run check:plugin # verify bundle == src/, versions, both marketplace entries, Claude plugin copies, the directory's size limits, standalone start, Codex launcher
 npm test           # vitest unit tests (no live MEGAcmd needed)
 npm run typecheck
 
@@ -317,20 +378,25 @@ Code: its `git-subdir` source pins `plugins/mega-mcp` to `release`, and
 `check:plugin` fails if that pin changes. (Codex reads only
 `.agents/plugins/marketplace.json`, so the two catalogs don't collide.)
 
-1. Land changes on `main`. Whenever `src/` changes, run `npm run build:plugin`
-   and commit `dist/plugin-server.js` and the copies it writes into
+1. Land changes on `main`. Whenever `src/`, a bundled dependency, `scripts/plugin-parts/`,
+   `scripts/plugin-bundle-options.mjs`, `LICENSE`, `NOTICE` or the icon changes, run `npm run build:plugin`
+   and commit `dist/plugin-server.js`, `dist/plugin-parts/` and the copies it writes into
    `plugins/mega-mcp/` with it. CI runs `npm run check:plugin` (plus typecheck
    and tests), which fails if the bundle doesn't match `src/`, the versions in
    `package.json`, `manifest.json` and the two plugin manifests differ, the
-   marketplace entry is invalid, `plugins/mega-mcp/` is out of date, or the
-   plugin can't start without `node_modules`.
+   marketplace entry is invalid, `plugins/mega-mcp/` is out of date, a file in
+   it reaches the claude.ai directory's 256 KiB limit, the plugin can't start
+   without `node_modules` (or on a Node that doesn't detect ES modules), or the
+   Codex launcher doesn't find Node where it should; CI also runs the launcher
+   on Windows (the `windows` job), and fails if a check rewrote a committed file.
 2. Bump the version with `npm version patch` (or `minor` / `major`). It also
    updates `manifest.json`, `.codex-plugin/plugin.json` and
    `plugins/mega-mcp/.claude-plugin/plugin.json`, then commits and tags.
 3. Push: `git push origin main --follow-tags`.
-4. Promote with `npm run release:plugin`. It re-runs the checks, then
-   fast-forwards `release` to `main`; add `-- --dry-run` to preview what would
-   ship.
+4. Promote with `npm run release:plugin`. It refuses uncommitted or untracked files, re-runs the checks, requires the
+   CI jobs `check` and `windows` to have succeeded on that commit (it stops and
+   asks you to retry while they are running), then fast-forwards `release` to
+   `main`; add `-- --dry-run` to preview what would ship.
 
 Don't push to `release` directly or force-push it.
 

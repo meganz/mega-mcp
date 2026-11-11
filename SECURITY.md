@@ -30,8 +30,13 @@ user approves actions by reading the confirmation preview their app shows.
    such as the keyring — nor shows an existing public link's key without asking
    (the key opens the link even where a password was set on it elsewhere), nor
    reads the account's recovery key file
-   (`MEGA-RECOVERYKEY.txt` or its name in another language of MEGA's web app, or any
-   file holding just such a key).
+   (`MEGA-RECOVERYKEY.txt` or its name in another language of MEGA's web app), nor a
+   file holding such a key under another name - on a line of its own, after a label
+   such as "Recovery key:" (also in the languages of MEGA's web app), or next to
+   other text (also joined to it with "-" or "_", or with invisible or control
+   characters inside or between it and the next word; a tab or a line break splits
+   it), with any line breaks. A key in a MEGA link (after the link's "#" or "!", of
+   the length a link's key has) is a link's own key and is read.
 2. **The session store is never read, written, uploaded, downloaded into, copied,
    moved, shared or published** — locally (`~/.megaCmd` and its other locations,
    in any spelling of the path, and a `.megaCmd` folder anywhere in an uploaded or
@@ -178,7 +183,14 @@ user approves actions by reading the confirmation preview their app shows.
 4. **Transfers never write into the directories the connector depends on**: the
    MEGAcmd program (on macOS the whole `.app`) and cache directories, its macOS
    socket folder, the plugin's data directory (which holds the file-reading
-   choice), the macOS login helper, this connector's own folder, and the hosts' own
+   choice), the macOS login helper, this connector's own folder, the Node.js running
+   it (its folder; only the executable when that folder is or holds the home folder,
+   or is a drive root), a `node` in each `PATH` folder and, on Windows, in the
+   working folder, with and without each `PATHEXT` extension (a host starting a bare
+   `node` looks there; a folder already named so is left alone), every place the
+   Codex plugin's launcher looks for Node.js (it passes them in
+   `MEGA_MCP_NODE_ROOTS`; a folder that is or holds the home folder, or is a drive
+   root, is left out, the node file named in it is not), and the hosts' own
    configuration (`~/.claude`, `~/.claude.json`, `~/.codex`, Claude Desktop's
    settings folders - also its `Claude-3p` profile and a packaged Windows install's
    own folder - and `CLAUDE_CONFIG_DIR`/`CODEX_HOME`/`CLAUDE_USER_DATA_DIR` when set,
@@ -236,6 +248,30 @@ so this computer's own session is recognised however it is written).
 - MEGA's Linux packages are not code-signed, so on Linux the MEGAcmd found on
   `PATH` is run without a signature or checksum check. On macOS, a MEGAcmd outside
   an `.app` bundle (configured, or found on `PATH`) is not signature-checked either.
+- The Codex plugin's launcher (`bin/mega-mcp`, `bin/mega-mcp.cmd`) runs the first
+  Node.js 18 or later it finds - `MEGA_MCP_NODE`, `PATH`, the ChatGPT app's own, then
+  fixed install folders and versions installed by version managers (README,
+  Troubleshooting) - without a signature check, as a bare `node` would be. It runs only
+  the candidates its search reaches, one after the other until one is Node.js 18 or
+  later, and passes over a version manager's shim found on `PATH` (shims read config
+  files around them to pick a Node; on macOS and Linux the rest of `PATH` is still
+  searched, on Windows only the first `node.exe` on `PATH` is looked at); a
+  `MEGA_MCP_NODE` the user sets is run as given. On macOS and Linux it runs only absolute paths;
+  on Windows only `.exe` files, a relative one taken from the plugin's own folder. A
+  place built from a variable is skipped when the variable is empty, and none of the
+  fixed places is in a folder any local user can create (a drive root, `ProgramData`);
+  `PATH` and the variables can point anywhere, as for a bare `node`. Transfers don't
+  write into any of these places (rule 4).
+- A host that starts a bare `node` (the Claude plugin) runs whatever `node` its `PATH`
+  gives. When that is a version manager's shim, the shim's config files (`~/.asdfrc`,
+  `~/.config/mise`, `.tool-versions`, Volta's hooks ...) decide which Node runs, and
+  transfers can write them, like shell startup files. On Windows the `node` names are
+  protected in the working folder the server was started in, not in every project
+  folder a host may start it in later.
+- Codex starts the plugin in the plugin's own folder and doesn't tell it which folder a
+  conversation works in, so for Codex the per-project protection (rule 4) covers the
+  projects Codex trusts in its `config.toml` - the ones whose `.codex` it loads - and
+  those Claude lists, not another folder a conversation is in.
 - The searches inside a local folder - for `.megaCmd` copies, `.megaignore` files,
   and links into protected or synced folders - stop after 20,000 folders and skip
   folders that cannot be read. For store copies the upload and backup previews say
@@ -268,6 +304,16 @@ so this computer's own session is recognised however it is written).
 - Turning file reading on or off is not locked across server processes: two
   answers given in different processes at the same instant can leave the older
   one in place.
+- A recovery key is recognised in the form MEGA writes it (one 22-character
+  base64url token, also next to a label in standard base64). Written some other
+  way - split by spaces or across lines, glued to other letters, re-encoded (hex,
+  base32), in look-alike letters - in a file under another name, `mega_cat` does not
+  recognise it; nor a random-looking token without a label inside standard base64
+  data (a "+" next to it, in a stretch of at least 44 base64 characters, its own 22
+  included, that looks encoded rather than like words) or a package
+  lockfile's integrity hash, which otherwise look like keys. Some hashes, encoded
+  data (long base64 without "+" next to the token, 22-character ids) and long
+  identifiers in code are refused because they look like a key.
 
 ## Reporting
 

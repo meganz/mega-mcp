@@ -1,5 +1,5 @@
 import type { AuthState, Config, Resolved, RunOpts, RunResult } from './types.js';
-import { basename, join, isAbsolute, dirname, resolve } from 'node:path';
+import { basename, join, isAbsolute, dirname, resolve, posix, win32 } from 'node:path';
 import { readFileSync, readdirSync, realpathSync, lstatSync, statSync, readlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolveBinaries, readActiveCacheMeta, resolvePathBinDir, serverName } from './resolve.js';
@@ -7,7 +7,7 @@ import { execClient } from './exec.js';
 import { ensureServerRunning } from './server.js';
 import { verifyResolvedBinary, macLoginHelperDir } from './download/megacmd.js';
 import { detectAuth, ensureReady } from './auth.js';
-import { publishMegacmdBinDir } from './paths.js';
+import { localAtOrUnder, publishMegacmdBinDir } from './paths.js';
 import { assertSafeInvocation, scrubSecrets } from './invocation.js';
 import { stateDir } from './fileReading.js';
 import { createConfirmStore, type ConfirmStore } from './confirm.js';
@@ -77,6 +77,17 @@ function configWriteRoots(config: Config): () => string[] {
     ...(config.appDir ? [config.appDir] : []),
     ...[process.env.CLAUDE_PLUGIN_ROOT, process.env.PLUGIN_ROOT].filter((p): p is string => !!p && p.trim() !== ''),
   ];
+  // The Node.js running this server, and every place it could come from at the next start. Not
+  // followed through symlinks like the folders above: a node folder such as /usr/bin or
+  // Homebrew's opt holds hundreds of links that decide nothing here.
+  const node = nodePlaces({
+    execPath: process.execPath,
+    listed: process.env.MEGA_MCP_NODE_ROOTS,
+    home: homedir(),
+    path: process.env.PATH ?? process.env.Path,
+    pathext: process.env.PATHEXT,
+    cwd: workingFolder(),
+  });
   // The same per project (.claude, .mcp.json, .codex), re-read when a host's project list changes;
   // symlinks inside them followed again when a protected folder's own entries change.
   let key: string | null = null;
@@ -100,9 +111,118 @@ function configWriteRoots(config: Config): () => string[] {
       linkKey = lk;
       linked = linkedOutOf(roots);
     }
-    all = [...roots, ...linked];
+    // (A folder named like a node is none: looked at each time, as it can come and go.)
+    all = [...roots, ...linked, ...node.held, ...node.names.filter((p) => !isDirectory(p))];
     return all;
   };
+}
+
+// Windows' default PATHEXT (and .CPL, which some versions add): a host starting a bare `node` runs
+// node.js or node.vbs (Windows Script Host) or node.cmd as readily as node.exe.
+// (.PS1 for a host that starts it through PowerShell.)
+const WINDOWS_PATHEXT = ['.com', '.exe', '.bat', '.cmd', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.msc', '.cpl', '.ps1'];
+
+/** The working folder, or undefined when it no longer exists (a removed worktree): nothing can be placed in it then. */
+function workingFolder(): string | undefined {
+  try {
+    return process.cwd();
+  } catch {
+    return undefined;
+  }
+}
+
+interface NodePlacesInput {
+  execPath: string;
+  listed?: string;
+  home: string;
+  path?: string;
+  pathext?: string;
+  /** Undefined when unknown: names that depend on it are left out. */
+  cwd?: string;
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * Where a file placed by a transfer would decide which Node.js runs this server at the next
+ * start (on Windows a downloaded node.exe, node.cmd or node.js needs no execute bit to run):
+ * - the running node's folder (on Windows a DLL next to node.exe loads before the system's);
+ * - the places the Codex launcher (bin/mega-mcp, bin/mega-mcp.cmd) searches, which it lists in
+ *   MEGA_MCP_NODE_ROOTS;
+ * - a `node` - on Windows with each PATHEXT extension - in each folder a host looks in for a bare
+ *   `node`: PATH's (an empty or relative entry is the working folder), and on Windows the working
+ *   folder first.
+ * Never the home folder, a folder holding it, or a drive root, in any spelling: that would refuse
+ * every download into the home folder. Then only the node itself is protected.
+ */
+export function nodeWriteRoots(o: NodePlacesInput): string[] {
+  const { held, names } = nodePlaces(o);
+  // Not a folder of that name: a lookup passes over it, and its contents are no one's node.
+  const real = (o.platform ?? process.platform) === process.platform;
+  return [...new Set([...held, ...names.filter((p) => !(real && isDirectory(p)))])];
+}
+
+/** `held`: folders and files protected as they are. `names`: node names a lookup tries, protected unless a folder has the name. */
+function nodePlaces(o: NodePlacesInput): { held: string[]; names: string[] } {
+  const platform = o.platform ?? process.platform;
+  const P = platform === 'win32' ? win32 : posix;
+  const fold = (p: string): string => (platform === 'linux' ? p : p.toLowerCase());
+  const holds = (outer: string, inner: string): boolean => {
+    const rel = P.relative(fold(P.resolve(outer)), fold(P.resolve(inner)));
+    return rel === '' || (!rel.startsWith('..') && !P.isAbsolute(rel));
+  };
+  const broad = (p: string): boolean => {
+    const r = P.resolve(p);
+    if (r === P.parse(r).root) return true;
+    // (No home folder known: an empty one would resolve to the working folder.)
+    return o.home !== '' && (holds(r, o.home) || (platform === process.platform && localAtOrUnder(o.home, r)));
+  };
+  const own = broad(P.dirname(o.execPath)) ? o.execPath : P.dirname(o.execPath);
+  const listed = (o.listed ?? '')
+    .split(P.delimiter)
+    .map((p) => p.trim())
+    .filter((p) => p !== '' && P.isAbsolute(p) && !broad(p));
+  // As the lookups read PATH: split on the delimiter, nothing trimmed; Windows drops quotes
+  // around an entry. An unset PATH names no folder; an empty one is the working folder.
+  const entries = o.path === undefined ? [] : o.path.split(P.delimiter).map((p) => (platform === 'win32' ? p.replace(/^"(.*)"$/, '$1') : p));
+  const cwd = o.cwd;
+  const lexical = [
+    ...(platform === 'win32' && cwd !== undefined ? [cwd] : []),
+    ...entries.flatMap((d) => (cwd !== undefined ? [d === '' ? cwd : P.resolve(cwd, d)] : d !== '' && P.isAbsolute(d) ? [P.resolve(d)] : [])),
+  ];
+  // Also where the entry really is: the system follows a link before a ".." after it.
+  const dirs = [...new Set(lexical.flatMap((d) => (platform === process.platform ? [d, realFolder(d)] : [d])))];
+  const exts = [
+    ...WINDOWS_PATHEXT,
+    ...(o.pathext ?? '')
+      .split(';')
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => /^\.[a-z0-9]{1,8}$/.test(e)),
+  ];
+  // (Windows, also without an extension: a PATHEXT with an empty entry, or a host under Git Bash.)
+  const names = platform === 'win32' ? ['node', ...[...new Set(exts)].map((e) => `node${e}`)] : ['node'];
+  // Not a home folder named "node" (only a folder that holds the home folder can have one).
+  const looked = dirs.flatMap((d) => {
+    const above = broad(d);
+    return names.map((n) => P.join(d, n)).filter((p) => !(above && broad(p)));
+  });
+  return { held: [...new Set([own, ...listed])], names: [...new Set(looked)] };
+}
+
+/** `dir` with its links resolved when it exists, else as given. */
+function realFolder(dir: string): string {
+  try {
+    return realpathSync.native(dir);
+  } catch {
+    return dir;
+  }
+}
+
+function isDirectory(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 /** What linkedOutOf depends on at a root: a folder's entries, or where a link points. */

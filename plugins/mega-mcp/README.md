@@ -19,10 +19,29 @@ client, on your own computer.
 
 ## Requirements
 
-- Node.js 18 or later on your `PATH`. The plugin runs a single prebuilt file
-  with `node` and installs nothing from npm.
+- Node.js 18 or later on your `PATH`. The plugin runs a prebuilt bundle with
+  `node` and installs nothing from npm. If the MEGA tools don't appear, check
+  that `node --version` works in a new Terminal window, then quit and reopen
+  the app (it reads `PATH` when it starts). Claude Code in a terminal uses that
+  terminal's `PATH`.
 - MEGAcmd. If it isn't installed, the plugin offers to install it (see below).
 - A MEGA account.
+
+## Install
+
+In Claude Code, from MEGA's marketplace (or from Anthropic's directory on
+claude.ai, once the plugin is listed there):
+
+```
+/plugin install mega-mcp --marketplace meganz/mega-mcp
+```
+
+If your Claude Code doesn't know `--marketplace` yet, add the marketplace first:
+
+```
+/plugin marketplace add meganz/mega-mcp
+/plugin install mega-mcp@mega
+```
 
 ## Use it
 
@@ -51,7 +70,10 @@ stop reading your files at any time.
 
 - **Runs:** `node ${CLAUDE_PLUGIN_ROOT}/dist/plugin-server.js`, a stdio MCP
   server bundled with esbuild (not minified) from the TypeScript source in
-  [`src/`](https://github.com/meganz/mega-mcp/tree/main/src). The server runs
+  [`src/`](https://github.com/meganz/mega-mcp/tree/main/src), split into parts
+  under `dist/plugin-parts/` so that no file is too large for the directory to
+  inspect (`dist/package.json` marks them as ES modules). `npm ci && npm run build:plugin` rebuilds the same
+  files byte for byte, and CI checks that they match the source. The server runs
   MEGAcmd's `mega-*` commands on your computer.
 - **Fetches:** only when you approve `megacmd_setup`, the MEGAcmd installer from
   MEGA's own servers:

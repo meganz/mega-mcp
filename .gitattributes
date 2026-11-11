@@ -1,0 +1,8 @@
+# The Codex plugin's launchers: bin/mega-mcp only runs with LF line endings, and cmd.exe
+# reads bin/mega-mcp.cmd best with CRLF (it has no labels, so LF works too).
+bin/mega-mcp text eol=lf
+*.cmd text eol=crlf
+# The bundle is compared byte for byte with a fresh build (check:plugin): never converted.
+/dist/** -text
+/plugins/mega-mcp/dist/** -text
+/scripts/plugin-dist-package.json -text
